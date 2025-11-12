@@ -117,6 +117,11 @@ class ExperimentWindow:
         self.preliminary_acceleration: float = 500.0
         self.between_wells_feedrate: float = 5000.0
         self.between_wells_acceleration: float = 1000.0
+        # Calibration data
+        self.loaded_calibration: Optional[Dict[str, Any]] = None
+        self.calibration_file: Optional[str] = None
+        self.well_checkboxes: Dict[str, tk.BooleanVar] = {}
+        self.checkbox_frame: Optional[tk.Frame] = None
 
     def load_config(self) -> Dict[str, Any]:
         """
@@ -235,24 +240,52 @@ class ExperimentWindow:
             self.window = None
         w.protocol("WM_DELETE_WINDOW", on_close)
 
-        # X/Y/Times fields
-        tk.Label(w, text="X Values (comma/newline):").grid(row=0, column=0)
-        self.x_vals = tk.Text(w, height=4, width=30)
+        # Calibration loading section
+        tk.Label(w, text="Calibration:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.calibration_var = tk.StringVar(value="")
+        calibration_frame = tk.Frame(w)
+        calibration_frame.grid(row=0, column=1, columnspan=2, sticky="w", padx=5, pady=5)
+        
+        # List available calibrations
+        calib_dir = os.path.join("config", "calibrations")
+        calibrations = [""]
+        if os.path.exists(calib_dir):
+            calibrations.extend([f for f in os.listdir(calib_dir) if f.endswith(".json")])
+        
+        calibration_menu = tk.OptionMenu(calibration_frame, self.calibration_var, *calibrations, command=self.on_calibration_select)
+        calibration_menu.pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(calibration_frame, text="Refresh", command=self.refresh_calibrations).pack(side=tk.LEFT, padx=5)
+        
+        self.calibration_status_label = tk.Label(w, text="No calibration loaded", fg="red", font=("Arial", 9))
+        self.calibration_status_label.grid(row=0, column=3, sticky="w", padx=5)
+        
+        # Manual coordinate entry (hidden when calibration loaded)
+        self.manual_frame = tk.LabelFrame(w, text="Manual Coordinate Entry", padx=5, pady=5)
+        self.manual_frame.grid(row=1, column=0, columnspan=4, padx=5, pady=5, sticky="ew")
+        
+        tk.Label(self.manual_frame, text="X Values (comma/newline):").grid(row=0, column=0)
+        self.x_vals = tk.Text(self.manual_frame, height=4, width=30)
         self.x_vals.grid(row=1, column=0, padx=5, pady=5)
-        tk.Label(w, text="X Labels:").grid(row=0, column=1)
-        self.x_lbls = tk.Text(w, height=4, width=30)
+        tk.Label(self.manual_frame, text="X Labels:").grid(row=0, column=1)
+        self.x_lbls = tk.Text(self.manual_frame, height=4, width=30)
         self.x_lbls.grid(row=1, column=1, padx=5, pady=5)
 
-        tk.Label(w, text="Y Values (comma/newline):").grid(row=2, column=0)
-        self.y_vals = tk.Text(w, height=4, width=30)
+        tk.Label(self.manual_frame, text="Y Values (comma/newline):").grid(row=2, column=0)
+        self.y_vals = tk.Text(self.manual_frame, height=4, width=30)
         self.y_vals.grid(row=3, column=0, padx=5, pady=5)
-        tk.Label(w, text="Y Labels:").grid(row=2, column=1)
-        self.y_lbls = tk.Text(w, height=4, width=30)
+        tk.Label(self.manual_frame, text="Y Labels:").grid(row=2, column=1)
+        self.y_lbls = tk.Text(self.manual_frame, height=4, width=30)
         self.y_lbls.grid(row=3, column=1, padx=5, pady=5)
+        
+        # Checkbox grid frame (shown when calibration loaded)
+        self.checkbox_frame_container = tk.LabelFrame(w, text="Select Wells", padx=5, pady=5)
+        self.checkbox_frame_container.grid(row=1, column=0, columnspan=4, padx=5, pady=5, sticky="ew")
+        self.checkbox_frame_container.grid_remove()  # Hidden by default
 
-        tk.Label(w, text="Times (Off,On,Off sec):").grid(row=4, column=0, columnspan=2)
+        tk.Label(w, text="Times (Off,On,Off sec):").grid(row=2, column=0, columnspan=2)
         self.times = tk.Text(w, height=4, width=30)
-        self.times.grid(row=5, column=0, columnspan=2, padx=5, pady=5)
+        self.times.grid(row=3, column=0, columnspan=2, padx=5, pady=5)
 
         for widget, key in [
             (self.x_vals, "x_values"), (self.x_lbls, "x_labels"),
@@ -263,50 +296,50 @@ class ExperimentWindow:
                 widget.insert(tk.END, v + "\n")
 
         # Z value, pattern, filename, folder
-        tk.Label(w, text="Z Value:").grid(row=4, column=2)
-        self.z_ent = tk.Entry(w); self.z_ent.grid(row=5, column=2, padx=5)
+        tk.Label(w, text="Z Value:").grid(row=2, column=2)
+        self.z_ent = tk.Entry(w); self.z_ent.grid(row=3, column=2, padx=5)
         self.z_ent.insert(0, cfg["z_value"])
 
-        tk.Label(w, text="Pattern:").grid(row=6, column=0)
+        tk.Label(w, text="Pattern:").grid(row=4, column=0)
         self.pattern_var = tk.StringVar(value=cfg["pattern"])
-        tk.OptionMenu(w, self.pattern_var, "snake", "raster").grid(row=6, column=1)
+        tk.OptionMenu(w, self.pattern_var, "snake", "raster").grid(row=4, column=1)
 
-        tk.Label(w, text="Filename Scheme:").grid(row=7, column=0)
+        tk.Label(w, text="Filename Scheme:").grid(row=5, column=0)
         self.scheme_ent = tk.Entry(w, width=40)
         self.scheme_ent.insert(0, cfg["filename_scheme"])
-        self.scheme_ent.grid(row=7, column=1, columnspan=2, pady=5)
+        self.scheme_ent.grid(row=5, column=1, columnspan=2, pady=5)
 
-        tk.Label(w, text="Save Folder:").grid(row=8, column=0)
+        tk.Label(w, text="Save Folder:").grid(row=6, column=0)
         self.folder_ent = tk.Entry(w, width=40)
         self.folder_ent.insert(0, cfg["save_folder"])
-        self.folder_ent.grid(row=8, column=1)
+        self.folder_ent.grid(row=6, column=1)
         tk.Button(w, text="Browse…", command=lambda: (
             self.folder_ent.delete(0, tk.END),
             self.folder_ent.insert(0, filedialog.askdirectory())
-        )).grid(row=8, column=2)
+        )).grid(row=6, column=2)
 
         # Resolution, FPS, export, quality, feedrate
-        tk.Label(w, text="Resolution X:").grid(row=9, column=0)
-        self.res_x_ent = tk.Entry(w); self.res_x_ent.grid(row=9, column=1)
+        tk.Label(w, text="Resolution X:").grid(row=7, column=0)
+        self.res_x_ent = tk.Entry(w); self.res_x_ent.grid(row=7, column=1)
         self.res_x_ent.insert(0, cfg["resolution"][0])
 
-        tk.Label(w, text="Resolution Y:").grid(row=10, column=0)
-        self.res_y_ent = tk.Entry(w); self.res_y_ent.grid(row=10, column=1)
+        tk.Label(w, text="Resolution Y:").grid(row=8, column=0)
+        self.res_y_ent = tk.Entry(w); self.res_y_ent.grid(row=8, column=1)
         self.res_y_ent.insert(0, cfg["resolution"][1])
 
-        tk.Label(w, text="FPS:").grid(row=11, column=0)
-        self.fps_ent = tk.Entry(w); self.fps_ent.grid(row=11, column=1)
+        tk.Label(w, text="FPS:").grid(row=9, column=0)
+        self.fps_ent = tk.Entry(w); self.fps_ent.grid(row=9, column=1)
         self.fps_ent.insert(0, cfg["fps"])
 
-        tk.Label(w, text="Export Type:").grid(row=12, column=0)
+        tk.Label(w, text="Export Type:").grid(row=10, column=0)
         self.export_var = tk.StringVar(value=cfg["export_type"])
-        tk.OptionMenu(w, self.export_var, "H264", "MJPEG", "JPEG").grid(row=12, column=1)
+        tk.OptionMenu(w, self.export_var, "H264", "MJPEG", "JPEG").grid(row=10, column=1)
 
-        tk.Label(w, text="JPEG Quality:").grid(row=13, column=0)
-        self.quality_ent = tk.Entry(w); self.quality_ent.grid(row=13, column=1)
+        tk.Label(w, text="JPEG Quality:").grid(row=11, column=0)
+        self.quality_ent = tk.Entry(w); self.quality_ent.grid(row=11, column=1)
         self.quality_ent.insert(0, cfg["quality"])
 
-        tk.Label(w, text="Motion Config:").grid(row=14, column=0)
+        tk.Label(w, text="Motion Config:").grid(row=12, column=0)
         self.motion_config_var = tk.StringVar(value=cfg.get("motion_config_file", "default.json"))
         # List available motion config files
         motion_configs_dir = os.path.join("config", "motion_configs")
@@ -314,33 +347,40 @@ class ExperimentWindow:
         if os.path.exists(motion_configs_dir):
             motion_configs = [f for f in os.listdir(motion_configs_dir) if f.endswith(".json")]
         motion_config_menu = tk.OptionMenu(w, self.motion_config_var, *motion_configs)
-        motion_config_menu.grid(row=14, column=1, padx=5, pady=5)
+        motion_config_menu.grid(row=12, column=1, padx=5, pady=5)
         
-        tk.Label(w, text="Feedrate Override (mm/min, optional):").grid(row=15, column=0)
-        self.feedrate_ent = tk.Entry(w); self.feedrate_ent.grid(row=15, column=1)
+        tk.Label(w, text="Feedrate Override (mm/min, optional):").grid(row=13, column=0)
+        self.feedrate_ent = tk.Entry(w); self.feedrate_ent.grid(row=13, column=1)
         self.feedrate_ent.insert(0, cfg["feedrate"])
         
         # Motion settings display
-        tk.Label(w, text="Motion Settings:").grid(row=16, column=0, sticky="w", padx=5, pady=5)
+        tk.Label(w, text="Motion Settings:").grid(row=14, column=0, sticky="w", padx=5, pady=5)
         self.motion_info_label = tk.Label(w, text="Load config to see settings", fg="gray", font=("Arial", 9))
-        self.motion_info_label.grid(row=17, column=0, columnspan=2, sticky="w", padx=5)
+        self.motion_info_label.grid(row=15, column=0, columnspan=2, sticky="w", padx=5)
+
+        # Experiment settings export/import
+        exp_settings_frame = tk.Frame(w)
+        exp_settings_frame.grid(row=16, column=0, columnspan=3, padx=5, pady=5)
+        tk.Button(exp_settings_frame, text="Export Experiment Settings", command=self.export_experiment_settings).pack(side=tk.LEFT, padx=5)
+        tk.Button(exp_settings_frame, text="Load Experiment Settings", command=self.load_experiment_settings).pack(side=tk.LEFT, padx=5)
 
         # Status & controls
-        tk.Label(w, text="Status:").grid(row=18, column=0, sticky="w")
+        tk.Label(w, text="Status:").grid(row=17, column=0, sticky="w")
         self.status_lbl = tk.Label(w, text="Idle")
-        self.status_lbl.grid(row=18, column=1, columnspan=2, sticky="w")
+        self.status_lbl.grid(row=17, column=1, columnspan=2, sticky="w")
 
-        tk.Button(w, text="Run",   command=self.start).grid(row=19, column=0, padx=5, pady=5)
-        tk.Button(w, text="Pause", command=self.pause).grid(row=19, column=1, padx=5, pady=5)
-        tk.Button(w, text="Stop",  command=self.stop).grid(row=19, column=2, padx=5, pady=5)
+        self.run_btn = tk.Button(w, text="Run", command=self.start)
+        self.run_btn.grid(row=18, column=0, padx=5, pady=5)
+        tk.Button(w, text="Pause", command=self.pause).grid(row=18, column=1, padx=5, pady=5)
+        tk.Button(w, text="Stop",  command=self.stop).grid(row=18, column=2, padx=5, pady=5)
 
         # Timers
-        tk.Label(w, text="Duration:").grid(row=20, column=0, sticky="e")
-        self.duration_lbl = tk.Label(w, text="00:00:00"); self.duration_lbl.grid(row=20, column=1)
-        tk.Label(w, text="Elapsed:").grid(row=21, column=0, sticky="e")
-        self.elapsed_lbl = tk.Label(w, text="00:00:00");   self.elapsed_lbl.grid(row=21, column=1)
-        tk.Label(w, text="Remaining:").grid(row=22, column=0, sticky="e")
-        self.remaining_lbl = tk.Label(w, text="00:00:00"); self.remaining_lbl.grid(row=22, column=1)
+        tk.Label(w, text="Duration:").grid(row=19, column=0, sticky="e")
+        self.duration_lbl = tk.Label(w, text="00:00:00"); self.duration_lbl.grid(row=19, column=1)
+        tk.Label(w, text="Elapsed:").grid(row=20, column=0, sticky="e")
+        self.elapsed_lbl = tk.Label(w, text="00:00:00");   self.elapsed_lbl.grid(row=20, column=1)
+        tk.Label(w, text="Remaining:").grid(row=21, column=0, sticky="e")
+        self.remaining_lbl = tk.Label(w, text="00:00:00"); self.remaining_lbl.grid(row=21, column=1)
         
         # Load and display motion config on selection change
         def update_motion_info(*args):
@@ -363,6 +403,9 @@ class ExperimentWindow:
         
         self.motion_config_var.trace("w", update_motion_info)
         update_motion_info()  # Initial load
+        
+        # Update run button state based on calibration
+        self.update_run_button_state()
 
         # Live example filename
         def upd(e=None):
@@ -390,6 +433,293 @@ class ExperimentWindow:
 
         w.transient(self.parent)
         w.grab_set()
+    
+    def refresh_calibrations(self) -> None:
+        """Refresh the list of available calibrations."""
+        if not self.window:
+            return
+        
+        calib_dir = os.path.join("config", "calibrations")
+        calibrations = [""]
+        if os.path.exists(calib_dir):
+            calibrations.extend([f for f in os.listdir(calib_dir) if f.endswith(".json")])
+        
+        # Update the option menu (simplified - just update the variable)
+        current = self.calibration_var.get()
+        if current not in calibrations:
+            self.calibration_var.set("")
+            self.on_calibration_select("")
+        else:
+            self.calibration_var.set(current)
+    
+    def on_calibration_select(self, filename: str) -> None:
+        """
+        Handle calibration selection from dropdown.
+        
+        Args:
+            filename: Selected calibration filename (empty string if none)
+        """
+        if not filename or filename == "":
+            # No calibration selected
+            self.loaded_calibration = None
+            self.calibration_file = None
+            self.calibration_status_label.config(text="No calibration loaded", fg="red")
+            # Show manual entry, hide checkbox grid
+            self.manual_frame.grid()
+            self.checkbox_frame_container.grid_remove()
+            self.update_run_button_state()
+            return
+        
+        try:
+            # Load calibration file
+            calib_path = os.path.join("config", "calibrations", filename)
+            if not os.path.exists(calib_path):
+                self.calibration_status_label.config(
+                    text=f"Error: File not found: {filename}",
+                    fg="red"
+                )
+                self.loaded_calibration = None
+                self.calibration_file = None
+                self.update_run_button_state()
+                return
+            
+            with open(calib_path, 'r') as f:
+                self.loaded_calibration = json.load(f)
+            
+            self.calibration_file = filename
+            
+            # Validate calibration structure
+            required_fields = ["interpolated_positions", "labels", "x_quantity", "y_quantity"]
+            if not all(field in self.loaded_calibration for field in required_fields):
+                raise ValueError("Invalid calibration file format")
+            
+            # Update status
+            num_wells = len(self.loaded_calibration.get("interpolated_positions", []))
+            self.calibration_status_label.config(
+                text=f"Loaded: {filename} ({num_wells} wells)",
+                fg="green"
+            )
+            
+            # Hide manual entry, show checkbox grid
+            self.manual_frame.grid_remove()
+            self.create_checkbox_grid()
+            self.checkbox_frame_container.grid()
+            
+            self.update_run_button_state()
+            
+        except Exception as e:
+            logger.error(f"Error loading calibration: {e}")
+            self.calibration_status_label.config(
+                text=f"Error loading calibration: {e}",
+                fg="red"
+            )
+            self.loaded_calibration = None
+            self.calibration_file = None
+            self.update_run_button_state()
+    
+    def create_checkbox_grid(self) -> None:
+        """Create checkbox grid for well selection based on loaded calibration."""
+        if not self.loaded_calibration:
+            return
+        
+        # Clear existing checkboxes
+        if self.checkbox_frame:
+            self.checkbox_frame.destroy()
+        
+        self.well_checkboxes = {}
+        
+        # Create scrollable frame
+        canvas = tk.Canvas(self.checkbox_frame_container)
+        scrollbar = tk.Scrollbar(self.checkbox_frame_container, orient="vertical", command=canvas.yview)
+        self.checkbox_frame = tk.Frame(canvas)
+        
+        self.checkbox_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=self.checkbox_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Get calibration data
+        labels = self.loaded_calibration.get("labels", [])
+        x_qty = self.loaded_calibration.get("x_quantity", 0)
+        y_qty = self.loaded_calibration.get("y_quantity", 0)
+        
+        # Create checkboxes in grid layout
+        for i, label in enumerate(labels):
+            var = tk.BooleanVar(value=True)  # All checked by default
+            self.well_checkboxes[label] = var
+            
+            row = i // x_qty
+            col = i % x_qty
+            
+            checkbox = tk.Checkbutton(
+                self.checkbox_frame,
+                text=label,
+                variable=var,
+                width=4,
+                command=self.update_run_button_state  # Update state when toggled
+            )
+            checkbox.grid(row=row, column=col, padx=2, pady=2, sticky="w")
+    
+    def update_run_button_state(self) -> None:
+        """Update Run button state based on calibration and well selection."""
+        if not self.window:
+            return
+        
+        if not self.loaded_calibration:
+            self.run_btn.config(state="disabled")
+            if hasattr(self, 'status_lbl'):
+                self.status_lbl.config(text="No calibration loaded. Please load a calibration first.")
+            return
+        
+        # Check if at least one well is selected
+        selected_wells = [label for label, var in self.well_checkboxes.items() if var.get()]
+        if not selected_wells:
+            self.run_btn.config(state="disabled")
+            if hasattr(self, 'status_lbl'):
+                self.status_lbl.config(text="No wells selected. Select at least one well.")
+            return
+        
+        # Enable run button
+        self.run_btn.config(state="normal")
+        if hasattr(self, 'status_lbl'):
+            self.status_lbl.config(text=f"Ready - {len(selected_wells)} wells selected")
+    
+    def export_experiment_settings(self) -> None:
+        """Export current experiment settings to JSON file."""
+        if not self.loaded_calibration:
+            self.status_lbl.config(text="Error: No calibration loaded. Cannot export settings.", fg="red")
+            return
+        
+        # Get selected wells
+        selected_wells = [label for label, var in self.well_checkboxes.items() if var.get()]
+        if not selected_wells:
+            self.status_lbl.config(text="Error: No wells selected. Cannot export settings.", fg="red")
+            return
+        
+        try:
+            # Get all settings
+            times_str = self.times.get("1.0", tk.END).strip()
+            times_list = [v for v in re.split(r"[\s,]+", times_str) if v]
+            if len(times_list) != 3:
+                raise ValueError("Invalid times: must provide 3 values (OFF, ON, OFF)")
+            
+            settings = {
+                "calibration_file": self.calibration_file,
+                "selected_wells": selected_wells,
+                "times": [float(t) for t in times_list],
+                "resolution": [int(self.res_x_ent.get().strip()), int(self.res_y_ent.get().strip())],
+                "fps": float(self.fps_ent.get().strip()),
+                "export_type": self.export_var.get(),
+                "quality": int(self.quality_ent.get().strip()),
+                "motion_config_file": self.motion_config_var.get(),
+                "feedrate_override": self.feedrate_ent.get().strip(),
+                "filename_scheme": self.scheme_ent.get().strip(),
+                "save_folder": self.folder_ent.get().strip(),
+                "pattern": self.pattern_var.get()
+            }
+            
+            # Ask user for save location
+            filename = filedialog.asksaveasfilename(
+                defaultextension=".json",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                title="Export Experiment Settings"
+            )
+            
+            if filename:
+                with open(filename, 'w') as f:
+                    json.dump(settings, f, indent=2)
+                self.status_lbl.config(text=f"Settings exported to {os.path.basename(filename)}", fg="green")
+                
+        except Exception as e:
+            logger.error(f"Error exporting settings: {e}")
+            self.status_lbl.config(text=f"Error exporting settings: {e}", fg="red")
+    
+    def load_experiment_settings(self) -> None:
+        """Load experiment settings from JSON file with calibration validation."""
+        try:
+            # Ask user for file
+            filename = filedialog.askopenfilename(
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                title="Load Experiment Settings"
+            )
+            
+            if not filename:
+                return
+            
+            with open(filename, 'r') as f:
+                settings = json.load(f)
+            
+            # Validate calibration file exists
+            calib_file = settings.get("calibration_file")
+            if not calib_file:
+                self.status_lbl.config(text="Error: No calibration file reference in settings", fg="red")
+                return
+            
+            calib_path = os.path.join("config", "calibrations", calib_file)
+            if not os.path.exists(calib_path):
+                self.status_lbl.config(
+                    text=f"Error: Referenced calibration file '{calib_file}' not found. Please ensure calibration exists.",
+                    fg="red"
+                )
+                return
+            
+            # Load calibration
+            self.calibration_var.set(calib_file)
+            self.on_calibration_select(calib_file)
+            
+            # Wait a moment for calibration to load
+            self.window.update()
+            
+            if not self.loaded_calibration:
+                self.status_lbl.config(text="Error: Failed to load calibration", fg="red")
+                return
+            
+            # Restore settings
+            selected_wells = settings.get("selected_wells", [])
+            for label, var in self.well_checkboxes.items():
+                var.set(label in selected_wells)
+            
+            times = settings.get("times", [30, 0, 0])
+            self.times.delete("1.0", tk.END)
+            self.times.insert("1.0", f"{times[0]}, {times[1]}, {times[2]}")
+            
+            resolution = settings.get("resolution", [640, 512])
+            self.res_x_ent.delete(0, tk.END)
+            self.res_x_ent.insert(0, str(resolution[0]))
+            self.res_y_ent.delete(0, tk.END)
+            self.res_y_ent.insert(0, str(resolution[1]))
+            
+            self.fps_ent.delete(0, tk.END)
+            self.fps_ent.insert(0, str(settings.get("fps", 30.0)))
+            
+            self.export_var.set(settings.get("export_type", "H264"))
+            self.quality_ent.delete(0, tk.END)
+            self.quality_ent.insert(0, str(settings.get("quality", 85)))
+            
+            self.motion_config_var.set(settings.get("motion_config_file", "default.json"))
+            self.feedrate_ent.delete(0, tk.END)
+            self.feedrate_ent.insert(0, settings.get("feedrate_override", ""))
+            
+            self.scheme_ent.delete(0, tk.END)
+            self.scheme_ent.insert(0, settings.get("filename_scheme", DEFAULT_SCHEME))
+            
+            self.folder_ent.delete(0, tk.END)
+            self.folder_ent.insert(0, settings.get("save_folder", os.path.expanduser("~")))
+            
+            self.pattern_var.set(settings.get("pattern", "snake"))
+            
+            self.update_run_button_state()
+            self.status_lbl.config(text=f"Settings loaded from {os.path.basename(filename)}", fg="green")
+            
+        except Exception as e:
+            logger.error(f"Error loading settings: {e}")
+            self.status_lbl.config(text=f"Error loading settings: {e}", fg="red")
 
     def start(self) -> None:
         """
@@ -399,34 +729,48 @@ class ExperimentWindow:
         and starts experiment execution in a separate thread.
         
         Note:
-            - Parses X, Y values and labels from text widgets
+            - Requires calibration to be loaded (blocking)
+            - Builds sequence from selected checkboxes
+            - Uses interpolated positions from calibration
             - Requires 3 timing values (OFF, ON, OFF)
             - Builds sequence based on pattern (snake or raster)
             - Starts recording thread for video/still capture
         """
         if self.running:
             return
+        
+        # Validate calibration is loaded (blocking)
+        if not self.loaded_calibration:
+            logger.error("No calibration loaded")
+            self.status_lbl.config(text="Error: No calibration loaded. Please load a calibration first.", fg="red")
+            return
+        
+        # Get selected wells
+        selected_wells = [label for label, var in self.well_checkboxes.items() if var.get()]
+        if not selected_wells:
+            logger.error("No wells selected")
+            self.status_lbl.config(text="Error: No wells selected. Select at least one well.", fg="red")
+            return
+        
         try:
-            xs      = [float(v) for v in re.split(r"[\s,]+", self.x_vals.get("1.0",tk.END).strip()) if v]
-            ys      = [float(v) for v in re.split(r"[\s,]+", self.y_vals.get("1.0",tk.END).strip()) if v]
-            xl      = [v for v in re.split(r"[\s,]+", self.x_lbls.get("1.0",tk.END).strip()) if v]
-            yl      = [v for v in re.split(r"[\s,]+", self.y_lbls.get("1.0",tk.END).strip()) if v]
-            toks    = [v for v in re.split(r"[\s,]+", self.times.get("1.0",tk.END).strip()) if v]
+            # Parse timing
+            toks = [v for v in re.split(r"[\s,]+", self.times.get("1.0",tk.END).strip()) if v]
             if len(toks) != 3:
                 logger.error("Invalid times: must provide 3 values (OFF, ON, OFF)")
                 self.status_lbl.config(text="Error: Enter 3 times (OFF, ON, OFF)")
                 return
             off_t, on_t, off2 = map(float, toks)
-            self.feedrate     = float(self.feedrate_ent.get().strip())
-            self.z_val        = float(self.z_ent.get().strip())
-            folder            = self.folder_ent.get().strip() or os.path.expanduser("~")
+            
+            # Get other settings
+            self.feedrate = float(self.feedrate_ent.get().strip()) if self.feedrate_ent.get().strip() else 100.0
+            folder = self.folder_ent.get().strip() or os.path.expanduser("~")
             os.makedirs(folder, exist_ok=True)
-            scheme            = self.scheme_ent.get().strip() or DEFAULT_SCHEME
-            res_x             = int(self.res_x_ent.get().strip())
-            res_y             = int(self.res_y_ent.get().strip())
-            fps               = float(self.fps_ent.get().strip())
-            export            = self.export_var.get()
-            quality           = int(self.quality_ent.get().strip())
+            scheme = self.scheme_ent.get().strip() or DEFAULT_SCHEME
+            res_x = int(self.res_x_ent.get().strip())
+            res_y = int(self.res_y_ent.get().strip())
+            fps = float(self.fps_ent.get().strip())
+            export = self.export_var.get()
+            quality = int(self.quality_ent.get().strip())
         except Exception as e:
             logger.error(f"Invalid inputs: {e}")
             self.status_lbl.config(text=f"Error: Invalid inputs - {e}")
@@ -483,14 +827,48 @@ class ExperimentWindow:
         else:
             self.encoder = None  # JPEG still mode
 
-        # build sequence
-        pairs = list(zip(xs, xl if xl else [str(v) for v in xs]))
+        # Build sequence from calibration and selected wells
+        interpolated_positions = self.loaded_calibration.get("interpolated_positions", [])
+        labels = self.loaded_calibration.get("labels", [])
+        
+        # Create mapping from label to position
+        label_to_pos = {}
+        for i, label in enumerate(labels):
+            if i < len(interpolated_positions):
+                label_to_pos[label] = interpolated_positions[i]
+        
+        # Build sequence from selected wells
+        selected_positions = []
+        for label in selected_wells:
+            if label in label_to_pos:
+                pos = label_to_pos[label]
+                # Extract row and column from label (e.g., "A1" -> row=0, col=0)
+                row_letter = label[0]
+                col_num = int(label[1:]) - 1
+                row_num = ord(row_letter) - ord('A')
+                selected_positions.append((pos[0], pos[1], pos[2], label, row_num, col_num))
+        
+        # Sort by pattern
+        pattern = self.pattern_var.get()
+        if pattern == "snake":
+            # Snake pattern: alternate row direction
+            selected_positions.sort(key=lambda x: (x[4], x[5] if x[4] % 2 == 0 else -x[5]))
+        else:  # raster
+            # Raster pattern: consistent direction
+            selected_positions.sort(key=lambda x: (x[4], x[5]))
+        
+        # Build final sequence: (x, y, x_label, y_label)
+        # Extract x_label and y_label from combined label
         self.seq = []
-        for i, y_val in enumerate(ys):
-            row = pairs if (i % 2 == 0) else list(reversed(pairs))
-            y_lbl = yl[i] if yl else str(y_val)
-            for x_val, x_lbl in row:
-                self.seq.append((x_val, y_val, x_lbl, y_lbl))
+        for x, y, z, label, row_num, col_num in selected_positions:
+            # Split label into row and column parts
+            x_lbl = str(col_num + 1)  # Column number (1-based)
+            y_lbl = label[0]  # Row letter
+            self.seq.append((x, y, x_lbl, y_lbl))
+        
+        # Use Z from first position (all should be similar from interpolation)
+        if selected_positions:
+            self.z_val = selected_positions[0][2]  # Z from first position
 
         self.save_csv()
         self.total_time = len(self.seq) * (off_t + on_t + off2)
@@ -536,6 +914,7 @@ class ExperimentWindow:
                 if not self.running: break
                 self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Moving to ({x_val:.2f},{y_val:.2f})")
                 try:
+                    # Use Z value from calibration (stored in self.z_val)
                     self.robocam.move_absolute(X=x_val, Y=y_val, Z=self.z_val, speed=use_feedrate)
                     time.sleep(1)
                 except Exception as e:

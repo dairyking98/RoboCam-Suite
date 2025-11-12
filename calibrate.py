@@ -9,10 +9,14 @@ Author: RoboCam-Suite
 """
 
 import tkinter as tk
+import os
+import json
+from typing import Optional, List, Tuple
 from picamera2 import Picamera2
 from robocam.robocam_ccc import RoboCam
 from robocam.camera_preview import start_best_preview, FPSTracker, has_desktop_session
 from robocam.config import get_config
+from robocam.stentorcam import WellPlatePathGenerator
 
 # Preview resolution for camera display
 preview_resolution: tuple[int, int] = (1024, 820)  # (640, 480)
@@ -113,6 +117,16 @@ class CameraApp:
             # Continue anyway - user can retry connection later
             self.robocam = None
 
+        # Initialize calibration data
+        self.upper_left: Optional[Tuple[float, float, float]] = None
+        self.lower_left: Optional[Tuple[float, float, float]] = None
+        self.upper_right: Optional[Tuple[float, float, float]] = None
+        self.lower_right: Optional[Tuple[float, float, float]] = None
+        self.x_quantity: int = 0
+        self.y_quantity: int = 0
+        self.interpolated_positions: List[Tuple[float, float, float]] = []
+        self.labels: List[str] = []
+
         # Start updating position and FPS display
         self.update_status()
 
@@ -176,6 +190,9 @@ class CameraApp:
                  width=15, height=2, bg="#4CAF50", fg="white").grid(
             row=9, column=0, columnspan=2, padx=10, pady=10
         )
+        
+        # 4-Corner Calibration Section
+        self.create_calibration_section()
     
     def _safe_move(self, move_func) -> None:
         """
@@ -228,8 +245,292 @@ class CameraApp:
                 user_msg = f"Homing failed: {error_msg}"
             self.status_label.config(text=user_msg, fg="red")
             print(f"Homing error: {e}")
+    
+    def create_calibration_section(self) -> None:
+        """
+        Create 4-corner calibration GUI section.
         
+        Adds:
+        - X/Y quantity entry fields
+        - 4 corner coordinate display fields
+        - Set corner buttons
+        - Calibration name entry
+        - Save calibration button
+        - Preview/validation display
+        """
+        # Separator
+        tk.Label(self.root, text="─" * 50, fg="gray").grid(
+            row=10, column=0, columnspan=6, padx=5, pady=10
+        )
         
+        # Section title
+        tk.Label(self.root, text="4-Corner Calibration", font=("Arial", 12, "bold")).grid(
+            row=11, column=0, columnspan=6, padx=5, pady=5
+        )
+        
+        # X and Y quantity entry
+        tk.Label(self.root, text="X Quantity:").grid(row=12, column=0, sticky="e", padx=5, pady=5)
+        self.x_qty_entry = tk.Entry(self.root, width=10)
+        self.x_qty_entry.grid(row=12, column=1, padx=5, pady=5)
+        self.x_qty_entry.bind("<KeyRelease>", self.on_quantity_change)
+        
+        tk.Label(self.root, text="Y Quantity:").grid(row=12, column=2, sticky="e", padx=5, pady=5)
+        self.y_qty_entry = tk.Entry(self.root, width=10)
+        self.y_qty_entry.grid(row=12, column=3, padx=5, pady=5)
+        self.y_qty_entry.bind("<KeyRelease>", self.on_quantity_change)
+        
+        # Corner coordinate displays and buttons
+        corners = [
+            ("Upper-Left", "upper_left", 13),
+            ("Lower-Left", "lower_left", 14),
+            ("Upper-Right", "upper_right", 15),
+            ("Lower-Right", "lower_right", 16)
+        ]
+        
+        self.corner_labels = {}
+        self.corner_status_labels = {}
+        
+        for corner_name, attr_name, row in corners:
+            tk.Label(self.root, text=f"{corner_name}:").grid(
+                row=row, column=0, sticky="e", padx=5, pady=2
+            )
+            
+            # Coordinate display (read-only)
+            coord_frame = tk.Frame(self.root)
+            coord_frame.grid(row=row, column=1, columnspan=2, padx=5, pady=2, sticky="w")
+            
+            coord_label = tk.Label(coord_frame, text="Not set", font=("Courier", 9), fg="gray", width=30)
+            coord_label.pack(side=tk.LEFT)
+            self.corner_labels[attr_name] = coord_label
+            
+            # Set button
+            set_btn = tk.Button(
+                self.root, 
+                text=f"Set {corner_name}",
+                command=lambda a=attr_name: self.set_corner(a),
+                width=12
+            )
+            set_btn.grid(row=row, column=3, padx=5, pady=2)
+            
+            # Status indicator
+            status_label = tk.Label(self.root, text="○", fg="gray", font=("Arial", 12))
+            status_label.grid(row=row, column=4, padx=5, pady=2)
+            self.corner_status_labels[attr_name] = status_label
+        
+        # Calibration name entry
+        tk.Label(self.root, text="Calibration Name:").grid(row=17, column=0, sticky="e", padx=5, pady=5)
+        self.calib_name_entry = tk.Entry(self.root, width=30)
+        self.calib_name_entry.grid(row=17, column=1, columnspan=2, padx=5, pady=5)
+        
+        # Save calibration button
+        self.save_calib_btn = tk.Button(
+            self.root,
+            text="Save Calibration",
+            command=self.save_calibration,
+            bg="#2196F3",
+            fg="white",
+            width=15
+        )
+        self.save_calib_btn.grid(row=17, column=3, padx=5, pady=5)
+        
+        # Preview/validation display
+        self.calib_preview_label = tk.Label(
+            self.root,
+            text="Enter X and Y quantities, then set all 4 corners",
+            font=("Arial", 9),
+            fg="gray"
+        )
+        self.calib_preview_label.grid(row=18, column=0, columnspan=5, padx=5, pady=5, sticky="w")
+    
+    def on_quantity_change(self, event=None) -> None:
+        """Update preview when X/Y quantities change."""
+        try:
+            x_qty = int(self.x_qty_entry.get().strip()) if self.x_qty_entry.get().strip() else 0
+            y_qty = int(self.y_qty_entry.get().strip()) if self.y_qty_entry.get().strip() else 0
+            
+            if x_qty > 0 and y_qty > 0:
+                total_wells = x_qty * y_qty
+                self.calib_preview_label.config(
+                    text=f"Grid: {x_qty}x{y_qty} = {total_wells} wells. Set all 4 corners to interpolate.",
+                    fg="blue"
+                )
+            else:
+                self.calib_preview_label.config(
+                    text="Enter X and Y quantities, then set all 4 corners",
+                    fg="gray"
+                )
+        except ValueError:
+            self.calib_preview_label.config(
+                text="Invalid quantity values",
+                fg="red"
+            )
+    
+    def set_corner(self, corner_attr: str) -> None:
+        """
+        Set corner coordinate from current printer position.
+        
+        Args:
+            corner_attr: Attribute name ('upper_left', 'lower_left', 'upper_right', 'lower_right')
+        """
+        if self.robocam is None:
+            self.status_label.config(text="Printer not initialized", fg="red")
+            return
+        
+        try:
+            x = self.robocam.X if self.robocam.X is not None else 0.0
+            y = self.robocam.Y if self.robocam.Y is not None else 0.0
+            z = self.robocam.Z if self.robocam.Z is not None else 0.0
+            
+            coord = (x, y, z)
+            
+            # Store coordinate
+            if corner_attr == "upper_left":
+                self.upper_left = coord
+            elif corner_attr == "lower_left":
+                self.lower_left = coord
+            elif corner_attr == "upper_right":
+                self.upper_right = coord
+            elif corner_attr == "lower_right":
+                self.lower_right = coord
+            
+            # Update display
+            coord_text = f"X:{x:.2f} Y:{y:.2f} Z:{z:.2f}"
+            self.corner_labels[corner_attr].config(text=coord_text, fg="black")
+            self.corner_status_labels[corner_attr].config(text="✓", fg="green")
+            
+            self.status_label.config(text=f"{corner_attr.replace('_', ' ').title()} set", fg="green")
+            
+            # Try to interpolate if all corners are set
+            self.try_interpolate()
+            
+        except Exception as e:
+            self.status_label.config(text=f"Error setting corner: {e}", fg="red")
+            print(f"Error setting corner: {e}")
+    
+    def try_interpolate(self) -> None:
+        """Attempt to interpolate well positions if all corners and quantities are set."""
+        try:
+            x_qty = int(self.x_qty_entry.get().strip()) if self.x_qty_entry.get().strip() else 0
+            y_qty = int(self.y_qty_entry.get().strip()) if self.y_qty_entry.get().strip() else 0
+            
+            if (x_qty > 0 and y_qty > 0 and 
+                self.upper_left is not None and 
+                self.lower_left is not None and
+                self.upper_right is not None and
+                self.lower_right is not None):
+                
+                # Store quantities
+                self.x_quantity = x_qty
+                self.y_quantity = y_qty
+                
+                # Generate interpolated positions
+                self.interpolated_positions = WellPlatePathGenerator.generate_path(
+                    width=x_qty,
+                    depth=y_qty,
+                    upper_left_loc=self.upper_left,
+                    lower_left_loc=self.lower_left,
+                    upper_right_loc=self.upper_right,
+                    lower_right_loc=self.lower_right
+                )
+                
+                # Generate labels
+                self.labels = self.generate_labels(x_qty, y_qty)
+                
+                # Update preview
+                total_wells = len(self.interpolated_positions)
+                preview_text = f"✓ Interpolated {total_wells} wells. Labels: {', '.join(self.labels[:5])}..."
+                if len(self.labels) > 5:
+                    preview_text += f" ({self.labels[-1]})"
+                self.calib_preview_label.config(text=preview_text, fg="green")
+                
+        except Exception as e:
+            self.calib_preview_label.config(text=f"Interpolation error: {e}", fg="red")
+            print(f"Interpolation error: {e}")
+    
+    def generate_labels(self, x_qty: int, y_qty: int) -> List[str]:
+        """
+        Generate well plate labels in format A1, A2, ..., B1, B2, ...
+        
+        Args:
+            x_qty: Number of wells horizontally
+            y_qty: Number of wells vertically
+            
+        Returns:
+            List of labels in order matching interpolated positions
+        """
+        labels = []
+        for row in range(y_qty):
+            row_letter = chr(ord('A') + row) if row < 26 else f"A{chr(ord('A') + row - 26)}"
+            for col in range(x_qty):
+                labels.append(f"{row_letter}{col + 1}")
+        return labels
+    
+    def save_calibration(self) -> None:
+        """Save calibration to JSON file in config/calibrations/ directory."""
+        # Validate all corners are set
+        if (self.upper_left is None or self.lower_left is None or
+            self.upper_right is None or self.lower_right is None):
+            self.status_label.config(text="Error: All 4 corners must be set", fg="red")
+            return
+        
+        # Validate quantities
+        try:
+            x_qty = int(self.x_qty_entry.get().strip())
+            y_qty = int(self.y_qty_entry.get().strip())
+            if x_qty <= 0 or y_qty <= 0:
+                raise ValueError("Quantities must be positive")
+        except ValueError:
+            self.status_label.config(text="Error: Invalid X/Y quantities", fg="red")
+            return
+        
+        # Validate calibration name
+        calib_name = self.calib_name_entry.get().strip()
+        if not calib_name:
+            self.status_label.config(text="Error: Enter calibration name", fg="red")
+            return
+        
+        # Ensure interpolated positions exist
+        if not self.interpolated_positions:
+            self.try_interpolate()
+            if not self.interpolated_positions:
+                self.status_label.config(text="Error: Could not interpolate positions", fg="red")
+                return
+        
+        try:
+            # Create calibrations directory if it doesn't exist
+            calib_dir = os.path.join("config", "calibrations")
+            os.makedirs(calib_dir, exist_ok=True)
+            
+            # Prepare calibration data
+            calib_data = {
+                "name": calib_name,
+                "upper_left": list(self.upper_left),
+                "lower_left": list(self.lower_left),
+                "upper_right": list(self.upper_right),
+                "lower_right": list(self.lower_right),
+                "x_quantity": x_qty,
+                "y_quantity": y_qty,
+                "interpolated_positions": [list(pos) for pos in self.interpolated_positions],
+                "labels": self.labels
+            }
+            
+            # Save to file
+            calib_file = os.path.join(calib_dir, f"{calib_name}.json")
+            with open(calib_file, 'w') as f:
+                json.dump(calib_data, f, indent=2)
+            
+            self.status_label.config(
+                text=f"Calibration saved: {calib_name}.json",
+                fg="green"
+            )
+            self.calib_preview_label.config(
+                text=f"✓ Saved {len(self.interpolated_positions)} wells to {calib_name}.json",
+                fg="green"
+            )
+            
+        except Exception as e:
+            self.status_label.config(text=f"Error saving calibration: {e}", fg="red")
+            print(f"Error saving calibration: {e}")
 
     def update_status(self) -> None:
         """

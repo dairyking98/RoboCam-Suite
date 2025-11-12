@@ -121,50 +121,53 @@ The 4-corner calibration method accounts for slight angles and misalignment in w
 
 ### 4-Corner Calibration Procedure
 
-1. **Start Calibration Mode**:
-   - Open calibrate.py
-   - Click "4-Corner Calibration" button (when implemented)
+1. **Start Calibration Application**:
+   ```bash
+   ./start_calibrate.sh
+   ```
 
-2. **Navigate to Upper-Left Corner**:
+2. **Enter Grid Dimensions**:
+   - In the "4-Corner Calibration" section, enter:
+     - **X Quantity**: Number of wells horizontally (e.g., 8)
+     - **Y Quantity**: Number of wells vertically (e.g., 6)
+   - Preview will show total number of wells
+
+3. **Navigate to Upper-Left Corner**:
    - Use movement controls to position camera over the upper-left well
    - Fine-tune position using 0.1 mm steps
-   - Click "Record Position" when aligned
-   - Confirm the recorded coordinates
+   - Click "Set Upper-Left" button when aligned
+   - Coordinates will be displayed and status indicator turns green (✓)
 
-3. **Navigate to Lower-Left Corner**:
+4. **Navigate to Lower-Left Corner**:
    - Move to the lower-left well
-   - Align and click "Record Position"
-   - Confirm coordinates
+   - Align and click "Set Lower-Left" button
+   - Coordinates will be recorded
 
-4. **Navigate to Upper-Right Corner**:
+5. **Navigate to Upper-Right Corner**:
    - Move to the upper-right well
-   - Align and click "Record Position"
-   - Confirm coordinates
+   - Align and click "Set Upper-Right" button
+   - Coordinates will be recorded
 
-5. **Navigate to Lower-Right Corner**:
+6. **Navigate to Lower-Right Corner**:
    - Move to the lower-right well
-   - Align and click "Record Position"
-   - Confirm coordinates
+   - Align and click "Set Lower-Right" button
+   - Coordinates will be recorded
 
-6. **Specify Grid Dimensions**:
-   - Enter width: Number of wells horizontally
-   - Enter depth: Number of wells vertically
-   - Example: 8x6 well plate = width: 8, depth: 6
-
-7. **Preview Interpolated Grid**:
-   - Review the calculated well positions on the camera preview
-   - Verify positions look correct
-   - Adjust if needed
+7. **Verify Interpolation**:
+   - Once all 4 corners are set, positions are automatically interpolated
+   - Preview will show: "✓ Interpolated X wells. Labels: A1, A2, A3..."
+   - Labels are auto-generated in format: A1, A2, ..., A8, B1, B2, ..., etc.
 
 8. **Save Calibration**:
-   - Enter a calibration name
-   - Click "Save Calibration"
-   - Calibration is saved as JSON file
+   - Enter a calibration name (e.g., "well_plate_8x6")
+   - Click "Save Calibration" button
+   - Calibration is saved to `config/calibrations/{name}.json`
+   - Status will confirm successful save
 
-9. **Export to Experiment Format**:
-   - Click "Export to Experiment"
-   - This generates x_values, y_values, x_labels, y_labels
-   - Copy these values to experiment.py
+9. **Use in Experiment**:
+   - Calibration is now available in experiment.py
+   - Load it from the calibration dropdown
+   - Select wells using the checkbox grid
 
 ### Understanding 4-Corner Interpolation
 
@@ -195,51 +198,64 @@ The interpolation accounts for:
 1. **Open Experiment Window**:
    - Click "Open Experiment" button in the main window
 
-2. **Enter Well Coordinates**:
-   - **X Values**: Enter X coordinates (comma or newline separated)
-     - Example: `66.6, 93.6, 120.6, 147.6`
-   - **Y Values**: Enter Y coordinates (comma or newline separated)
-     - Example: `107.1, 125.1, 143.1`
-   - **X Labels**: Enter labels for X positions (optional)
-     - Example: `2, 5, 8, 11`
-   - **Y Labels**: Enter labels for Y positions (optional)
-     - Example: `B, D, F`
+2. **Load Calibration** (Required):
+   - Select a calibration from the "Calibration" dropdown
+   - Calibrations are loaded from `config/calibrations/` directory
+   - Click "Refresh" if you just created a new calibration
+   - Status will show "Loaded: {filename} (X wells)" when successful
+   - **Note**: Experiment cannot start without a loaded calibration
 
-3. **Configure Timing**:
+3. **Select Wells**:
+   - After loading calibration, a checkbox grid appears
+   - Each checkbox represents a well (labeled A1, A2, B1, etc.)
+   - All wells are checked by default
+   - Uncheck wells you want to exclude from the experiment
+   - Run button will be disabled if no wells are selected
+
+4. **Configure Timing**:
    - **Times**: Enter three values (OFF, ON, OFF in seconds)
      - Example: `30, 0, 0` means 30s OFF, 0s ON, 0s OFF
      - Example: `10, 20, 10` means 10s OFF, 20s ON, 10s OFF
 
-4. **Set Z Value**:
-   - Enter the Z coordinate (focus height) for all wells
-   - Example: `86.4`
+5. **Z Value**:
+   - Z value is automatically set from calibration interpolation
+   - Manual Z entry is hidden when using calibration
 
-5. **Select Pattern**:
+6. **Select Pattern**:
    - **Snake**: Alternates direction each row (recommended)
    - **Raster**: Always moves left-to-right
 
-6. **Camera Settings**:
+7. **Camera Settings**:
    - **Resolution X**: Horizontal pixels (e.g., 640)
    - **Resolution Y**: Vertical pixels (e.g., 512)
    - **FPS**: Frames per second (e.g., 30.0)
    - **Export Type**: H264, MJPEG, or JPEG
    - **JPEG Quality**: 1-100 (for MJPEG/JPEG)
 
-7. **Motion Settings**:
-   - **Feedrate**: Movement speed in mm/min (e.g., 1500)
+8. **Motion Settings**:
+   - **Feedrate Override**: Optional movement speed in mm/min (e.g., 1500)
    - **Motion Config**: Select motion configuration file (see Motion Configuration section)
 
-8. **File Settings**:
+9. **File Settings**:
    - **Filename Scheme**: Pattern for output files
      - Placeholders: `{x}`, `{y}`, `{time}`, `{date}`
      - Example: `exp_{y}{x}_{time}_{date}`
    - **Save Folder**: Directory to save output files
 
-9. **Review Settings**:
+10. **Review Settings**:
    - Check the example filename at the bottom
    - Verify all settings are correct
 
-10. **Save Configuration** (optional):
+11. **Export/Import Experiment Settings** (Optional):
+    - **Export**: Click "Export Experiment Settings" to save current configuration
+      - Saves all settings including selected wells and calibration reference
+      - Choose save location via file dialog
+    - **Import**: Click "Load Experiment Settings" to restore saved configuration
+      - Calibration file must exist for import to succeed
+      - If calibration is missing, import will fail with error message
+      - All settings including checkbox states will be restored
+
+12. **Save Configuration** (optional):
     - Configuration is auto-saved when you close the window
     - You can also manually save
 
@@ -401,14 +417,17 @@ Motion configuration files control the feedrate (speed) and acceleration for dif
 
 1. **Calibration**:
    - Calibrate before each experiment session
-   - Use 4-corner calibration for best accuracy
-   - Record calibration settings for reproducibility
+   - Use 4-corner calibration for best accuracy (now implemented)
+   - Save calibrations with descriptive names
+   - Calibrations are reusable across experiments
+   - Export experiment settings to preserve calibration references
 
 2. **Experiment Setup**:
-   - Double-check all coordinates before running
-   - Test with a single well first
+   - Always load a calibration before running experiment
+   - Test with a single well first (uncheck all others)
    - Verify timing settings are correct
    - Ensure sufficient disk space
+   - Export experiment settings for reproducibility
 
 3. **Motion Settings**:
    - Start with default motion configuration

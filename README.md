@@ -13,11 +13,13 @@ RoboCam-Suite is a scientific experiment automation system designed for well-pla
 
 - **Automated Well-Plate Scanning**: Navigate to multiple well positions automatically
 - **High-Performance Camera Preview**: Native hardware-accelerated preview (DRM/QTGL) with FPS tracking
-- **4-Corner Path Calibration**: Guided calibration procedure to account for angled well plates (planned)
+- **4-Corner Path Calibration**: Guided calibration procedure to account for angled well plates with automatic interpolation
 - **Video/Still Capture**: Record videos or capture still images at each well
 - **Laser Control**: GPIO-controlled laser with configurable timing sequences (OFF-ON-OFF)
 - **Configurable Experiments**: JSON-based configuration for experiment parameters
-- **Motion Configuration**: Separate feedrate and acceleration settings for preliminary and between-wells movements (planned)
+- **Motion Configuration**: Separate feedrate and acceleration settings for preliminary and between-wells movements
+- **Calibration-Based Experiments**: Load calibrations and select wells via checkbox grid
+- **Experiment Settings Export/Import**: Save and load experiment configurations with calibration validation
 - **CSV Export**: Export well coordinates and labels for analysis
 
 ## Hardware Requirements
@@ -133,24 +135,30 @@ python experiment.py
 
 1. Launch the experiment application
 2. Click "Open Experiment" to open the experiment configuration window
-3. Configure well positions:
-   - Enter X values (comma or newline separated)
-   - Enter Y values (comma or newline separated)
-   - Enter X labels (e.g., "2", "5", "8", "11")
-   - Enter Y labels (e.g., "B", "D", "F")
-4. Configure timing:
+3. **Load Calibration** (Required):
+   - Select a calibration from the dropdown (calibrations saved from calibrate.py)
+   - Calibration must be loaded before experiment can start
+   - Checkbox grid will appear showing all available wells
+4. **Select Wells**:
+   - Use checkboxes to select which wells to include in experiment
+   - All wells are checked by default
+   - Uncheck wells you want to skip
+5. Configure timing:
    - Enter three times: OFF duration, ON duration, OFF duration (seconds)
-5. Set Z value (focus height)
 6. Select pattern: "snake" or "raster"
 7. Configure camera settings:
    - Resolution (X and Y)
    - FPS
    - Export type (H264, MJPEG, or JPEG)
    - JPEG quality (if applicable)
-8. Set feedrate (movement speed in mm/min)
+8. Set feedrate override (optional, mm/min)
 9. Select motion configuration file (for feed/acceleration settings)
 10. Set filename scheme and save folder
-11. Click "Run" to start the experiment
+11. **Export/Import Settings** (Optional):
+    - Click "Export Experiment Settings" to save current configuration
+    - Click "Load Experiment Settings" to restore saved configuration
+    - Calibration file must exist for import to succeed
+12. Click "Run" to start the experiment
 
 ### Configuration Files
 
@@ -316,6 +324,7 @@ RoboCam-Suite/
 │   └── stentorcam.py        # StentorCam with well plate support
 ├── config/                   # Configuration files
 │   ├── motion_configs/       # Motion configuration templates
+│   ├── calibrations/         # Saved 4-corner calibrations
 │   └── templates/            # Experiment templates
 └── docs/                     # Documentation
     ├── USER_GUIDE.md         # User guide

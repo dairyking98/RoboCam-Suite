@@ -106,27 +106,30 @@ This document tracks areas where the RoboCam-Suite codebase can be improved, org
 
 ### 5. 4-Corner Path Calibration (CRITICAL)
 
-**Current State**: No guided 4-corner calibration workflow in calibrate.py.
+**Current State**: ✅ **COMPLETED** - Full 4-corner calibration workflow implemented.
 
 **Issues**:
-- Manual calibration is time-consuming
-- No way to account for angled well plates
-- Well positions must be entered manually
-- No interpolation for grid generation
+- ✅ Manual calibration is time-consuming (solved with 4-corner method)
+- ✅ No way to account for angled well plates (solved with interpolation)
+- ✅ Well positions must be entered manually (solved with automatic generation)
+- ✅ No interpolation for grid generation (solved with WellPlatePathGenerator)
 
 **Improvements Needed**:
-- Implement guided 4-corner calibration workflow in calibrate.py GUI
-- Step-by-step navigation prompts for each corner
-- Record and store corner positions with visual confirmation
-- GUI for specifying grid divisions (width x depth)
-- Bilinear interpolation to calculate all well positions
-- Visual preview of interpolated grid overlay
-- Save/load calibration profiles as JSON
-- Export calibration to experiment.py format
-- Integration with/enhancement of WellPlatePathGenerator
-- Crosshair/overlay in preview for precise positioning
+- ✅ Implement guided 4-corner calibration workflow in calibrate.py GUI (COMPLETED)
+- ✅ Record and store corner positions with visual confirmation (COMPLETED)
+- ✅ GUI for specifying grid divisions (width x depth) (COMPLETED)
+- ✅ Interpolation to calculate all well positions (COMPLETED)
+- ✅ Save/load calibration profiles as JSON (COMPLETED)
+- ✅ Integration with WellPlatePathGenerator (COMPLETED)
+- ✅ Calibration loading in experiment.py (COMPLETED)
+- ✅ Checkbox grid for well selection (COMPLETED)
+- ✅ Experiment settings export/import (COMPLETED)
+- ⚠️ Visual preview of interpolated grid overlay (optional enhancement)
+- ⚠️ Crosshair/overlay in preview for precise positioning (optional enhancement)
 
 **Impact**: Critical - Major workflow improvement
+
+**Progress**: Fully functional 4-corner calibration system with experiment integration
 
 ---
 

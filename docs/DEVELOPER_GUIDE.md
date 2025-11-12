@@ -264,6 +264,7 @@ RoboCam-Suite/
 │   └── stentorcam.py    # Extended RoboCam
 ├── config/              # Configuration files
 │   ├── motion_configs/ # Motion profiles
+│   ├── calibrations/    # 4-corner calibration files
 │   └── templates/       # Experiment templates
 └── docs/                # Documentation
 ```
@@ -366,12 +367,14 @@ def test_experiment_workflow():
 
 ### Planned Features
 
-1. **4-Corner Calibration**: Guided calibration workflow
-2. **Motion Configuration**: Feedrate/acceleration profiles
-3. **FPS Optimization**: Separate preview/recording streams
-4. **Error Handling**: Comprehensive exception handling
-5. **Logging System**: Replace print with proper logging
-6. **Configuration Management**: Centralized config system
+1. ✅ **4-Corner Calibration**: Guided calibration workflow (COMPLETED)
+2. ✅ **Motion Configuration**: Feedrate/acceleration profiles (COMPLETED)
+3. ✅ **FPS Optimization**: Separate preview/recording streams (COMPLETED)
+4. ✅ **Error Handling**: Comprehensive exception handling (COMPLETED)
+5. ✅ **Logging System**: Replace print with proper logging (COMPLETED)
+6. ✅ **Configuration Management**: Centralized config system (COMPLETED)
+7. ⚠️ **GUI Consistency**: Standardize appearance across applications
+8. ⚠️ **Testing Framework**: Unit and integration tests
 
 ### Contributing
 
@@ -421,7 +424,22 @@ When contributing:
 **Location**: `robocam.stentorcam.WellPlatePathGenerator`
 
 **Methods**:
-- `generate_path(width, depth, corners) -> List[Tuple]`: Generate well positions from corners
+- `generate_path(width, depth, upper_left_loc, lower_left_loc, upper_right_loc, lower_right_loc) -> List[Tuple]`: Generate well positions from 4 corners using linear interpolation
+
+**Usage**:
+```python
+from robocam.stentorcam import WellPlatePathGenerator
+
+path = WellPlatePathGenerator.generate_path(
+    width=8,
+    depth=6,
+    upper_left_loc=(8.0, 150.0, 157.0),
+    lower_left_loc=(6.1, 77.7, 157.0),
+    upper_right_loc=(98.1, 143.4, 157.0),
+    lower_right_loc=(97.1, 78.7, 157.0)
+)
+# Returns list of (X, Y, Z) tuples for all wells
+```
 
 ## Version History
 

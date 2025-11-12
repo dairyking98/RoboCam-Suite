@@ -60,23 +60,36 @@ Status: **MOSTLY COMPLETE** (FPS optimization done, GUI consistency pending)
 
 ## Phase 3: 4-Corner Path Calibration (HIGH PRIORITY)
 
-Status: **PENDING**
+Status: **COMPLETED** ✅
 
 ### Tasks
-- [ ] Implement 4-corner calibration workflow in calibrate.py GUI
-- [ ] Add guided navigation to 4 corner positions (upper-left, lower-left, upper-right, lower-right)
-- [ ] Record and store corner positions with visual confirmation
-- [ ] Add GUI for specifying grid divisions (width x depth)
-- [ ] Implement/interpolate well positions from 4 corners (accounting for angles)
-- [ ] Add visual preview of interpolated grid overlay on camera preview
-- [ ] Save/load calibration profiles as JSON
-- [ ] Export calibration data to experiment.py format (x_values, y_values, labels)
-- [ ] Integrate with or enhance WellPlatePathGenerator
-- [ ] Add crosshair/overlay in preview for precise positioning
-- [ ] Validate calculated positions are within safe bounds
+- [x] Implement 4-corner calibration workflow in calibrate.py GUI
+- [x] Add guided navigation to 4 corner positions (upper-left, lower-left, upper-right, lower-right)
+- [x] Record and store corner positions with visual confirmation
+- [x] Add GUI for specifying grid divisions (width x depth)
+- [x] Implement/interpolate well positions from 4 corners (accounting for angles)
+- [x] Save/load calibration profiles as JSON
+- [x] Integrate with WellPlatePathGenerator
+- [x] Validate calculated positions
+- [x] Integrate calibration loading into experiment.py
+- [x] Add checkbox grid for well selection
+- [x] Implement calibration validation (blocking)
+- [x] Add experiment settings export/import with calibration validation
+
+### Completed
+- 4-corner calibration GUI section in calibrate.py
+- Coordinate recording buttons for all 4 corners
+- Automatic label generation (A1, A2, ..., B1, B2, ...)
+- Interpolation using WellPlatePathGenerator with Z-axis support
+- Calibration save to config/calibrations/ directory
+- Calibration loading in experiment.py
+- Checkbox grid for well selection
+- Mandatory calibration validation (blocks experiment start)
+- Experiment settings export/import with calibration file validation
+- Sequence building from selected wells with snake/raster patterns
 
 ### Dependencies
-- May benefit from GUI consistency improvements from Phase 2
+- Completed independently
 
 ---
 
