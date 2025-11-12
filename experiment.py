@@ -30,10 +30,9 @@ from robocam.logging_config import get_logger
 logger = get_logger(__name__)
 
 # Configuration constants
-CONFIG_JSON: str = "experiment_config.json"
 CSV_NAME: str = "experiment_points.csv"
 DEFAULT_SCHEME: str = "exp_{y}{x}_{time}_{date}"
-DEFAULT_RES: tuple[int, int] = (640, 512)
+DEFAULT_RES: tuple[int, int] = (1920, 1080)
 DEFAULT_FPS: float = 30.0
 DEFAULT_EXPORT: str = "H264"
 DEFAULT_QUALITY: int = 85
@@ -123,76 +122,6 @@ class ExperimentWindow:
         self.well_checkboxes: Dict[str, tk.BooleanVar] = {}
         self.checkbox_frame: Optional[tk.Frame] = None
 
-    def load_config(self) -> Dict[str, Any]:
-        """
-        Load experiment configuration from JSON file.
-        
-        Returns:
-            Dictionary with configuration values, using defaults if file doesn't exist
-            or is invalid.
-            
-        Note:
-            Returns default values if config file is missing or invalid.
-        """
-        cfg: Dict[str, Any] = {}
-        if os.path.exists(CONFIG_JSON):
-            try:
-                with open(CONFIG_JSON) as f:
-                    cfg = json.load(f)
-            except Exception:
-                cfg = {}
-        return {
-            "x_values":        cfg.get("x_values", []),
-            "x_labels":        cfg.get("x_labels", []),
-            "y_values":        cfg.get("y_values", []),
-            "y_labels":        cfg.get("y_labels", []),
-            "times":           cfg.get("times", []),
-            "z_value":         cfg.get("z_value", ""),
-            "pattern":         cfg.get("pattern", "snake"),
-            "filename_scheme": cfg.get("filename_scheme", DEFAULT_SCHEME),
-            "save_folder":     cfg.get("save_folder", os.path.expanduser("~")),
-            "feedrate":        cfg.get("feedrate", "100"),
-            "resolution":      cfg.get("resolution", list(DEFAULT_RES)),
-            "fps":             cfg.get("fps", DEFAULT_FPS),
-            "export_type":     cfg.get("export_type", DEFAULT_EXPORT),
-            "quality":         cfg.get("quality", DEFAULT_QUALITY),
-            "motion_config_file": cfg.get("motion_config_file", "default.json"),
-        }
-
-    def save_config(self) -> None:
-        """
-        Save current experiment configuration to JSON file.
-        
-        Note:
-            Only saves if window exists. Parses text widgets for list values.
-        """
-        if not self.window:
-            return
-            
-        def parse_list(widget: tk.Text) -> List[str]:
-            """Parse text widget content into list of values."""
-            raw = widget.get("1.0", tk.END)
-            return [v for v in re.split(r"[\s,]+", raw.strip()) if v]
-            
-        cfg: Dict[str, Any] = {
-            "x_values":        parse_list(self.x_vals),
-            "x_labels":        parse_list(self.x_lbls),
-            "y_values":        parse_list(self.y_vals),
-            "y_labels":        parse_list(self.y_lbls),
-            "times":           parse_list(self.times),
-            "z_value":         self.z_ent.get().strip(),
-            "pattern":         self.pattern_var.get(),
-            "filename_scheme": self.scheme_ent.get().strip(),
-            "save_folder":     self.folder_ent.get().strip(),
-            "feedrate":        self.feedrate_ent.get().strip(),
-            "resolution":      [self.res_x_ent.get().strip(), self.res_y_ent.get().strip()],
-            "fps":             self.fps_ent.get().strip(),
-            "export_type":     self.export_var.get(),
-            "quality":         self.quality_ent.get().strip(),
-            "motion_config_file": self.motion_config_var.get(),
-        }
-        with open(CONFIG_JSON, "w") as f:
-            json.dump(cfg, f, indent=2)
 
     def save_csv(self) -> None:
         """
@@ -227,14 +156,12 @@ class ExperimentWindow:
             self.window.lift()
             return
 
-        cfg = self.load_config()
         w   = tk.Toplevel(self.parent)
         w.title("Experiment")
         self.window = w
 
         def on_close():
             self.stop()
-            self.save_config()
             self.save_csv()
             w.destroy()
             self.window = None
@@ -287,31 +214,26 @@ class ExperimentWindow:
         self.times = tk.Text(w, height=4, width=30)
         self.times.grid(row=3, column=0, columnspan=2, padx=5, pady=5)
 
-        for widget, key in [
-            (self.x_vals, "x_values"), (self.x_lbls, "x_labels"),
-            (self.y_vals, "y_values"), (self.y_lbls, "y_labels"),
-            (self.times,  "times")
-        ]:
-            for v in cfg[key]:
-                widget.insert(tk.END, v + "\n")
+        # Initialize times field (empty by default)
+        self.times.insert(tk.END, "30, 0, 0\n")
 
         # Z value, pattern, filename, folder
         tk.Label(w, text="Z Value:").grid(row=2, column=2)
         self.z_ent = tk.Entry(w); self.z_ent.grid(row=3, column=2, padx=5)
-        self.z_ent.insert(0, cfg["z_value"])
+        self.z_ent.insert(0, "0.0")  # Will be set from calibration
 
         tk.Label(w, text="Pattern:").grid(row=4, column=0)
-        self.pattern_var = tk.StringVar(value=cfg["pattern"])
+        self.pattern_var = tk.StringVar(value="snake")
         tk.OptionMenu(w, self.pattern_var, "snake", "raster").grid(row=4, column=1)
 
         tk.Label(w, text="Filename Scheme:").grid(row=5, column=0)
         self.scheme_ent = tk.Entry(w, width=40)
-        self.scheme_ent.insert(0, cfg["filename_scheme"])
+        self.scheme_ent.insert(0, DEFAULT_SCHEME)
         self.scheme_ent.grid(row=5, column=1, columnspan=2, pady=5)
 
         tk.Label(w, text="Save Folder:").grid(row=6, column=0)
         self.folder_ent = tk.Entry(w, width=40)
-        self.folder_ent.insert(0, cfg["save_folder"])
+        self.folder_ent.insert(0, os.path.expanduser("~"))
         self.folder_ent.grid(row=6, column=1)
         tk.Button(w, text="Browse…", command=lambda: (
             self.folder_ent.delete(0, tk.END),
@@ -321,26 +243,26 @@ class ExperimentWindow:
         # Resolution, FPS, export, quality, feedrate
         tk.Label(w, text="Resolution X:").grid(row=7, column=0)
         self.res_x_ent = tk.Entry(w); self.res_x_ent.grid(row=7, column=1)
-        self.res_x_ent.insert(0, cfg["resolution"][0])
+        self.res_x_ent.insert(0, str(DEFAULT_RES[0]))
 
         tk.Label(w, text="Resolution Y:").grid(row=8, column=0)
         self.res_y_ent = tk.Entry(w); self.res_y_ent.grid(row=8, column=1)
-        self.res_y_ent.insert(0, cfg["resolution"][1])
+        self.res_y_ent.insert(0, str(DEFAULT_RES[1]))
 
         tk.Label(w, text="FPS:").grid(row=9, column=0)
         self.fps_ent = tk.Entry(w); self.fps_ent.grid(row=9, column=1)
-        self.fps_ent.insert(0, cfg["fps"])
+        self.fps_ent.insert(0, str(DEFAULT_FPS))
 
         tk.Label(w, text="Export Type:").grid(row=10, column=0)
-        self.export_var = tk.StringVar(value=cfg["export_type"])
+        self.export_var = tk.StringVar(value=DEFAULT_EXPORT)
         tk.OptionMenu(w, self.export_var, "H264", "MJPEG", "JPEG").grid(row=10, column=1)
 
         tk.Label(w, text="JPEG Quality:").grid(row=11, column=0)
         self.quality_ent = tk.Entry(w); self.quality_ent.grid(row=11, column=1)
-        self.quality_ent.insert(0, cfg["quality"])
+        self.quality_ent.insert(0, str(DEFAULT_QUALITY))
 
         tk.Label(w, text="Motion Config:").grid(row=12, column=0)
-        self.motion_config_var = tk.StringVar(value=cfg.get("motion_config_file", "default.json"))
+        self.motion_config_var = tk.StringVar(value="default.json")
         # List available motion config files
         motion_configs_dir = os.path.join("config", "motion_configs")
         motion_configs = ["default.json"]
@@ -351,7 +273,7 @@ class ExperimentWindow:
         
         tk.Label(w, text="Feedrate Override (mm/min, optional):").grid(row=13, column=0)
         self.feedrate_ent = tk.Entry(w); self.feedrate_ent.grid(row=13, column=1)
-        self.feedrate_ent.insert(0, cfg["feedrate"])
+        self.feedrate_ent.insert(0, "")
         
         # Motion settings display
         tk.Label(w, text="Motion Settings:").grid(row=14, column=0, sticky="w", padx=5, pady=5)
@@ -689,7 +611,7 @@ class ExperimentWindow:
             self.times.delete("1.0", tk.END)
             self.times.insert("1.0", f"{times[0]}, {times[1]}, {times[2]}")
             
-            resolution = settings.get("resolution", [640, 512])
+            resolution = settings.get("resolution", list(DEFAULT_RES))
             self.res_x_ent.delete(0, tk.END)
             self.res_x_ent.insert(0, str(resolution[0]))
             self.res_y_ent.delete(0, tk.END)
