@@ -50,7 +50,7 @@ The application automates the execution of well-plate experiments by:
 
 ### 3. Camera Settings
 
-- **Resolution**: Configurable X and Y resolution (default: 640x512)
+- **Resolution**: Configurable X and Y resolution (default: 1920x1080)
 - **Frame Rate**: Adjustable FPS (default: 30.0)
 - **Export Formats**:
   - **H264**: Video encoding with high bitrate (50 Mbps)
@@ -83,11 +83,10 @@ The application automates the execution of well-plate experiments by:
 
 ### 6. Configuration Persistence
 
-- **Auto-Save**: Configuration automatically saved to `experiment_config.json`
-- **Auto-Load**: Previous settings restored on application start
-- **Session Management**: Settings preserved across application restarts
+- **Default Values**: Window initializes with default settings (1920x1080, 30 FPS, H264, etc.)
 - **Experiment Settings Export**: Export complete configuration including calibration reference
 - **Experiment Settings Import**: Load saved configurations with automatic calibration validation
+- **No Auto-Save**: Settings are not automatically saved - use export/import for persistence
 
 ### 7. Real-Time Monitoring
 
@@ -392,8 +391,8 @@ Values are extracted and validated before use.
    - Z value is automatically set from calibration
 
 3. **Configure Camera**:
-   - Resolution: `640` x `512`
-   - FPS: `30.0`
+   - Resolution: `1920` x `1080` (default)
+   - FPS: `30.0` (default)
    - Export type: `H264`, `MJPEG`, or `JPEG`
    - Quality: `85` (for JPEG/MJPEG)
 
@@ -411,29 +410,6 @@ Values are extracted and validated before use.
    - Use "Pause" to pause/resume
    - Use "Stop" to abort
 
-### Configuration File Format
-
-`experiment_config.json` (legacy format, still supported):
-```json
-{
-  "x_values": ["66.6", "93.6", "120.6", "147.6"],
-  "x_labels": ["2", "5", "8", "11"],
-  "y_values": ["107.1", "125.1", "143.1"],
-  "y_labels": ["B", "D", "F"],
-  "times": ["30", "0", "0"],
-  "z_value": "86.4",
-  "pattern": "snake",
-  "filename_scheme": "exp_{y}{x}_{time}_{date}",
-  "save_folder": "/path/to/output",
-  "feedrate": "1500",
-  "resolution": ["640", "512"],
-  "fps": "30.0",
-  "export_type": "H264",
-  "quality": "85",
-  "motion_config_file": "default.json"
-}
-```
-
 ### Experiment Settings Export Format
 
 When exporting experiment settings:
@@ -442,7 +418,7 @@ When exporting experiment settings:
   "calibration_file": "well_plate_8x6.json",
   "selected_wells": ["A1", "A2", "B1", "B3", "C2"],
   "times": [30, 0, 0],
-  "resolution": [640, 512],
+  "resolution": [1920, 1080],
   "fps": 30.0,
   "export_type": "H264",
   "quality": 85,

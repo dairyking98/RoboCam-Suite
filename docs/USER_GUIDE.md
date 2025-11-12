@@ -226,8 +226,8 @@ The interpolation accounts for:
    - **Raster**: Always moves left-to-right
 
 7. **Camera Settings**:
-   - **Resolution X**: Horizontal pixels (e.g., 640)
-   - **Resolution Y**: Vertical pixels (e.g., 512)
+   - **Resolution X**: Horizontal pixels (default: 1920)
+   - **Resolution Y**: Vertical pixels (default: 1080)
    - **FPS**: Frames per second (e.g., 30.0)
    - **Export Type**: H264, MJPEG, or JPEG
    - **JPEG Quality**: 1-100 (for MJPEG/JPEG)

@@ -162,26 +162,42 @@ python experiment.py
 
 ### Configuration Files
 
-#### Experiment Configuration (experiment_config.json)
+#### Calibration Files (config/calibrations/*.json)
 
-The experiment configuration file stores experiment parameters:
+Calibration files store 4-corner calibration data with interpolated well positions:
 
 ```json
 {
-  "x_values": ["66.6", "93.6", "120.6", "147.6"],
-  "x_labels": ["2", "5", "8", "11"],
-  "y_values": ["107.1", "125.1", "143.1"],
-  "y_labels": ["B", "D", "F"],
-  "times": ["30", "0", "0"],
-  "z_value": "86.4",
-  "pattern": "raster",
+  "name": "well_plate_8x6",
+  "upper_left": [8.0, 150.0, 157.0],
+  "lower_left": [6.1, 77.7, 157.0],
+  "upper_right": [98.1, 143.4, 157.0],
+  "lower_right": [97.1, 78.7, 157.0],
+  "x_quantity": 8,
+  "y_quantity": 6,
+  "interpolated_positions": [[8.0, 150.0, 157.0], [19.0, 150.0, 157.0], ...],
+  "labels": ["A1", "A2", "A3", ..., "F8"]
+}
+```
+
+#### Experiment Settings Export
+
+Users can export experiment settings to JSON files for reuse:
+
+```json
+{
+  "calibration_file": "well_plate_8x6.json",
+  "selected_wells": ["A1", "A2", "B1", "B3"],
+  "times": [30, 0, 0],
+  "resolution": [1920, 1080],
+  "fps": 30.0,
+  "export_type": "H264",
+  "quality": 85,
+  "motion_config_file": "default.json",
+  "feedrate_override": "1500",
   "filename_scheme": "exp_{y}{x}_{time}_{date}",
-  "save_folder": "/path/to/save/folder",
-  "feedrate": "1500",
-  "resolution": ["640", "512"],
-  "fps": "30.0",
-  "export_type": "MJPEG",
-  "quality": "100"
+  "save_folder": "/path/to/output",
+  "pattern": "snake"
 }
 ```
 
@@ -310,7 +326,6 @@ Launches the experiment application:
 RoboCam-Suite/
 ├── calibrate.py              # Calibration GUI application
 ├── experiment.py             # Experiment automation GUI
-├── experiment_config.json    # Experiment configuration
 ├── setup.sh                  # Setup script
 ├── start_calibrate.sh        # Calibration launcher
 ├── start_experiment.sh       # Experiment launcher
