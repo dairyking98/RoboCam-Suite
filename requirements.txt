@@ -1,0 +1,28 @@
+# RoboCam-Suite Python Dependencies
+# Python 3.7+ required
+
+# Camera and Imaging
+picamera2>=0.3.12
+
+# Note: opencv-python is no longer required for calibrate.py
+# Native Picamera2 preview is now used for better performance
+# opencv-python>=4.5.0  # Optional, not required
+
+# Serial Communication
+pyserial>=3.5
+
+# GPIO Control (Raspberry Pi only)
+# Note: RPi.GPIO is installed via system package manager on Raspberry Pi
+# For development on non-Raspberry Pi systems, this can be skipped
+# RPi.GPIO>=0.7.1
+
+# Standard library dependencies (no installation needed):
+# - tkinter (usually included with Python)
+# - json
+# - threading
+# - time
+# - re
+# - csv
+# - os
+# - sys
+

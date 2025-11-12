@@ -1,0 +1,13 @@
+{
+  "name": "Default Profile",
+  "description": "Balanced speed and precision for general use",
+  "preliminary": {
+    "feedrate": 3000,
+    "acceleration": 500
+  },
+  "between_wells": {
+    "feedrate": 5000,
+    "acceleration": 1000
+  }
+}
+
