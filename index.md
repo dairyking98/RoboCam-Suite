@@ -12,19 +12,38 @@ Robotic microscopy system for automated well-plate experiments using a 3D printe
 ### Main Documentation
 - [README](README.md) - Project overview and quick start guide
 - [User Guide](docs/USER_GUIDE.md) - Complete user guide for calibration and experiments
-- [Developer Guide](docs/DEVELOPER_GUIDE.md) - Developer documentation
-- [Camera Architecture](docs/CAMERA_ARCHITECTURE.md) - Camera system architecture
-- [Experiment.py README](docs/EXPERIMENT_PY_README.md) - Experiment script documentation
+- [Developer Guide](docs/DEVELOPER_GUIDE.md) - Developer documentation and architecture
+- [Camera Architecture](docs/CAMERA_ARCHITECTURE.md) - Camera system technical details
+
+### Application Documentation
+- [Calibrate.py README](docs/CALIBRATE_PY_README.md) - Complete documentation for calibrate.py
+- [Experiment.py README](docs/EXPERIMENT_PY_README.md) - Complete documentation for experiment.py
 
 ### Project Documentation
-- [File Audit](FILE_AUDIT.md) - Project file audit
-- [Planned Changes](PLANNED_CHANGES.md) - Planned project changes
-- [Room for Improvement](ROOM_FOR_IMPROVEMENT.md) - Areas for improvement
+- [File Audit](FILE_AUDIT.md) - Project file audit and organization
+- [Planned Changes](PLANNED_CHANGES.md) - Implementation roadmap and planned features
+- [Room for Improvement](ROOM_FOR_IMPROVEMENT.md) - Areas for improvement and technical debt
 
 ## Quick Links
 
+### Getting Started
 - [Installation Instructions](README.md#installation)
-- [Calibration Guide](docs/USER_GUIDE.md#calibration-procedure)
+- [Quick Start Guide](README.md#quick-start)
+- [Hardware Requirements](README.md#hardware-requirements)
+
+### User Guides
+- [Calibration Procedure](docs/USER_GUIDE.md#calibration-procedure)
+- [4-Corner Calibration](docs/USER_GUIDE.md#4-corner-path-calibration)
 - [Experiment Setup](docs/USER_GUIDE.md#experiment-setup)
-- [Troubleshooting](README.md#troubleshooting)
+- [Motion Configuration](docs/USER_GUIDE.md#motion-configuration)
+
+### Application Details
+- [Calibrate.py Features](docs/CALIBRATE_PY_README.md#features)
+- [Experiment.py Features](docs/EXPERIMENT_PY_README.md#features)
+- [Camera Preview Backends](docs/CALIBRATE_PY_README.md#preview-backend-options)
+
+### Troubleshooting
+- [Common Issues](README.md#troubleshooting)
+- [Calibration Troubleshooting](docs/CALIBRATE_PY_README.md#troubleshooting)
+- [Experiment Troubleshooting](docs/EXPERIMENT_PY_README.md#troubleshooting)
 
