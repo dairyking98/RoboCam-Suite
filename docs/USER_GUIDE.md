@@ -369,6 +369,15 @@ Motion configuration files control the feedrate (speed) and acceleration for dif
    - Check log file in `logs/` directory
    - Look for any errors or warnings
 
+## Additional Resources
+
+For detailed documentation on specific applications:
+
+- **[CALIBRATE_PY_README.md](./CALIBRATE_PY_README.md)**: Complete documentation for calibrate.py
+- **[EXPERIMENT_PY_README.md](./EXPERIMENT_PY_README.md)**: Complete documentation for experiment.py
+- **[DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md)**: Development guidelines and architecture
+- **[CAMERA_ARCHITECTURE.md](./CAMERA_ARCHITECTURE.md)**: Camera system technical details
+
 ## Troubleshooting
 
 ### Printer Not Moving

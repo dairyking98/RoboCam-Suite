@@ -544,7 +544,8 @@ When exporting experiment settings:
 
 ## Related Documentation
 
-- [USER_GUIDE.md](../USER_GUIDE.md): Step-by-step user procedures
+- [USER_GUIDE.md](./USER_GUIDE.md): Step-by-step user procedures
+- [CALIBRATE_PY_README.md](./CALIBRATE_PY_README.md): Calibration application documentation
 - [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md): Development guidelines
 - [CAMERA_ARCHITECTURE.md](./CAMERA_ARCHITECTURE.md): Camera system architecture
 - [PLANNED_CHANGES.md](../PLANNED_CHANGES.md): Implementation roadmap

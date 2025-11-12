@@ -343,8 +343,23 @@ RoboCam-Suite/
 │   └── templates/            # Experiment templates
 └── docs/                     # Documentation
     ├── USER_GUIDE.md         # User guide
-    └── DEVELOPER_GUIDE.md    # Developer guide
+    ├── DEVELOPER_GUIDE.md    # Developer guide
+    ├── CALIBRATE_PY_README.md # calibrate.py documentation
+    ├── EXPERIMENT_PY_README.md # experiment.py documentation
+    └── CAMERA_ARCHITECTURE.md # Camera system architecture
 ```
+
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+- **[USER_GUIDE.md](docs/USER_GUIDE.md)**: Complete user guide with step-by-step procedures
+- **[CALIBRATE_PY_README.md](docs/CALIBRATE_PY_README.md)**: Detailed documentation for calibrate.py
+- **[EXPERIMENT_PY_README.md](docs/EXPERIMENT_PY_README.md)**: Detailed documentation for experiment.py
+- **[DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)**: Development guidelines and architecture
+- **[CAMERA_ARCHITECTURE.md](docs/CAMERA_ARCHITECTURE.md)**: Camera system technical details
+- **[PLANNED_CHANGES.md](PLANNED_CHANGES.md)**: Implementation roadmap
+- **[ROOM_FOR_IMPROVEMENT.md](ROOM_FOR_IMPROVEMENT.md)**: Improvement opportunities
 
 ## Contributing
 

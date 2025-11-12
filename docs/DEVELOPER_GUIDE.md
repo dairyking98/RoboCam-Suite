@@ -449,6 +449,15 @@ path = WellPlatePathGenerator.generate_path(
   - GPIO laser control
   - Camera capture
 
+## Related Documentation
+
+- [USER_GUIDE.md](./USER_GUIDE.md): User procedures and workflows
+- [CALIBRATE_PY_README.md](./CALIBRATE_PY_README.md): Calibration application documentation
+- [EXPERIMENT_PY_README.md](./EXPERIMENT_PY_README.md): Experiment application documentation
+- [CAMERA_ARCHITECTURE.md](./CAMERA_ARCHITECTURE.md): Camera system architecture
+- [PLANNED_CHANGES.md](../PLANNED_CHANGES.md): Implementation roadmap
+- [ROOM_FOR_IMPROVEMENT.md](../ROOM_FOR_IMPROVEMENT.md): Improvement opportunities
+
 ## Contact
 
 For questions or contributions, see the main README.md.
