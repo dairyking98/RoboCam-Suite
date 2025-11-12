@@ -2,7 +2,7 @@
 
 ## Overview
 
-`calibrate.py` is a GUI-based application for manually positioning a camera-equipped robotic stage over well plates and recording coordinates for calibration. It provides precise movement controls, real-time position tracking, and a guided 4-corner calibration workflow for setting up well-plate experiments.
+`calibrate.py` is a GUI-based application for manually positioning a camera-equipped robotic stage over well plates and recording coordinates for calibration. It provides precise movement controls, real-time position tracking, and a guided 4-corner calibration workflow for setting up FluorCam, StentorCam, and other automated microscopy experiments under the RoboCam umbrella.
 
 ## Functionality
 

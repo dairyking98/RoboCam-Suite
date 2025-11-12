@@ -5,7 +5,7 @@ title: RoboCam-Suite Documentation
 
 # RoboCam-Suite
 
-Robotic microscopy system for automated well-plate experiments using a 3D printer as a positioning stage, Raspberry Pi camera for imaging, and GPIO-controlled laser for stimulation.
+Robotic microscopy system for FluorCam, StentorCam, and other automated microscopy experiments under the RoboCam umbrella. Uses a 3D printer as a positioning stage, Raspberry Pi camera for imaging, and GPIO-controlled laser for stimulation.
 
 ## Documentation
 

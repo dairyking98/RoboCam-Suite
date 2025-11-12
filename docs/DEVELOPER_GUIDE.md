@@ -1,6 +1,6 @@
 # RoboCam-Suite Developer Guide
 
-Technical documentation for developers working on or extending the RoboCam-Suite codebase.
+Technical documentation for developers working on or extending the RoboCam-Suite codebase. RoboCam-Suite supports FluorCam, StentorCam, and other automated microscopy experiments under the RoboCam umbrella.
 
 ## Table of Contents
 

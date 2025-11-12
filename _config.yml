@@ -1,6 +1,6 @@
 # Jekyll configuration for GitHub Pages
 title: RoboCam-Suite Documentation
-description: Documentation for RoboCam-Suite - Robotic microscopy system
+description: Documentation for RoboCam-Suite - Robotic microscopy system for FluorCam, StentorCam, and other automated microscopy experiments
 theme: jekyll-theme-minimal
 plugins:
   - jekyll-relative-links

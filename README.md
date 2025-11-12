@@ -4,7 +4,7 @@ Robotic microscopy system for automated well-plate experiments using a 3D printe
 
 ## Overview
 
-RoboCam-Suite is a scientific experiment automation system designed for well-plate microscopy experiments. It provides precise robotic positioning, automated video/still capture, and laser control for biological experiments. The system consists of two main applications:
+RoboCam-Suite is a scientific experiment automation system designed for FluorCam, StentorCam, and other automated microscopy experiments under the RoboCam umbrella. It provides precise robotic positioning, automated video/still capture, and laser control for biological experiments. The system consists of two main applications:
 
 - **calibrate.py**: Manual positioning and calibration GUI for setting up well-plate coordinates
 - **experiment.py**: Automated experiment execution GUI with configurable timing sequences

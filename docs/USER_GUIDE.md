@@ -1,6 +1,6 @@
 # RoboCam-Suite User Guide
 
-Complete guide for using the RoboCam-Suite calibration and experiment applications.
+Complete guide for using the RoboCam-Suite calibration and experiment applications for FluorCam, StentorCam, and other automated microscopy experiments under the RoboCam umbrella.
 
 ## Table of Contents
 

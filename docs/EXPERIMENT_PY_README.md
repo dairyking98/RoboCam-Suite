@@ -2,7 +2,7 @@
 
 ## Overview
 
-`experiment.py` is a GUI-based application for automating well-plate experiments with synchronized camera capture and laser stimulation. It provides a comprehensive interface for configuring and executing multi-well experiments with precise timing control, motion profiles, and data export capabilities.
+`experiment.py` is a GUI-based application for automating well-plate experiments with synchronized camera capture and laser stimulation. It provides a comprehensive interface for configuring and executing multi-well experiments for FluorCam, StentorCam, and other automated microscopy experiments under the RoboCam umbrella, with precise timing control, motion profiles, and data export capabilities.
 
 ## Functionality
 
