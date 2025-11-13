@@ -125,6 +125,8 @@ class ExperimentWindow:
         self.checkbox_frame: Optional[tk.Frame] = None
         self.checkbox_widgets: Dict[str, tk.Checkbutton] = {}
         self.label_to_row_col: Dict[str, Tuple[int, int]] = {}
+        self.checkbox_window: Optional[tk.Toplevel] = None
+        self.select_cells_btn: Optional[tk.Button] = None
 
 
     def save_csv(self) -> None:
@@ -177,6 +179,10 @@ class ExperimentWindow:
         def on_close():
             self.stop()
             self.save_csv()
+            # Close checkbox window if open
+            if self.checkbox_window and self.checkbox_window.winfo_exists():
+                self.checkbox_window.destroy()
+                self.checkbox_window = None
             if isinstance(w, tk.Toplevel):
                 w.destroy()
                 self.window = None
@@ -205,15 +211,9 @@ class ExperimentWindow:
         self.calibration_status_label = tk.Label(w, text="No calibration loaded", fg="red", font=("Arial", 9))
         self.calibration_status_label.grid(row=0, column=3, sticky="w", padx=5)
         
-        # Checkbox grid frame (shown when calibration loaded)
-        self.checkbox_frame_container = tk.LabelFrame(w, text="Select Wells", padx=5, pady=5)
-        self.checkbox_frame_container.grid(row=1, column=0, columnspan=4, padx=5, pady=5, sticky="ew")
-        self.checkbox_frame_container.grid_remove()  # Hidden by default
-        
-        # Instructions label (shown when calibration loaded)
-        self.checkbox_instructions_label = tk.Label(w, text="", fg="gray", font=("Arial", 8), justify="left")
-        self.checkbox_instructions_label.grid(row=1, column=4, sticky="nw", padx=5, pady=5)
-        self.checkbox_instructions_label.grid_remove()  # Hidden by default
+        # Select Cells button (shown when calibration loaded)
+        self.select_cells_btn = tk.Button(w, text="Select Cells", command=self.open_checkbox_window, state="disabled")
+        self.select_cells_btn.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
         tk.Label(w, text="Times (Off,On,Off sec):").grid(row=2, column=0, columnspan=2)
         self.times = tk.Text(w, height=4, width=30, wrap=tk.WORD)
@@ -404,9 +404,13 @@ class ExperimentWindow:
             self.loaded_calibration = None
             self.calibration_file = None
             self.calibration_status_label.config(text="No calibration loaded", fg="red")
-            # Hide checkbox grid
-            self.checkbox_frame_container.grid_remove()
-            self.checkbox_instructions_label.grid_remove()
+            # Disable Select Cells button
+            if self.select_cells_btn:
+                self.select_cells_btn.config(state="disabled")
+            # Close checkbox window if open
+            if self.checkbox_window and self.checkbox_window.winfo_exists():
+                self.checkbox_window.destroy()
+                self.checkbox_window = None
             self.update_run_button_state()
             return
         
@@ -440,10 +444,12 @@ class ExperimentWindow:
                 fg="green"
             )
             
-            # Show checkbox grid
-            self.create_checkbox_grid()
-            self.checkbox_frame_container.grid()
-            self.checkbox_instructions_label.grid()
+            # Enable Select Cells button
+            if self.select_cells_btn:
+                self.select_cells_btn.config(state="normal")
+            
+            # Initialize checkboxes (all checked by default)
+            self.initialize_checkboxes()
             
             self.update_run_button_state()
             
@@ -455,31 +461,103 @@ class ExperimentWindow:
             )
             self.loaded_calibration = None
             self.calibration_file = None
+            # Disable Select Cells button
+            if self.select_cells_btn:
+                self.select_cells_btn.config(state="disabled")
             self.update_run_button_state()
     
-    def create_checkbox_grid(self) -> None:
-        """Create checkbox grid for well selection based on loaded calibration."""
+    def initialize_checkboxes(self) -> None:
+        """Initialize checkbox variables for all wells (all checked by default)."""
         if not self.loaded_calibration:
             return
         
-        # Clear existing checkboxes and button frame
-        for widget in self.checkbox_frame_container.winfo_children():
-            widget.destroy()
+        labels = self.loaded_calibration.get("labels", [])
+        x_qty = self.loaded_calibration.get("x_quantity", 0)
         
         self.well_checkboxes = {}
+        self.label_to_row_col = {}
+        
+        for i, label in enumerate(labels):
+            var = tk.BooleanVar(value=True)  # All checked by default
+            self.well_checkboxes[label] = var
+            row = i // x_qty
+            col = i % x_qty
+            self.label_to_row_col[label] = (row, col)
+    
+    def open_checkbox_window(self) -> None:
+        """Open separate window for checkbox selection."""
+        if not self.loaded_calibration:
+            return
+        
+        # If window already exists, just raise it
+        if self.checkbox_window and self.checkbox_window.winfo_exists():
+            self.checkbox_window.lift()
+            return
+        
+        # Disable the button
+        if self.select_cells_btn:
+            self.select_cells_btn.config(state="disabled")
+        
+        # Create new window
+        self.checkbox_window = tk.Toplevel(self.window if self.window else self.parent)
+        self.checkbox_window.title("Select Wells")
+        self.checkbox_window.transient(self.window if self.window else self.parent)
+        
+        def on_close():
+            if self.checkbox_window:
+                self.checkbox_window.destroy()
+                self.checkbox_window = None
+            # Re-enable the button
+            if self.select_cells_btn:
+                self.select_cells_btn.config(state="normal")
+            self.update_run_button_state()
+        
+        self.checkbox_window.protocol("WM_DELETE_WINDOW", on_close)
+        
+        # Create checkbox grid in the new window
+        self.create_checkbox_grid()
+    
+    def create_checkbox_grid(self) -> None:
+        """Create checkbox grid for well selection in separate window."""
+        if not self.loaded_calibration or not self.checkbox_window:
+            return
+        
+        # Clear existing checkboxes
+        for widget in self.checkbox_window.winfo_children():
+            widget.destroy()
+        
         self.checkbox_widgets = {}  # Store checkbox widgets for shift/ctrl click
-        self.label_to_row_col = {}  # Map label to (row, col) for shift/ctrl click
+        
+        # Create main container frame
+        main_frame = tk.Frame(self.checkbox_window, padx=10, pady=10)
+        main_frame.pack(fill="both", expand=True)
         
         # Create button frame for check all/uncheck all
-        button_frame = tk.Frame(self.checkbox_frame_container)
-        button_frame.pack(fill="x", padx=5, pady=5)
+        button_frame = tk.Frame(main_frame)
+        button_frame.pack(fill="x", pady=(0, 10))
         
         tk.Button(button_frame, text="Check All", command=self.check_all_wells).pack(side=tk.LEFT, padx=5)
         tk.Button(button_frame, text="Uncheck All", command=self.uncheck_all_wells).pack(side=tk.LEFT, padx=5)
         
-        # Create scrollable frame
-        canvas = tk.Canvas(self.checkbox_frame_container)
-        scrollbar = tk.Scrollbar(self.checkbox_frame_container, orient="vertical", command=canvas.yview)
+        def close_window():
+            if self.checkbox_window:
+                self.checkbox_window.destroy()
+                self.checkbox_window = None
+            # Re-enable the button
+            if self.select_cells_btn:
+                self.select_cells_btn.config(state="normal")
+            self.update_run_button_state()
+        
+        tk.Button(button_frame, text="Close", command=close_window).pack(side=tk.RIGHT, padx=5)
+        
+        # Create scrollable frame for checkboxes
+        canvas_frame = tk.Frame(main_frame)
+        canvas_frame.pack(fill="both", expand=True)
+        
+        canvas = tk.Canvas(canvas_frame, borderwidth=0)
+        scrollbar_v = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
+        scrollbar_h = tk.Scrollbar(canvas_frame, orient="horizontal", command=canvas.xview)
+        
         self.checkbox_frame = tk.Frame(canvas)
         
         self.checkbox_frame.bind(
@@ -488,24 +566,31 @@ class ExperimentWindow:
         )
         
         canvas.create_window((0, 0), window=self.checkbox_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.configure(yscrollcommand=scrollbar_v.set, xscrollcommand=scrollbar_h.set)
         
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        # Grid layout for canvas and scrollbars
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar_v.grid(row=0, column=1, sticky="ns")
+        scrollbar_h.grid(row=1, column=0, sticky="ew")
+        
+        canvas_frame.grid_rowconfigure(0, weight=1)
+        canvas_frame.grid_columnconfigure(0, weight=1)
         
         # Get calibration data
         labels = self.loaded_calibration.get("labels", [])
         x_qty = self.loaded_calibration.get("x_quantity", 0)
-        y_qty = self.loaded_calibration.get("y_quantity", 0)
         
         # Create checkboxes in grid layout
         for i, label in enumerate(labels):
-            var = tk.BooleanVar(value=True)  # All checked by default
-            self.well_checkboxes[label] = var
+            if label not in self.well_checkboxes:
+                # Initialize if not already done
+                var = tk.BooleanVar(value=True)
+                self.well_checkboxes[label] = var
+            else:
+                var = self.well_checkboxes[label]
             
             row = i // x_qty
             col = i % x_qty
-            self.label_to_row_col[label] = (row, col)
             
             # Create checkbox with custom click handler
             checkbox = tk.Checkbutton(
@@ -519,25 +604,27 @@ class ExperimentWindow:
             self.checkbox_widgets[label] = checkbox
             
             # Bind shift-click and control-click
-            def make_click_handler(lbl, r, c):
+            def make_click_handler(lbl, r, c, v):
                 def on_click(event):
                     # Check if shift or control is pressed
                     # Note: event.state uses bit flags: Shift=0x1, Control=0x4
                     if event.state & 0x1:  # Shift key pressed
                         # Prevent default toggle by toggling back, then check all in row
-                        var.set(not var.get())  # Undo the default toggle
+                        v.set(not v.get())  # Undo the default toggle
                         self.check_row(r)
                         return "break"  # Prevent further event propagation
                     elif event.state & 0x4:  # Control key pressed
                         # Prevent default toggle by toggling back, then check all in column
-                        var.set(not var.get())  # Undo the default toggle
+                        v.set(not v.get())  # Undo the default toggle
                         self.check_column(c)
                         return "break"  # Prevent further event propagation
                 return on_click
             
-            checkbox.bind("<Button-1>", make_click_handler(label, row, col), add="+")
+            checkbox.bind("<Button-1>", make_click_handler(label, row, col, var), add="+")
         
         # Update instructions
+        instructions_frame = tk.Frame(main_frame)
+        instructions_frame.pack(fill="x", pady=(10, 0))
         instructions = (
             "Checkbox Controls:\n"
             "• Click: Toggle single well\n"
@@ -545,7 +632,26 @@ class ExperimentWindow:
             "• Ctrl+Click: Check all in same column\n"
             "• Use buttons above to check/uncheck all"
         )
-        self.checkbox_instructions_label.config(text=instructions)
+        tk.Label(instructions_frame, text=instructions, fg="gray", font=("Arial", 8), justify="left").pack(anchor="w")
+        
+        # Set window size to show all checkboxes (with some padding)
+        # Calculate approximate size needed
+        num_cols = x_qty
+        num_rows = (len(labels) + x_qty - 1) // x_qty if x_qty > 0 else 1
+        
+        # Estimate checkbox size (approximately 50x25 pixels each)
+        checkbox_width = 50
+        checkbox_height = 25
+        padding = 50
+        
+        window_width = min(num_cols * checkbox_width + padding + 20, 800)  # Max 800px wide
+        window_height = min(num_rows * checkbox_height + padding + 150, 600)  # Max 600px tall
+        
+        self.checkbox_window.geometry(f"{window_width}x{window_height}")
+        
+        # Update canvas scroll region after widgets are created
+        self.checkbox_window.update_idletasks()
+        canvas.configure(scrollregion=canvas.bbox("all"))
     
     def check_all_wells(self) -> None:
         """Check all wells."""
