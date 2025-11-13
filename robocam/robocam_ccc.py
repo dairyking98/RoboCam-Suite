@@ -275,7 +275,7 @@ class RoboCam:
         """
         logger.info('Homing Printer, please wait for the countdown to complete')
         try:
-            self.send_gcode('G28', timeout=self.timeout * 5)  # Homing takes longer, use 5x timeout
+            self.send_gcode('G28', timeout=45.0)  # Homing takes longer, use 45 second timeout
             # Update position after homing
             self.X, self.Y, self.Z = self.update_current_position()
             logger.info(f"Printer homed. Reset positions to X: {self.X}, Y: {self.Y}, Z: {self.Z}")
