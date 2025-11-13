@@ -7,10 +7,11 @@ Complete guide for using the RoboCam-Suite calibration and experiment applicatio
 1. [Getting Started](#getting-started)
 2. [Calibration Procedure](#calibration-procedure)
 3. [4-Corner Path Calibration](#4-corner-path-calibration)
-4. [Experiment Setup](#experiment-setup)
-5. [Motion Configuration](#motion-configuration)
-6. [Running Experiments](#running-experiments)
-7. [Troubleshooting](#troubleshooting)
+4. [Preview Alignment Check](#preview-alignment-check)
+5. [Experiment Setup](#experiment-setup)
+6. [Motion Configuration](#motion-configuration)
+7. [Running Experiments](#running-experiments)
+8. [Troubleshooting](#troubleshooting)
 
 ## Getting Started
 
@@ -191,6 +192,114 @@ The interpolation accounts for:
 - Slight rotation of the well plate
 - Non-perpendicular alignment
 - Z-axis variations across the plate
+
+## Preview Alignment Check
+
+The preview application (`preview.py`) allows you to sequentially navigate through well positions to verify alignment before running experiments. This is especially useful after calibration or when loading a saved experiment configuration.
+
+### Starting Preview
+
+```bash
+source venv/bin/activate
+python preview.py
+# Or: python preview.py --backend auto
+```
+
+### Preview Interface
+
+The preview application opens two windows:
+
+1. **Camera Preview Window**: 
+   - Native hardware-accelerated preview (separate window)
+   - High-performance display using DRM or QTGL backend
+   - Same preview system as calibrate.py
+
+2. **Controls Window**:
+   - **Source Selection**: Choose to load from "Calibration File" or "Experiment Save File"
+   - **Load Button**: Opens file dialog to select source file
+   - **Well List**: Scrollable listbox showing all loaded wells
+   - **Navigation Controls**:
+     - **Home Printer**: Home the printer (required before navigation)
+     - **Previous**: Move to previous well in sequence
+     - **Next**: Move to next well in sequence
+     - **Go to Selected**: Move to the currently selected well in the list
+   - **Status Display**: Shows current well, position, and operation status
+   - **Position Display**: Current X, Y, Z coordinates
+   - **FPS Display**: Real-time preview frames per second
+
+### Loading Wells
+
+#### From Calibration File
+
+1. Select "Calibration File" radio button
+2. Click "Load" button
+3. Navigate to `config/calibrations/` directory
+4. Select a calibration JSON file
+5. All wells from the calibration will be loaded
+
+#### From Experiment Save File
+
+1. Select "Experiment Save File" radio button
+2. Click "Load" button
+3. Select an exported experiment settings JSON file
+4. The application will:
+   - Load the referenced calibration file
+   - Filter to only the wells that were checked in the experiment
+   - Display only those selected wells in the list
+
+### Preview Workflow
+
+1. **Load Wells**:
+   - Choose source type (calibration or experiment file)
+   - Click "Load" and select the file
+   - Status will show number of wells loaded
+
+2. **Home Printer**:
+   - Click "Home Printer" button
+   - Wait for homing to complete (status will show "Homed successfully")
+   - **Important**: Homing is required before navigation
+
+3. **Navigate Through Wells**:
+   - **Click on a well** in the list to select it
+   - **Use "Go to Selected"** to move to that well position
+   - **Use "Next"** to move to the next well sequentially
+   - **Use "Previous"** to move to the previous well sequentially
+   - Navigation wraps around (Next from last goes to first, Previous from first goes to last)
+
+4. **Verify Alignment**:
+   - Use camera preview to visually check alignment at each position
+   - Check that camera is centered over each well
+   - Verify focus is correct
+   - Note any wells that need adjustment
+
+5. **Make Adjustments** (if needed):
+   - If alignment is off, note which wells need adjustment
+   - Return to calibrate.py to fine-tune positions
+   - Re-save calibration if needed
+   - Re-load in preview.py to verify
+
+### Tips for Preview
+
+- **Always home first**: Navigation requires the printer to be homed
+- **Use sequential navigation**: The "Next" and "Previous" buttons make it easy to go through all wells in order
+- **Check critical wells**: Focus on wells that are critical for your experiment
+- **Verify before experiment**: Use preview to catch alignment issues before running a long experiment
+- **Compare with calibration**: If preview shows misalignment, the calibration may need adjustment
+
+### When to Use Preview
+
+- **After calibration**: Verify that interpolated positions are accurate
+- **Before experiments**: Check alignment before running automated experiments
+- **After loading experiment settings**: Verify that selected wells are correctly positioned
+- **After hardware changes**: If you've moved the well plate or adjusted the setup
+
+### Integration with Workflow
+
+The preview tool fits into the overall workflow:
+
+1. **Calibrate** (calibrate.py) → Create calibration with well positions
+2. **Preview** (preview.py) → Verify alignment of all wells or selected wells
+3. **Experiment** (experiment.py) → Run automated experiment with verified positions
 
 ## Experiment Setup
 
@@ -391,6 +500,7 @@ Motion configuration files control the feedrate (speed) and acceleration for dif
 For detailed documentation on specific applications:
 
 - **[CALIBRATE_PY_README.md](./CALIBRATE_PY_README.md)**: Complete documentation for calibrate.py
+- **[PREVIEW_PY_README.md](./PREVIEW_PY_README.md)**: Complete documentation for preview.py
 - **[EXPERIMENT_PY_README.md](./EXPERIMENT_PY_README.md)**: Complete documentation for experiment.py
 - **[DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md)**: Development guidelines and architecture
 - **[CAMERA_ARCHITECTURE.md](./CAMERA_ARCHITECTURE.md)**: Camera system technical details

@@ -4,9 +4,10 @@ Robotic microscopy system for automated well-plate experiments using a 3D printe
 
 ## Overview
 
-RoboCam-Suite is a scientific experiment automation system designed for FluorCam, StentorCam, and other automated microscopy experiments under the RoboCam umbrella. It provides precise robotic positioning, automated video/still capture, and laser control for biological experiments. The system consists of two main applications:
+RoboCam-Suite is a scientific experiment automation system designed for FluorCam, StentorCam, and other automated microscopy experiments under the RoboCam umbrella. It provides precise robotic positioning, automated video/still capture, and laser control for biological experiments. The system consists of three main applications:
 
 - **calibrate.py**: Manual positioning and calibration GUI for setting up well-plate coordinates
+- **preview.py**: Sequential well alignment preview tool for verifying positions before experiments
 - **experiment.py**: Automated experiment execution GUI with configurable timing sequences
 
 ## Features
@@ -22,6 +23,7 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 - **Configurable Experiments**: JSON-based configuration for experiment parameters
 - **Motion Configuration**: Separate feedrate and acceleration settings for preliminary and between-wells movements
 - **Calibration-Based Experiments**: Load calibrations and select wells via checkbox grid
+- **Preview Alignment Tool**: Sequential well position preview for alignment verification before experiments
 - **Experiment Settings Export/Import**: Save and load experiment configurations with calibration validation
 - **CSV Export**: Export well coordinates and labels for analysis
 - **Configurable Timeouts**: Customizable timeouts for homing (default: 45s) and movement commands (default: 30s)
@@ -117,6 +119,15 @@ source venv/bin/activate
 python calibrate.py
 ```
 
+### Starting the Preview Application
+
+```bash
+source venv/bin/activate
+python preview.py
+# Or with backend selection:
+python preview.py --backend auto
+```
+
 ### Starting the Experiment Application
 
 ```bash
@@ -150,6 +161,38 @@ python experiment.py
 4. Use the camera preview window to visually align with wells
 
 5. Record positions for calibration (see User Guide for 4-corner calibration)
+
+**Preview Backends**: Use `--backend auto` (default), `qtgl`, `drm`, or `null` for headless mode
+
+### Preview Alignment Check (preview.py)
+
+1. Launch the preview application:
+   ```bash
+   source venv/bin/activate
+   python preview.py
+   # Or: python preview.py --backend auto
+   ```
+
+2. Two windows will open:
+   - **Camera Preview Window**: Native hardware-accelerated preview (high performance)
+   - **Controls Window**: Well list, navigation controls, and status display
+
+3. Load wells:
+   - Select source type: "Calibration File" or "Experiment Save File"
+   - Click "Load" and select the appropriate file
+   - For calibration files: All wells are loaded
+   - For experiment save files: Only checked wells from the experiment are loaded
+
+4. Home the printer:
+   - Click "Home Printer" button (required before navigation)
+
+5. Navigate through wells:
+   - Click on a well in the list to select it
+   - Use "Previous" and "Next" buttons for sequential navigation
+   - Click "Go to Selected" to move to the selected well
+   - Use camera preview to verify alignment at each position
+
+6. Verify alignment before running experiments
 
 **Preview Backends**: Use `--backend auto` (default), `qtgl`, `drm`, or `null` for headless mode
 
@@ -419,6 +462,7 @@ Launches the experiment application:
 ```
 RoboCam-Suite/
 ├── calibrate.py              # Calibration GUI application
+├── preview.py                # Preview alignment check tool
 ├── experiment.py             # Experiment automation GUI
 ├── setup.sh                  # Setup script
 ├── start_calibrate.sh        # Calibration launcher
@@ -449,6 +493,7 @@ Comprehensive documentation is available in the `docs/` directory:
 
 - **[USER_GUIDE.md](docs/USER_GUIDE.md)**: Complete user guide with step-by-step procedures
 - **[CALIBRATE_PY_README.md](docs/CALIBRATE_PY_README.md)**: Detailed documentation for calibrate.py
+- **[PREVIEW_PY_README.md](docs/PREVIEW_PY_README.md)**: Detailed documentation for preview.py
 - **[EXPERIMENT_PY_README.md](docs/EXPERIMENT_PY_README.md)**: Detailed documentation for experiment.py
 - **[DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)**: Development guidelines and architecture
 - **[CAMERA_ARCHITECTURE.md](docs/CAMERA_ARCHITECTURE.md)**: Camera system technical details
