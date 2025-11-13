@@ -60,6 +60,8 @@ class RoboCam:
         # Printer startup and settings
         self.baud_rate: int = baudrate if baudrate is not None else printer_config.get("baudrate", 115200)
         self.timeout: float = printer_config.get("timeout", 1.0)
+        self.home_timeout: float = printer_config.get("home_timeout", 45.0)
+        self.movement_wait_timeout: float = printer_config.get("movement_wait_timeout", 30.0)
         self.command_delay: float = printer_config.get("command_delay", 0.1)
         self.position_update_delay: float = printer_config.get("position_update_delay", 0.1)
         self.connection_retry_delay: float = printer_config.get("connection_retry_delay", 2.0)
@@ -275,7 +277,7 @@ class RoboCam:
         """
         logger.info('Homing Printer, please wait for the countdown to complete')
         try:
-            self.send_gcode('G28', timeout=45.0)  # Homing takes longer, use 45 second timeout
+            self.send_gcode('G28', timeout=self.home_timeout)  # Use configurable home timeout
             # Update position after homing
             self.X, self.Y, self.Z = self.update_current_position()
             logger.info(f"Printer homed. Reset positions to X: {self.X}, Y: {self.Y}, Z: {self.Z}")
@@ -400,7 +402,7 @@ class RoboCam:
                 command += f" Z{Z}"
 
             self.send_gcode(command)
-            self.send_gcode("M400")  # Wait for movement to complete
+            self.send_gcode("M400", timeout=self.movement_wait_timeout)  # Use configurable movement wait timeout
             self.update_current_position()
         except Exception as e:
             raise RuntimeError(f"Relative movement failed: {e}") from e
@@ -451,7 +453,7 @@ class RoboCam:
                 command += f" Z{Z}"
 
             self.send_gcode(command)
-            self.send_gcode("M400")  # Wait for movement to complete
+            self.send_gcode("M400", timeout=self.movement_wait_timeout)  # Use configurable movement wait timeout
             self.update_current_position()
         except Exception as e:
             raise RuntimeError(f"Absolute movement failed: {e}") from e

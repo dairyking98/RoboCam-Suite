@@ -35,6 +35,8 @@ class Config:
             "printer": {
                 "baudrate": 115200,
                 "timeout": 1.0,
+                "home_timeout": 45.0,
+                "movement_wait_timeout": 30.0,
                 "command_delay": 0.1,
                 "position_update_delay": 0.1,
                 "connection_retry_delay": 2.0,
@@ -172,6 +174,20 @@ class Config:
                 self.config["hardware"]["printer"]["timeout"] = float(os.environ["ROBOCAM_TIMEOUT"])
             except ValueError:
                 pass
+        
+        # Printer home timeout
+        if os.environ.get("ROBOCAM_HOME_TIMEOUT"):
+            try:
+                self.config["hardware"]["printer"]["home_timeout"] = float(os.environ["ROBOCAM_HOME_TIMEOUT"])
+            except ValueError:
+                pass
+        
+        # Printer movement wait timeout
+        if os.environ.get("ROBOCAM_MOVEMENT_WAIT_TIMEOUT"):
+            try:
+                self.config["hardware"]["printer"]["movement_wait_timeout"] = float(os.environ["ROBOCAM_MOVEMENT_WAIT_TIMEOUT"])
+            except ValueError:
+                pass
     
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -239,6 +255,16 @@ class Config:
         timeout = self.get("hardware.printer.timeout")
         if not isinstance(timeout, (int, float)) or timeout <= 0:
             raise ValueError(f"Invalid timeout: {timeout}")
+        
+        # Validate home_timeout
+        home_timeout = self.get("hardware.printer.home_timeout")
+        if not isinstance(home_timeout, (int, float)) or home_timeout <= 0:
+            raise ValueError(f"Invalid home_timeout: {home_timeout}")
+        
+        # Validate movement_wait_timeout
+        movement_wait_timeout = self.get("hardware.printer.movement_wait_timeout")
+        if not isinstance(movement_wait_timeout, (int, float)) or movement_wait_timeout <= 0:
+            raise ValueError(f"Invalid movement_wait_timeout: {movement_wait_timeout}")
         
         # Validate GPIO pin
         gpio_pin = self.get("hardware.laser.gpio_pin")
