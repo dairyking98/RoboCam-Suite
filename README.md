@@ -269,6 +269,13 @@ Videos or images are saved to the specified save folder with the configured file
   - If missing, install system dependencies (see above) and reinstall: `pip install -r requirements.txt`
   - Use the provided fix script: `chmod +x fix_dependencies.sh && ./fix_dependencies.sh`
 
+- **Problem**: `ModuleNotFoundError: No module named 'libcamera'` when running scripts
+- **Solution**:
+  - Install the system package: `sudo apt-get install -y python3-libcamera`
+  - This is a system-level package required by picamera2, not installable via pip
+  - The updated setup script now checks for and installs this automatically
+  - Or use the fix script: `chmod +x fix_dependencies.sh && ./fix_dependencies.sh`
+
 ### Serial Port Connection Issues
 
 - **Problem**: Cannot connect to 3D printer

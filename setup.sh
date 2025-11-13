@@ -33,6 +33,11 @@ echo ""
 echo "Checking for system dependencies..."
 MISSING_DEPS=()
 
+# Check for python3-libcamera (required for picamera2)
+if ! dpkg -l | grep -q "^ii.*python3-libcamera"; then
+    MISSING_DEPS+=("python3-libcamera")
+fi
+
 # Check for libcap-dev (required for python-prctl)
 if ! dpkg -l | grep -q "^ii.*libcap-dev"; then
     MISSING_DEPS+=("libcap-dev")
@@ -49,7 +54,9 @@ fi
 
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     echo "Missing system dependencies detected: ${MISSING_DEPS[*]}"
-    echo "These are required to build Python packages (especially python-prctl)."
+    echo "These are required for:"
+    echo "  - python3-libcamera: Required for picamera2 (Raspberry Pi camera support)"
+    echo "  - libcap-dev, python3-dev, build-essential: Required to build Python packages"
     echo ""
     echo "Please install them before continuing:"
     echo "  sudo apt-get update"
@@ -74,13 +81,16 @@ fi
 
 echo ""
 
-# Create virtual environment
+# Create virtual environment with system site packages
+# This allows access to system-installed packages like python3-libcamera
 if [ ! -d "venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv venv
+    echo "Creating virtual environment (with system site packages)..."
+    python3 -m venv --system-site-packages venv
     echo "Virtual environment created."
 else
     echo "Virtual environment already exists."
+    echo "Note: If you're having issues with libcamera, you may need to recreate the venv with:"
+    echo "  rm -rf venv && python3 -m venv --system-site-packages venv"
 fi
 
 echo ""
