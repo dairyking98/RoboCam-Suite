@@ -18,8 +18,9 @@ from robocam.camera_preview import start_best_preview, FPSTracker, has_desktop_s
 from robocam.config import get_config
 from robocam.stentorcam import WellPlatePathGenerator
 
-# Preview resolution for camera display
-preview_resolution: tuple[int, int] = (1024, 820)  # (640, 480)
+# Preview resolution for camera display (will be loaded from config)
+# Default resolution optimized for 30 FPS preview (800x600 should easily achieve 30 FPS)
+default_preview_resolution: tuple[int, int] = (800, 600)  # Standard SVGA resolution for reliable 30 FPS
 
 
 class CameraApp:
@@ -56,10 +57,23 @@ class CameraApp:
         self.root: tk.Tk = root
         self.root.title("RoboCam Calibration - Controls")
 
+        # Load config for camera settings
+        config = get_config()
+        camera_config = config.get_camera_config()
+        default_fps = camera_config.get("default_fps", 30.0)
+        
+        # Get preview resolution from config, or use default
+        preview_res = camera_config.get("preview_resolution", list(default_preview_resolution))
+        if isinstance(preview_res, list) and len(preview_res) == 2:
+            preview_resolution = tuple(preview_res)
+        else:
+            preview_resolution = default_preview_resolution
+
         # Picamera2 setup
         self.picam2: Picamera2 = Picamera2()
         self.picam2_config = self.picam2.create_preview_configuration(
             main={"size": preview_resolution},
+            controls={"FrameRate": default_fps},  # Set FPS to 30
             buffer_count=2  # Optimize buffer count
         )
         self.picam2.configure(self.picam2_config)
@@ -96,8 +110,7 @@ class CameraApp:
         self.create_widgets()
 
         self.running: bool = True
-        # Load config for baudrate
-        config = get_config()
+        # Load config for baudrate (config already loaded above for camera settings)
         baudrate = config.get("hardware.printer.baudrate", 115200)
         
         # Initialize RoboCam with error handling
@@ -180,15 +193,35 @@ class CameraApp:
         self.fps_label = tk.Label(self.root, text="0.0", font=("Courier", 10))
         self.fps_label.grid(row=7, column=1, sticky="w", padx=5)
 
+        # Go to coordinate section
+        tk.Label(self.root, text="Go to Coordinate:").grid(row=8, column=0, sticky="e", padx=5, pady=5)
+        coord_frame = tk.Frame(self.root)
+        coord_frame.grid(row=8, column=1, columnspan=3, padx=5, pady=5, sticky="w")
+        
+        tk.Label(coord_frame, text="X:").pack(side=tk.LEFT, padx=2)
+        self.x_coord_entry = tk.Entry(coord_frame, width=10)
+        self.x_coord_entry.pack(side=tk.LEFT, padx=2)
+        
+        tk.Label(coord_frame, text="Y:").pack(side=tk.LEFT, padx=2)
+        self.y_coord_entry = tk.Entry(coord_frame, width=10)
+        self.y_coord_entry.pack(side=tk.LEFT, padx=2)
+        
+        tk.Label(coord_frame, text="Z:").pack(side=tk.LEFT, padx=2)
+        self.z_coord_entry = tk.Entry(coord_frame, width=10)
+        self.z_coord_entry.pack(side=tk.LEFT, padx=2)
+        
+        tk.Button(coord_frame, text="Go", command=self.go_to_coordinate,
+                 width=8, bg="#2196F3", fg="white").pack(side=tk.LEFT, padx=5)
+
         # Status/Error label
-        tk.Label(self.root, text="Status:").grid(row=8, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(self.root, text="Status:").grid(row=9, column=0, sticky="e", padx=5, pady=5)
         self.status_label = tk.Label(self.root, text="Ready", fg="green", font=("Arial", 9))
-        self.status_label.grid(row=8, column=1, columnspan=2, sticky="w", padx=5)
+        self.status_label.grid(row=9, column=1, columnspan=2, sticky="w", padx=5)
         
         # Home button
         tk.Button(self.root, text="Home Printer", command=self.home_printer,
                  width=15, height=2, bg="#4CAF50", fg="white").grid(
-            row=9, column=0, columnspan=2, padx=10, pady=10
+            row=10, column=0, columnspan=2, padx=10, pady=10
         )
         
         # 4-Corner Calibration Section
@@ -246,6 +279,54 @@ class CameraApp:
             self.status_label.config(text=user_msg, fg="red")
             print(f"Homing error: {e}")
     
+    def go_to_coordinate(self) -> None:
+        """
+        Move to the specified X, Y, Z coordinates.
+        
+        Only moves axes that have values entered. Blank entries are ignored.
+        """
+        if self.robocam is None:
+            self.status_label.config(text="Printer not initialized", fg="red")
+            return
+        
+        try:
+            # Read entry fields and convert to float if not blank
+            x_str = self.x_coord_entry.get().strip()
+            y_str = self.y_coord_entry.get().strip()
+            z_str = self.z_coord_entry.get().strip()
+            
+            x = float(x_str) if x_str else None
+            y = float(y_str) if y_str else None
+            z = float(z_str) if z_str else None
+            
+            # Check if at least one coordinate is provided
+            if x is None and y is None and z is None:
+                self.status_label.config(text="Enter at least one coordinate", fg="orange")
+                return
+            
+            # Move to coordinates
+            self.status_label.config(text="Moving...", fg="orange")
+            self.root.update()  # Update GUI to show status
+            self.robocam.move_absolute(X=x, Y=y, Z=z)
+            self.update_position()
+            self.status_label.config(text="Move successful", fg="green")
+            
+        except ValueError:
+            self.status_label.config(text="Invalid coordinate value", fg="red")
+        except Exception as e:
+            error_msg = str(e)
+            if "not connected" in error_msg.lower():
+                user_msg = "Printer not connected. Check USB cable."
+            elif "timeout" in error_msg.lower():
+                user_msg = "Movement timed out. Check printer connection."
+            elif "serial" in error_msg.lower():
+                user_msg = "Communication error. Check USB connection."
+            else:
+                user_msg = f"Movement failed: {error_msg}"
+            
+            self.status_label.config(text=user_msg, fg="red")
+            print(f"Go to coordinate error: {e}")
+    
     def create_calibration_section(self) -> None:
         """
         Create 4-corner calibration GUI section.
@@ -260,31 +341,31 @@ class CameraApp:
         """
         # Separator
         tk.Label(self.root, text="─" * 50, fg="gray").grid(
-            row=10, column=0, columnspan=6, padx=5, pady=10
+            row=11, column=0, columnspan=6, padx=5, pady=10
         )
         
         # Section title
         tk.Label(self.root, text="4-Corner Calibration", font=("Arial", 12, "bold")).grid(
-            row=11, column=0, columnspan=6, padx=5, pady=5
+            row=12, column=0, columnspan=6, padx=5, pady=5
         )
         
         # X and Y quantity entry
-        tk.Label(self.root, text="X Quantity:").grid(row=12, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(self.root, text="X Quantity:").grid(row=13, column=0, sticky="e", padx=5, pady=5)
         self.x_qty_entry = tk.Entry(self.root, width=10)
-        self.x_qty_entry.grid(row=12, column=1, padx=5, pady=5)
+        self.x_qty_entry.grid(row=13, column=1, padx=5, pady=5)
         self.x_qty_entry.bind("<KeyRelease>", self.on_quantity_change)
         
-        tk.Label(self.root, text="Y Quantity:").grid(row=12, column=2, sticky="e", padx=5, pady=5)
+        tk.Label(self.root, text="Y Quantity:").grid(row=13, column=2, sticky="e", padx=5, pady=5)
         self.y_qty_entry = tk.Entry(self.root, width=10)
-        self.y_qty_entry.grid(row=12, column=3, padx=5, pady=5)
+        self.y_qty_entry.grid(row=13, column=3, padx=5, pady=5)
         self.y_qty_entry.bind("<KeyRelease>", self.on_quantity_change)
         
         # Corner coordinate displays and buttons
         corners = [
-            ("Upper-Left", "upper_left", 13),
-            ("Lower-Left", "lower_left", 14),
-            ("Upper-Right", "upper_right", 15),
-            ("Lower-Right", "lower_right", 16)
+            ("Upper-Left", "upper_left", 14),
+            ("Lower-Left", "lower_left", 15),
+            ("Upper-Right", "upper_right", 16),
+            ("Lower-Right", "lower_right", 17)
         ]
         
         self.corner_labels = {}
@@ -318,9 +399,9 @@ class CameraApp:
             self.corner_status_labels[attr_name] = status_label
         
         # Calibration name entry
-        tk.Label(self.root, text="Calibration Name:").grid(row=17, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(self.root, text="Calibration Name:").grid(row=18, column=0, sticky="e", padx=5, pady=5)
         self.calib_name_entry = tk.Entry(self.root, width=30)
-        self.calib_name_entry.grid(row=17, column=1, columnspan=2, padx=5, pady=5)
+        self.calib_name_entry.grid(row=18, column=1, columnspan=2, padx=5, pady=5)
         
         # Save calibration button
         self.save_calib_btn = tk.Button(
@@ -331,7 +412,7 @@ class CameraApp:
             fg="white",
             width=15
         )
-        self.save_calib_btn.grid(row=17, column=3, padx=5, pady=5)
+        self.save_calib_btn.grid(row=18, column=3, padx=5, pady=5)
         
         # Preview/validation display
         self.calib_preview_label = tk.Label(
@@ -340,7 +421,7 @@ class CameraApp:
             font=("Arial", 9),
             fg="gray"
         )
-        self.calib_preview_label.grid(row=18, column=0, columnspan=5, padx=5, pady=5, sticky="w")
+        self.calib_preview_label.grid(row=19, column=0, columnspan=5, padx=5, pady=5, sticky="w")
     
     def on_quantity_change(self, event=None) -> None:
         """Update preview when X/Y quantities change."""

@@ -47,7 +47,7 @@ class Config:
                 "default_state": "OFF"
             },
             "camera": {
-                "preview_resolution": [1024, 820],
+                "preview_resolution": [800, 600],
                 "default_fps": 30.0,
                 "preview_backend": "auto"
             }
