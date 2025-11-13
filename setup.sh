@@ -29,6 +29,51 @@ fi
 echo "Python version check passed."
 echo ""
 
+# Check for and install system dependencies
+echo "Checking for system dependencies..."
+MISSING_DEPS=()
+
+# Check for libcap-dev (required for python-prctl)
+if ! dpkg -l | grep -q "^ii.*libcap-dev"; then
+    MISSING_DEPS+=("libcap-dev")
+fi
+
+# Check for other common build dependencies
+if ! dpkg -l | grep -q "^ii.*python3-dev"; then
+    MISSING_DEPS+=("python3-dev")
+fi
+
+if ! dpkg -l | grep -q "^ii.*build-essential"; then
+    MISSING_DEPS+=("build-essential")
+fi
+
+if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
+    echo "Missing system dependencies detected: ${MISSING_DEPS[*]}"
+    echo "These are required to build Python packages (especially python-prctl)."
+    echo ""
+    echo "Please install them before continuing:"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install -y ${MISSING_DEPS[*]}"
+    echo ""
+    echo "Attempting to install automatically (requires sudo)..."
+    if sudo apt-get update && sudo apt-get install -y "${MISSING_DEPS[@]}" 2>/dev/null; then
+        echo "System dependencies installed successfully."
+    else
+        echo ""
+        echo "ERROR: Could not install system dependencies automatically."
+        echo "Please run the following commands manually:"
+        echo "  sudo apt-get update"
+        echo "  sudo apt-get install -y ${MISSING_DEPS[*]}"
+        echo ""
+        echo "Then re-run this setup script."
+        exit 1
+    fi
+else
+    echo "System dependencies check passed."
+fi
+
+echo ""
+
 # Create virtual environment
 if [ ! -d "venv" ]; then
     echo "Creating virtual environment..."
@@ -55,8 +100,29 @@ echo ""
 # Install dependencies
 if [ -f "requirements.txt" ]; then
     echo "Installing dependencies from requirements.txt..."
+    # Try to install dependencies, but don't exit on error
+    # This allows partial installation if some packages fail
+    set +e  # Temporarily disable exit on error
     pip install -r requirements.txt
-    echo "Dependencies installed."
+    PIP_EXIT_CODE=$?
+    set -e  # Re-enable exit on error
+    
+    if [ $PIP_EXIT_CODE -eq 0 ]; then
+        echo "Dependencies installed successfully."
+    else
+        echo ""
+        echo "Warning: Some dependencies failed to install."
+        echo "This may be due to missing system packages."
+        echo ""
+        echo "Common solutions:"
+        echo "  1. Install missing system dependencies (see above)"
+        echo "  2. Try installing dependencies manually:"
+        echo "     source venv/bin/activate"
+        echo "     pip install -r requirements.txt"
+        echo ""
+        echo "Checking which packages were installed..."
+        pip list | grep -E "(picamera2|pyserial)" || echo "Critical packages may be missing."
+    fi
 else
     echo "Warning: requirements.txt not found. Skipping dependency installation."
 fi
@@ -123,6 +189,33 @@ fi
 
 echo ""
 
+# Verify critical packages are installed
+echo "Verifying installation..."
+CRITICAL_PACKAGES=("picamera2" "pyserial")
+MISSING_PACKAGES=()
+
+for package in "${CRITICAL_PACKAGES[@]}"; do
+    if ! pip show "$package" &>/dev/null; then
+        MISSING_PACKAGES+=("$package")
+    fi
+done
+
+if [ ${#MISSING_PACKAGES[@]} -gt 0 ]; then
+    echo ""
+    echo "WARNING: The following critical packages are missing: ${MISSING_PACKAGES[*]}"
+    echo "Installation may have failed. Please check the error messages above."
+    echo ""
+    echo "To fix this, try:"
+    echo "  1. Ensure system dependencies are installed (libcap-dev, python3-dev, build-essential)"
+    echo "  2. Activate the virtual environment: source venv/bin/activate"
+    echo "  3. Reinstall: pip install -r requirements.txt"
+    echo ""
+else
+    echo "Critical packages verified: ${CRITICAL_PACKAGES[*]}"
+fi
+
+echo ""
+
 # Check for hardware (optional, inform user)
 echo "Hardware Setup Checklist:"
 echo "  - Raspberry Pi Camera: Check connection and enable in raspi-config"
@@ -134,7 +227,11 @@ echo "  - GPIO Permissions: Add user to gpio group if needed"
 echo "    sudo usermod -a -G gpio \$USER"
 echo ""
 
-echo "Setup complete!"
+if [ ${#MISSING_PACKAGES[@]} -eq 0 ]; then
+    echo "Setup complete!"
+else
+    echo "Setup completed with warnings. Please address missing packages before use."
+fi
 echo ""
 echo "To activate the virtual environment, run:"
 echo "  source venv/bin/activate"

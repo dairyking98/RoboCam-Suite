@@ -254,6 +254,21 @@ Videos or images are saved to the specified save folder with the configured file
 
 ## Troubleshooting
 
+### Installation Issues
+
+- **Problem**: `setup.sh` fails with "Failed to build 'python-prctl'" or "You need to install libcap development headers"
+- **Solution**: 
+  - The setup script will now automatically detect and install missing system dependencies
+  - If automatic installation fails, manually install: `sudo apt-get update && sudo apt-get install -y libcap-dev python3-dev build-essential`
+  - Then re-run `./setup.sh` or use the quick fix: `./fix_dependencies.sh`
+
+- **Problem**: `ModuleNotFoundError: No module named 'picamera2'` when running scripts
+- **Solution**:
+  - Ensure the virtual environment is activated: `source venv/bin/activate`
+  - Verify packages are installed: `pip list | grep picamera2`
+  - If missing, install system dependencies (see above) and reinstall: `pip install -r requirements.txt`
+  - Use the provided fix script: `chmod +x fix_dependencies.sh && ./fix_dependencies.sh`
+
 ### Serial Port Connection Issues
 
 - **Problem**: Cannot connect to 3D printer
@@ -305,6 +320,18 @@ Sets up the virtual environment and installs dependencies:
 ```bash
 ./setup.sh
 ```
+
+The script will automatically detect and install required system dependencies (libcap-dev, python3-dev, build-essential) if they are missing.
+
+### fix_dependencies.sh
+
+Quick fix script for installation issues. Use this if setup.sh failed:
+```bash
+chmod +x fix_dependencies.sh
+./fix_dependencies.sh
+```
+
+This script installs system dependencies and reinstalls Python packages in the virtual environment.
 
 ### start_calibrate.sh
 
