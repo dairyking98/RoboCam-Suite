@@ -79,6 +79,10 @@ The calibration application opens two windows:
      - **X+**: Move right (positive X)
      - **Z-**: Move down (negative Z)
      - **Z+**: Move up (positive Z)
+   - **Go to Coordinate**: Direct coordinate entry and movement
+     - **X, Y, Z Entry Fields**: Enter target coordinates
+     - **Go Button**: Move to specified coordinates
+     - Only axes with values entered will move (blank entries are ignored)
    - **Home Button**: Returns printer to home position (0, 0, 0)
 
 #### Preview Backend Options
@@ -105,6 +109,10 @@ You can specify the preview backend when starting calibrate.py:
 - Use the camera preview to visually align with well centers
 - Start with larger step sizes (10 mm) for rough positioning
 - Switch to smaller step sizes (0.1 mm) for fine adjustments
+- **Use "Go to Coordinate"** to quickly return to previously recorded positions
+  - Enter known coordinates in X, Y, Z fields
+  - Leave fields blank for axes you don't want to move
+  - Click "Go" to move directly to that position
 - Record coordinates immediately after positioning to avoid drift
 - Consider using the 4-corner calibration method for better accuracy
 
@@ -167,7 +175,7 @@ The 4-corner calibration method accounts for slight angles and misalignment in w
 9. **Use in Experiment**:
    - Calibration is now available in experiment.py
    - Load it from the calibration dropdown
-   - Select wells using the checkbox grid
+   - Click "Select Cells" button to open well selection window
 
 ### Understanding 4-Corner Interpolation
 
@@ -206,10 +214,15 @@ The interpolation accounts for:
    - **Note**: Experiment cannot start without a loaded calibration
 
 3. **Select Wells**:
-   - After loading calibration, a checkbox grid appears
+   - After loading calibration, a checkbox grid will automatically appear in the experiment window
    - Each checkbox represents a well (labeled A1, A2, B1, etc.)
    - All wells are checked by default
    - Uncheck wells you want to exclude from the experiment
+   - Use "Check All" or "Uncheck All" buttons (above the grid) for quick selection
+   - **Keyboard Shortcuts**:
+     - **Shift+Click**: Check all wells in the same row
+     - **Ctrl+Click**: Check all wells in the same column
+   - Instructions are displayed next to the grid explaining all interaction methods
    - Run button will be disabled if no wells are selected
 
 4. **Configure Timing**:
@@ -217,36 +230,40 @@ The interpolation accounts for:
      - Example: `30, 0, 0` means 30s OFF, 0s ON, 0s OFF
      - Example: `10, 20, 10` means 10s OFF, 20s ON, 10s OFF
 
-5. **Z Value**:
-   - Z value is automatically set from calibration interpolation
-   - Manual Z entry is hidden when using calibration
-
-6. **Select Pattern**:
+5. **Select Pattern**:
    - **Snake**: Alternates direction each row (recommended)
    - **Raster**: Always moves left-to-right
 
-7. **Camera Settings**:
+6. **Camera Settings**:
    - **Resolution X**: Horizontal pixels (default: 1920)
    - **Resolution Y**: Vertical pixels (default: 1080)
    - **FPS**: Frames per second (e.g., 30.0)
    - **Export Type**: H264, MJPEG, or JPEG
    - **JPEG Quality**: 1-100 (for MJPEG/JPEG)
 
-8. **Motion Settings**:
-   - **Feedrate Override**: Optional movement speed in mm/min (e.g., 1500)
+7. **Motion Settings**:
    - **Motion Config**: Select motion configuration file (see Motion Configuration section)
+   - Movement speed is controlled by the motion configuration file
+   - Separate settings for preliminary movements (homing) and between-wells movements
 
-9. **File Settings**:
+8. **File Settings**:
    - **Filename Scheme**: Pattern for output files
      - Placeholders: `{x}`, `{y}`, `{time}`, `{date}`
      - Example: `exp_{y}{x}_{time}_{date}`
-   - **Save Folder**: Directory to save output files
+   - **Save Folder**: Directory to save output files (default: `/output/filescheme/files`)
+
+9. **Status and Recording Indicator**:
+   - **Status Display**: Shows current experiment progress, well being processed, and any errors
+   - **Recording Button**: Flashes red when video recording is active
+     - Gray when not recording
+     - Red/dark red flashing during recording
+   - **Timers**: Display total duration, elapsed time, and remaining time
 
 10. **Review Settings**:
    - Check the example filename at the bottom
    - Verify all settings are correct
 
-11. **Export/Import Experiment Settings** (Optional):
+12. **Export/Import Experiment Settings** (Optional):
     - **Export**: Click "Export Experiment Settings" to save current configuration
       - Saves all settings including selected wells and calibration reference
       - Choose save location via file dialog
@@ -380,6 +397,27 @@ For detailed documentation on specific applications:
 
 ## Troubleshooting
 
+### Installation Issues
+
+- **Problem**: `ModuleNotFoundError: No module named 'libcamera'` when running scripts
+- **Solution**: 
+  - Ensure `python3-libcamera` is installed: `sudo apt-get install -y python3-libcamera`
+  - The virtual environment must be created with `--system-site-packages` to access system packages
+  - Use the fix script: `./fix_dependencies.sh` to automatically fix this
+  - Or recreate the venv: `rm -rf venv && python3 -m venv --system-site-packages venv`
+
+- **Problem**: `setup.sh` fails with "Failed to build 'python-prctl'" or missing headers
+- **Solution**:
+  - Install system dependencies: `sudo apt-get update && sudo apt-get install -y libcap-dev python3-dev build-essential`
+  - The setup script should do this automatically, but if it fails, install manually
+  - Use the fix script: `./fix_dependencies.sh`
+
+- **Problem**: `ModuleNotFoundError: No module named 'picamera2'` in virtual environment
+- **Solution**:
+  - Ensure virtual environment is activated: `source venv/bin/activate`
+  - Reinstall packages: `pip install -r requirements.txt`
+  - Verify installation: `pip list | grep picamera2`
+
 ### Printer Not Moving
 
 - **Check serial connection**: Ensure USB cable is connected
@@ -459,9 +497,9 @@ For detailed documentation on specific applications:
 ### Custom Well Patterns
 
 You can create custom well patterns by:
-1. Manually entering coordinates in experiment.py
-2. Using 4-corner calibration and exporting
-3. Editing the CSV file and importing coordinates
+1. Using 4-corner calibration and selecting specific wells via checkboxes
+2. Editing the CSV file after export (for reference only - coordinates come from calibration)
+3. Creating multiple calibrations for different well plate configurations
 
 ### Batch Experiments
 

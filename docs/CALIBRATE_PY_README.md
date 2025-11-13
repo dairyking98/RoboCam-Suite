@@ -52,7 +52,14 @@ The calibration application enables users to:
   - **X+**: Move right (positive X direction)
   - **Z-**: Move down (negative Z direction)
   - **Z+**: Move up (positive Z direction)
+- **Go to Coordinate**: Direct navigation to specific X, Y, Z coordinates
+  - Enter coordinates in X, Y, Z entry fields
+  - Leave fields blank to skip that axis
+  - Click "Go" button to move to specified coordinates
+  - Useful for quickly jumping to known positions
 - **Home Function**: Return printer to origin (0, 0, 0) position
+  - Uses configurable timeout (default: 45 seconds)
+  - Automatically updates position after homing
 - **Real-Time Position Display**: Current X, Y, Z coordinates updated continuously
 
 ### 3. 4-Corner Calibration Workflow
@@ -158,6 +165,8 @@ class FPSTracker:
 ```
 
 FPS is tracked using a callback on each camera frame, providing real-time performance monitoring.
+
+**Note**: With hardware-accelerated preview (DRM/QTGL), the `post_callback` may not be called for every frame displayed. The preview may be running at 30 FPS, but the FPS display may show a lower value (e.g., 15 FPS) because some frames bypass the CPU callback. The actual preview display FPS may be higher than what's reported.
 
 ### 4-Corner Interpolation Logic
 
@@ -322,19 +331,31 @@ Saved calibrations are stored in `config/calibrations/{name}.json`:
 
 ### Camera Configuration
 
-- **Preview Resolution**: `1024x820` (configurable via `preview_resolution`)
+- **Preview Resolution**: `800x600` (configurable via `config/default_config.json`)
+  - Default: 800x600 (SVGA) for reliable 30 FPS
+  - Configurable in `hardware.camera.preview_resolution`
+- **Frame Rate**: `30.0 FPS` (configurable via `config/default_config.json`)
+  - Default: 30.0 FPS
+  - Configurable in `hardware.camera.default_fps`
+  - Set via `controls={"FrameRate": default_fps}` in preview configuration
 - **Buffer Count**: `2` (optimized for maximum FPS)
 - **Backend**: DRM or QTGL (hardware-accelerated)
-- **FPS Tracking**: Callback-based frame counting
+- **FPS Tracking**: Callback-based frame counting (may show lower value with hardware acceleration)
 
 ### Movement Control
 
 - **G-code Commands**:
-  - `G28`: Homing
-  - `G91`: Relative positioning mode
+  - `G28`: Homing (timeout: configurable via `home_timeout`, default: 45 seconds)
+  - `G90`: Absolute positioning mode (used for "Go to Coordinate")
+  - `G91`: Relative positioning mode (used for step movements)
   - `G0 X Y Z`: Movement command
   - `M114`: Get current position
-  - `M400`: Wait for movement completion
+  - `M400`: Wait for movement completion (timeout: configurable via `movement_wait_timeout`, default: 30 seconds)
+- **Timeout Configuration**:
+  - `home_timeout`: Timeout for homing command (default: 45.0 seconds)
+  - `movement_wait_timeout`: Timeout for M400 wait command (default: 30.0 seconds)
+  - Configurable in `config/default_config.json` under `hardware.printer`
+  - Can be overridden via environment variables: `ROBOCAM_HOME_TIMEOUT`, `ROBOCAM_MOVEMENT_WAIT_TIMEOUT`
 
 ### Threading
 
@@ -368,10 +389,16 @@ Saved calibrations are stored in `config/calibrations/{name}.json`:
    - **Solution**: Verify serial port is accessible
    - **Solution**: Check for mechanical obstructions
    - **Solution**: Review error message in status label
+   - **Solution**: If timeout errors occur, increase timeout values in `config/default_config.json`:
+     - `home_timeout`: Increase if homing takes longer (default: 45 seconds)
+     - `movement_wait_timeout`: Increase if movements take longer (default: 30 seconds)
+   - **Solution**: Can override via environment variables: `ROBOCAM_HOME_TIMEOUT=60.0`
 
 4. **Low FPS in preview**
    - **Solution**: Check camera connection and ribbon cable
-   - **Solution**: Reduce preview resolution
+   - **Solution**: Verify preview resolution is appropriate (default: 800x600)
+   - **Solution**: Check FPS setting in config (default: 30.0 FPS)
+   - **Solution**: Note: With hardware-accelerated preview, displayed FPS may be lower than actual camera FPS
    - **Solution**: Close other applications
    - **Solution**: Verify backend selection (qtgl for desktop, drm for console)
 
@@ -466,6 +493,15 @@ Saved calibrations are stored in `config/calibrations/{name}.json`:
 - [CAMERA_ARCHITECTURE.md](./CAMERA_ARCHITECTURE.md): Camera system technical details
 - [PLANNED_CHANGES.md](../PLANNED_CHANGES.md): Implementation roadmap
 - [ROOM_FOR_IMPROVEMENT.md](../ROOM_FOR_IMPROVEMENT.md): Improvement opportunities
+
+## Author
+
+RoboCam-Suite
+
+## License
+
+See main project LICENSE file.
+
 
 ## Author
 

@@ -32,12 +32,22 @@ The application automates the execution of well-plate experiments by:
 ### 1. Calibration-Based Well Selection
 
 - **Calibration Loading**: Load saved 4-corner calibrations from `config/calibrations/`
-- **Checkbox Grid**: Visual grid of checkboxes for selecting wells
+- **Well Selection Window**: Separate window for selecting wells via checkboxes
+  - Opens via "Select Cells" button (enabled when calibration is loaded)
+  - Button is disabled when selection window is open
+  - Scrollable grid ensures all wells are visible
+  - All wells are checked by default
+  - **Check All / Uncheck All Buttons**: Quick selection controls in the window
+  - **Keyboard Shortcuts**:
+    - **Shift+Click**: Check all wells in the same row
+    - **Ctrl+Click**: Check all wells in the same column
+  - **GUI Instructions**: Helpful instructions displayed next to the grid explaining all interaction methods
 - **Auto-Generated Labels**: Wells labeled automatically (A1, A2, ..., B1, B2, etc.)
 - **Interpolated Positions**: All well positions calculated from 4-corner calibration
-- **Z Value**: Automatically set from calibration interpolation
+- **Z Value**: Automatically set from calibration interpolation (no manual entry)
 - **Pattern Selection**: Choose between "snake" (alternating row direction) or "raster" (consistent direction)
-- **Manual Entry Fallback**: Manual coordinate entry available when no calibration loaded (experiment blocked)
+- **Calibration Required**: Experiment cannot start without a loaded calibration
+- **No Manual Entry**: Manual coordinate entry has been removed - calibration is required
 
 ### 2. Timing Control
 
@@ -66,7 +76,7 @@ The application automates the execution of well-plate experiments by:
   - `precise.json`: Optimized for precision
 - **Preliminary Settings**: Separate feedrate and acceleration for homing/initial movements
 - **Between-Wells Settings**: Separate feedrate and acceleration for well-to-well movements
-- **Feedrate Override**: Optional manual feedrate override (mm/min)
+- **Automatic Application**: Motion settings are automatically applied based on movement phase
 
 ### 5. File Management
 
@@ -76,7 +86,7 @@ The application automates the execution of well-plate experiments by:
   - `{time}`: Timestamp (HHMMSS)
   - `{date}`: Date (MMMDD)
   - Example: `exp_{y}{x}_{time}_{date}` → `exp_B2_143022_Jan15.h264`
-- **Save Folder**: Configurable output directory with browse dialog
+- **Save Folder**: Configurable output directory with browse dialog (default: `/output/filescheme/files`)
 - **CSV Export**: Automatic generation of `experiment_points.csv` with well coordinates
 - **Experiment Settings Export**: Save complete experiment configuration to JSON
 - **Experiment Settings Import**: Load saved configurations with calibration validation
@@ -91,6 +101,11 @@ The application automates the execution of well-plate experiments by:
 ### 7. Real-Time Monitoring
 
 - **Status Display**: Current well, movement status, and capture progress
+  - Shows detailed progress: "Moving to well X at (Y, Z)", "Recording - OFF for Xs", etc.
+  - Displays errors and completion messages
+- **Recording Indicator**: Flashing button that indicates when video recording is active
+  - Gray when idle
+  - Red/dark red flashing during recording
 - **Timers**:
   - **Duration**: Total estimated experiment time
   - **Elapsed**: Time since experiment start
@@ -135,15 +150,7 @@ else:  # raster
     selected_positions.sort(key=lambda x: (x[4], x[5]))
 ```
 
-When using manual entry (deprecated, blocked without calibration):
-```python
-# Snake Pattern (alternating rows)
-for i, y_val in enumerate(ys):
-    row = pairs if (i % 2 == 0) else list(reversed(pairs))
-    # Even rows: left-to-right, Odd rows: right-to-left
-    for x_val, x_lbl in row:
-        seq.append((x_val, y_val, x_lbl, y_lbl))
-```
+**Note**: Manual coordinate entry has been removed. All well positions must come from calibration files.
 
 ### Motion Control Logic
 
@@ -155,7 +162,7 @@ for i, y_val in enumerate(ys):
 2. **Between-Wells Phase** (well movements):
    - Switches to between-wells feedrate and acceleration
    - Applies acceleration settings
-   - Uses feedrate override if provided, otherwise uses between-wells feedrate
+   - Uses between-wells feedrate from motion configuration
    - Moves to each well position with `move_absolute()`
 
 ### Camera Configuration Logic
@@ -225,8 +232,12 @@ Values are extracted and validated before use.
 
 1. **4-Corner Path Calibration Integration** ✅ **COMPLETED**
    - ✅ Import well positions from calibration workflow
-   - ✅ Eliminate manual coordinate entry (blocked without calibration)
+   - ✅ Eliminate manual coordinate entry (fully removed - calibration required)
    - ✅ Support for angled well plates
+   - ✅ Separate well selection window with "Select Cells" button
+   - ✅ Checkbox grid with Check All/Uncheck All buttons
+   - ✅ Shift+Click and Ctrl+Click shortcuts for row/column selection
+   - ✅ GUI instructions displayed in selection window
 
 2. **GUI Consistency**
    - Standardize button styles and fonts with `calibrate.py`
@@ -378,12 +389,17 @@ Values are extracted and validated before use.
    - Click "Open Experiment"
    - Select calibration from dropdown (e.g., "well_plate_8x6.json")
    - Status should show "Loaded: well_plate_8x6.json (48 wells)"
-   - Checkbox grid will appear
+   - "Select Cells" button will be enabled
 
 3. **Select Wells**:
+   - Click "Select Cells" button to open well selection window
    - Use checkboxes to select/deselect wells
-   - All wells checked by default
+   - All wells are checked by default
    - Uncheck wells to exclude from experiment
+   - Use "Check All" or "Uncheck All" buttons for quick selection
+   - **Shift+Click** a checkbox to check all wells in the same row
+   - **Ctrl+Click** a checkbox to check all wells in the same column
+   - Instructions are displayed next to the grid explaining all features
 
 4. **Configure Experiment**:
    - Set timing: `30, 0, 0` (30s OFF, 0s ON, 0s OFF)
@@ -398,11 +414,11 @@ Values are extracted and validated before use.
 
 4. **Configure Motion**:
    - Select motion config: `default.json`
-   - Optional feedrate override: `1500` mm/min
+   - Motion settings are automatically applied based on movement phase
 
 5. **Set Output**:
    - Filename scheme: `exp_{y}{x}_{time}_{date}`
-   - Save folder: `/path/to/output`
+   - Save folder: `/output/filescheme/files` (default)
 
 6. **Run Experiment**:
    - Click "Run" to start
@@ -423,9 +439,8 @@ When exporting experiment settings:
   "export_type": "H264",
   "quality": 85,
   "motion_config_file": "default.json",
-  "feedrate_override": "1500",
   "filename_scheme": "exp_{y}{x}_{time}_{date}",
-  "save_folder": "/path/to/output",
+  "save_folder": "/output/filescheme/files",
   "pattern": "snake"
 }
 ```

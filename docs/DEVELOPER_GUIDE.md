@@ -105,10 +105,17 @@ The system communicates with 3D printers using standard G-code commands:
 
 ### Serial Communication
 
-- **Baudrate**: Default 115200 (configurable)
-- **Timeout**: 1 second
+- **Baudrate**: Default 115200 (configurable via `hardware.printer.baudrate`)
+- **Default Timeout**: 1 second (configurable via `hardware.printer.timeout`)
+- **Home Timeout**: 45 seconds (configurable via `hardware.printer.home_timeout`)
+  - Used for G28 homing command
+  - Longer timeout allows printer to complete homing sequence
+- **Movement Wait Timeout**: 30 seconds (configurable via `hardware.printer.movement_wait_timeout`)
+  - Used for M400 wait-for-movement command
+  - Allows longer movements to complete
 - **Line Endings**: `\n` (LF)
 - **Encoding**: UTF-8
+- **Environment Variables**: Can override timeouts via `ROBOCAM_HOME_TIMEOUT`, `ROBOCAM_MOVEMENT_WAIT_TIMEOUT`
 
 ### GPIO Control
 
@@ -120,7 +127,16 @@ The system communicates with 3D printers using standard G-code commands:
 
 - **Library**: Picamera2
 - **Modes**: Preview, Still, Video
-- **Configuration**: Separate configs for preview vs recording (planned)
+- **Preview Configuration**:
+  - Resolution: 800x600 (default, configurable via `hardware.camera.preview_resolution`)
+  - Frame Rate: 30.0 FPS (default, configurable via `hardware.camera.default_fps`)
+  - Backend: DRM/QTGL (hardware-accelerated, auto-selected)
+  - Buffer Count: 2 (optimized for maximum FPS)
+- **Recording Configuration**:
+  - Resolution: User-configurable (default: 1920x1080)
+  - Frame Rate: User-configurable (default: 30.0 FPS)
+  - Buffer Count: 2 (optimized for recording)
+- **FPS Tracking**: Callback-based (may show lower value with hardware-accelerated preview)
 
 ## Extension Points
 
@@ -176,6 +192,70 @@ The system communicates with 3D printers using standard G-code commands:
 
 2. **Save to `config/motion_configs/`**
 3. **Select in experiment.py GUI**
+
+### Configuration File Structure
+
+The configuration system uses JSON files in `config/default_config.json`:
+
+```json
+{
+  "hardware": {
+    "printer": {
+      "baudrate": 115200,
+      "timeout": 1.0,
+      "home_timeout": 45.0,
+      "movement_wait_timeout": 30.0,
+      "command_delay": 0.1,
+      "position_update_delay": 0.1,
+      "connection_retry_delay": 2.0,
+      "max_retries": 5
+    },
+    "laser": {
+      "gpio_pin": 21,
+      "default_state": "OFF"
+    },
+    "camera": {
+      "preview_resolution": [800, 600],
+      "default_fps": 30.0,
+      "preview_backend": "auto"
+    }
+  },
+  "paths": {
+    "config_dir": "config",
+    "motion_configs_dir": "config/motion_configs",
+    "calibration_dir": "config/calibrations",
+    "experiment_config": "experiment_config.json"
+  }
+}
+```
+
+**Key Configuration Options**:
+
+- **Printer Timeouts**:
+  - `home_timeout`: Timeout for G28 homing command (default: 45.0 seconds)
+  - `movement_wait_timeout`: Timeout for M400 wait command (default: 30.0 seconds)
+  - Can be overridden via environment variables: `ROBOCAM_HOME_TIMEOUT`, `ROBOCAM_MOVEMENT_WAIT_TIMEOUT`
+
+- **Camera Settings**:
+  - `preview_resolution`: Preview resolution [width, height] (default: [800, 600])
+  - `default_fps`: Default frame rate for preview (default: 30.0)
+  - `preview_backend`: Preview backend selection (default: "auto")
+
+### Adding New Configuration
+
+1. **Update Config Class** (`robocam/config.py`):
+   - Add new fields to `DEFAULT_CONFIG` dictionary
+   - Add validation in `validate()` method
+   - Add environment variable override in `_apply_env_overrides()` if needed
+
+2. **Update Config File**:
+   - Add fields to `config/default_config.json`
+   - Update default values in `DEFAULT_CONFIG`
+
+3. **Environment Variable Overrides**:
+   - Format: `ROBOCAM_<UPPERCASE_KEY>`
+   - Example: `ROBOCAM_HOME_TIMEOUT=60.0`
+   - Add parsing in `_apply_env_overrides()` method
 
 ## Code Style Guidelines
 
@@ -350,7 +430,10 @@ def test_experiment_workflow():
 2. **Camera Not Found**:
    - Enable camera in raspi-config
    - Check camera ribbon cable
-   - Verify Picamera2 installation
+   - Verify Picamera2 installation: `pip list | grep picamera2`
+   - Verify system dependencies: `dpkg -l | grep python3-libcamera`
+   - Ensure venv has system site packages: Check `venv/pyvenv.cfg` for `include-system-site-packages = true`
+   - If missing, recreate venv: `rm -rf venv && python3 -m venv --system-site-packages venv`
 
 3. **GPIO Errors**:
    - Check user permissions (gpio group)

@@ -13,7 +13,10 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 
 - **Automated Well-Plate Scanning**: Navigate to multiple well positions automatically
 - **High-Performance Camera Preview**: Native hardware-accelerated preview (DRM/QTGL) with FPS tracking
+  - Configurable preview resolution (default: 800x600) and frame rate (default: 30 FPS)
+  - Optimized for maximum performance with hardware acceleration
 - **4-Corner Path Calibration**: Guided calibration procedure to account for angled well plates with automatic interpolation
+- **Go to Coordinate**: Direct navigation to specific X, Y, Z coordinates in calibration mode
 - **Video/Still Capture**: Record videos or capture still images at each well
 - **Laser Control**: GPIO-controlled laser with configurable timing sequences (OFF-ON-OFF)
 - **Configurable Experiments**: JSON-based configuration for experiment parameters
@@ -21,6 +24,7 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 - **Calibration-Based Experiments**: Load calibrations and select wells via checkbox grid
 - **Experiment Settings Export/Import**: Save and load experiment configurations with calibration validation
 - **CSV Export**: Export well coordinates and labels for analysis
+- **Configurable Timeouts**: Customizable timeouts for homing (default: 45s) and movement commands (default: 30s)
 
 ## Hardware Requirements
 
@@ -38,8 +42,15 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 
 - Python 3.7 or higher
 - Raspberry Pi OS (required - not compatible with Windows/macOS)
+- System dependencies (installed via apt):
+  - `python3-libcamera` (required for picamera2)
+  - `libcap-dev` (required to build python-prctl)
+  - `python3-dev` (required to build Python packages)
+  - `build-essential` (required to build Python packages)
 - Required Python packages (see `requirements.txt`)
 - RPi.GPIO library (installed via system package manager on Raspberry Pi)
+
+**Note**: The setup script automatically installs system dependencies. The virtual environment is created with `--system-site-packages` to access system-installed packages like `python3-libcamera`.
 
 ## Installation
 
@@ -61,25 +72,35 @@ chmod +x setup.sh
 
 3. The setup script will:
    - Check for Python 3.x
-   - Create a virtual environment in `venv/`
-   - Install all required dependencies
+   - Check for and install required system dependencies (`python3-libcamera`, `libcap-dev`, `python3-dev`, `build-essential`)
+   - Create a virtual environment in `venv/` with system site packages enabled (to access system-installed packages like `python3-libcamera`)
+   - Install all required Python dependencies
    - Create configuration directories
    - Set up template configuration files
 
 ### Manual Installation
 
-1. Create a virtual environment:
+1. Install system dependencies:
 ```bash
-python3 -m venv venv
+sudo apt-get update
+sudo apt-get install -y python3-libcamera libcap-dev python3-dev build-essential
+```
+
+2. Create a virtual environment with system site packages (required to access `python3-libcamera`):
+```bash
+python3 -m venv --system-site-packages venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-2. Install dependencies:
+**Note**: The `--system-site-packages` flag is required so the virtual environment can access system-installed packages like `python3-libcamera`, which is needed by `picamera2`.
+
+3. Install dependencies:
 ```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-3. Create configuration directories:
+4. Create configuration directories:
 ```bash
 mkdir -p config/motion_configs
 mkdir -p config/templates
@@ -122,7 +143,8 @@ python experiment.py
 3. Use the controls window to:
    - Navigate to well positions using directional buttons
    - Adjust step size (0.1 mm, 1.0 mm, or 10.0 mm)
-   - Home the printer using the "Home" button
+   - **Go to Coordinate**: Enter X, Y, Z coordinates and click "Go" to move directly to that position
+   - Home the printer using the "Home" button (timeout: 45 seconds, configurable)
    - Monitor position and preview FPS
 
 4. Use the camera preview window to visually align with wells
@@ -252,6 +274,42 @@ xlabel,ylabel,xval,yval,zval
 
 Videos or images are saved to the specified save folder with the configured filename scheme.
 
+## Configuration
+
+### Configurable Settings
+
+The system uses `config/default_config.json` for configuration. Key settings include:
+
+#### Printer Settings
+
+- **Timeouts**:
+  - `home_timeout`: Timeout for homing command (default: 45.0 seconds)
+  - `movement_wait_timeout`: Timeout for movement completion (default: 30.0 seconds)
+  - Can be overridden via environment variables: `ROBOCAM_HOME_TIMEOUT`, `ROBOCAM_MOVEMENT_WAIT_TIMEOUT`
+- **Baudrate**: Serial communication baudrate (default: 115200)
+- **Connection Settings**: Retry delays and max retries
+
+#### Camera Settings
+
+- **Preview Resolution**: Default 800x600 (configurable via `hardware.camera.preview_resolution`)
+- **Frame Rate**: Default 30.0 FPS (configurable via `hardware.camera.default_fps`)
+- **Preview Backend**: Auto-selected (configurable via `hardware.camera.preview_backend`)
+
+#### Laser Settings
+
+- **GPIO Pin**: Default GPIO 21 (configurable via `hardware.laser.gpio_pin`)
+- **Default State**: OFF (configurable via `hardware.laser.default_state`)
+
+### Environment Variable Overrides
+
+You can override configuration values using environment variables:
+
+```bash
+export ROBOCAM_HOME_TIMEOUT=60.0
+export ROBOCAM_MOVEMENT_WAIT_TIMEOUT=45.0
+export ROBOCAM_BAUDRATE=9600
+```
+
 ## Troubleshooting
 
 ### Installation Issues
@@ -273,8 +331,10 @@ Videos or images are saved to the specified save folder with the configured file
 - **Solution**:
   - Install the system package: `sudo apt-get install -y python3-libcamera`
   - This is a system-level package required by picamera2, not installable via pip
+  - The virtual environment must be created with `--system-site-packages` to access system packages
+  - If your venv was created without this flag, recreate it: `rm -rf venv && python3 -m venv --system-site-packages venv`
   - The updated setup script now checks for and installs this automatically
-  - Or use the fix script: `chmod +x fix_dependencies.sh && ./fix_dependencies.sh`
+  - Or use the fix script: `chmod +x fix_dependencies.sh && ./fix_dependencies.sh` (automatically fixes venv)
 
 ### Serial Port Connection Issues
 
@@ -328,7 +388,7 @@ Sets up the virtual environment and installs dependencies:
 ./setup.sh
 ```
 
-The script will automatically detect and install required system dependencies (libcap-dev, python3-dev, build-essential) if they are missing.
+The script will automatically detect and install required system dependencies (`python3-libcamera`, `libcap-dev`, `python3-dev`, `build-essential`) if they are missing. It creates the virtual environment with `--system-site-packages` to access system-installed packages like `python3-libcamera`.
 
 ### fix_dependencies.sh
 
