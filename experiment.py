@@ -110,6 +110,8 @@ class ExperimentWindow:
         self.recording: bool = False
         self.seq: List[Tuple[float, float, str, str]] = []
         self.z_val: float = 0.0
+        self.recording_flash_state: bool = False
+        self.recording_flash_job: Optional[str] = None
         # Motion configuration
         self.motion_config: Optional[Dict[str, Any]] = None
         self.preliminary_feedrate: float = 3000.0
@@ -137,7 +139,7 @@ class ExperimentWindow:
         """
         if not self.seq:
             return
-        folder: str = self.folder_ent.get().strip() or os.path.expanduser("~")
+        folder: str = self.folder_ent.get().strip() or "/output/filescheme/files"
         os.makedirs(folder, exist_ok=True)
         csv_path: str = os.path.join(folder, CSV_NAME)
         with open(csv_path, "w", newline="") as f:
@@ -214,17 +216,13 @@ class ExperimentWindow:
         self.checkbox_instructions_label.grid_remove()  # Hidden by default
 
         tk.Label(w, text="Times (Off,On,Off sec):").grid(row=2, column=0, columnspan=2)
-        self.times = tk.Text(w, height=4, width=30)
+        self.times = tk.Text(w, height=4, width=30, wrap=tk.WORD)
         self.times.grid(row=3, column=0, columnspan=2, padx=5, pady=5)
 
         # Initialize times field (empty by default)
         self.times.insert(tk.END, "30, 0, 0\n")
 
-        # Z value, pattern, filename, folder
-        tk.Label(w, text="Z Value:").grid(row=2, column=2)
-        self.z_ent = tk.Entry(w); self.z_ent.grid(row=3, column=2, padx=5)
-        self.z_ent.insert(0, "0.0")  # Will be set from calibration
-
+        # Pattern, filename, folder
         tk.Label(w, text="Pattern:").grid(row=4, column=0)
         self.pattern_var = tk.StringVar(value="snake")
         tk.OptionMenu(w, self.pattern_var, "snake", "raster").grid(row=4, column=1)
@@ -232,12 +230,12 @@ class ExperimentWindow:
         tk.Label(w, text="Filename Scheme:").grid(row=5, column=0)
         self.scheme_ent = tk.Entry(w, width=40)
         self.scheme_ent.insert(0, DEFAULT_SCHEME)
-        self.scheme_ent.grid(row=5, column=1, columnspan=2, pady=5)
+        self.scheme_ent.grid(row=5, column=1, columnspan=2, pady=5, sticky="ew")
 
         tk.Label(w, text="Save Folder:").grid(row=6, column=0)
         self.folder_ent = tk.Entry(w, width=40)
-        self.folder_ent.insert(0, os.path.expanduser("~"))
-        self.folder_ent.grid(row=6, column=1)
+        self.folder_ent.insert(0, "/output/filescheme/files")
+        self.folder_ent.grid(row=6, column=1, sticky="ew")
         tk.Button(w, text="Browse…", command=lambda: (
             self.folder_ent.delete(0, tk.END),
             self.folder_ent.insert(0, filedialog.askdirectory())
@@ -274,38 +272,41 @@ class ExperimentWindow:
         motion_config_menu = tk.OptionMenu(w, self.motion_config_var, *motion_configs)
         motion_config_menu.grid(row=12, column=1, padx=5, pady=5)
         
-        tk.Label(w, text="Feedrate Override (mm/min, optional):").grid(row=13, column=0)
-        self.feedrate_ent = tk.Entry(w); self.feedrate_ent.grid(row=13, column=1)
-        self.feedrate_ent.insert(0, "")
-        
         # Motion settings display
-        tk.Label(w, text="Motion Settings:").grid(row=14, column=0, sticky="w", padx=5, pady=5)
+        tk.Label(w, text="Motion Settings:").grid(row=13, column=0, sticky="w", padx=5, pady=5)
         self.motion_info_label = tk.Label(w, text="Load config to see settings", fg="gray", font=("Arial", 9))
-        self.motion_info_label.grid(row=15, column=0, columnspan=2, sticky="w", padx=5)
+        self.motion_info_label.grid(row=14, column=0, columnspan=2, sticky="w", padx=5)
 
         # Experiment settings export/import
         exp_settings_frame = tk.Frame(w)
-        exp_settings_frame.grid(row=16, column=0, columnspan=3, padx=5, pady=5)
+        exp_settings_frame.grid(row=15, column=0, columnspan=3, padx=5, pady=5)
         tk.Button(exp_settings_frame, text="Export Experiment Settings", command=self.export_experiment_settings).pack(side=tk.LEFT, padx=5)
         tk.Button(exp_settings_frame, text="Load Experiment Settings", command=self.load_experiment_settings).pack(side=tk.LEFT, padx=5)
 
         # Status & controls
-        tk.Label(w, text="Status:").grid(row=17, column=0, sticky="w")
+        tk.Label(w, text="Status:").grid(row=16, column=0, sticky="w")
         self.status_lbl = tk.Label(w, text="Idle")
-        self.status_lbl.grid(row=17, column=1, columnspan=2, sticky="w")
+        self.status_lbl.grid(row=16, column=1, columnspan=2, sticky="w")
+
+        # Recording indicator button (flashing when recording)
+        self.recording_btn = tk.Button(w, text="● REC", bg="gray", state="disabled", relief="flat", width=8)
+        self.recording_btn.grid(row=16, column=3, padx=5, pady=5)
 
         self.run_btn = tk.Button(w, text="Run", command=self.start)
-        self.run_btn.grid(row=18, column=0, padx=5, pady=5)
-        tk.Button(w, text="Pause", command=self.pause).grid(row=18, column=1, padx=5, pady=5)
-        tk.Button(w, text="Stop",  command=self.stop).grid(row=18, column=2, padx=5, pady=5)
+        self.run_btn.grid(row=17, column=0, padx=5, pady=5)
+        tk.Button(w, text="Pause", command=self.pause).grid(row=17, column=1, padx=5, pady=5)
+        tk.Button(w, text="Stop",  command=self.stop).grid(row=17, column=2, padx=5, pady=5)
 
         # Timers
-        tk.Label(w, text="Duration:").grid(row=19, column=0, sticky="e")
-        self.duration_lbl = tk.Label(w, text="00:00:00"); self.duration_lbl.grid(row=19, column=1)
-        tk.Label(w, text="Elapsed:").grid(row=20, column=0, sticky="e")
-        self.elapsed_lbl = tk.Label(w, text="00:00:00");   self.elapsed_lbl.grid(row=20, column=1)
-        tk.Label(w, text="Remaining:").grid(row=21, column=0, sticky="e")
-        self.remaining_lbl = tk.Label(w, text="00:00:00"); self.remaining_lbl.grid(row=21, column=1)
+        tk.Label(w, text="Duration:").grid(row=18, column=0, sticky="e")
+        self.duration_lbl = tk.Label(w, text="00:00:00"); self.duration_lbl.grid(row=18, column=1)
+        tk.Label(w, text="Elapsed:").grid(row=19, column=0, sticky="e")
+        self.elapsed_lbl = tk.Label(w, text="00:00:00");   self.elapsed_lbl.grid(row=19, column=1)
+        tk.Label(w, text="Remaining:").grid(row=20, column=0, sticky="e")
+        self.remaining_lbl = tk.Label(w, text="00:00:00"); self.remaining_lbl.grid(row=20, column=1)
+        
+        # Prevent window resizing when entry fields expand
+        w.resizable(False, False)
         
         # Load and display motion config on selection change
         def update_motion_info(*args):
@@ -334,7 +335,7 @@ class ExperimentWindow:
 
         # Live example filename
         def upd(e=None):
-            fld    = self.folder_ent.get() or os.path.expanduser("~")
+            fld    = self.folder_ent.get() or "/output/filescheme/files"
             sch    = self.scheme_ent.get() or DEFAULT_SCHEME
             ext_map = {"H264": ".h264", "MJPEG": ".mjpeg", "JPEG": ".jpeg"}
             ext    = ext_map.get(self.export_var.get(), ".h264")
@@ -625,7 +626,6 @@ class ExperimentWindow:
                 "export_type": self.export_var.get(),
                 "quality": int(self.quality_ent.get().strip()),
                 "motion_config_file": self.motion_config_var.get(),
-                "feedrate_override": self.feedrate_ent.get().strip(),
                 "filename_scheme": self.scheme_ent.get().strip(),
                 "save_folder": self.folder_ent.get().strip(),
                 "pattern": self.pattern_var.get()
@@ -710,14 +710,12 @@ class ExperimentWindow:
             self.quality_ent.insert(0, str(settings.get("quality", 85)))
             
             self.motion_config_var.set(settings.get("motion_config_file", "default.json"))
-            self.feedrate_ent.delete(0, tk.END)
-            self.feedrate_ent.insert(0, settings.get("feedrate_override", ""))
             
             self.scheme_ent.delete(0, tk.END)
             self.scheme_ent.insert(0, settings.get("filename_scheme", DEFAULT_SCHEME))
             
             self.folder_ent.delete(0, tk.END)
-            self.folder_ent.insert(0, settings.get("save_folder", os.path.expanduser("~")))
+            self.folder_ent.insert(0, settings.get("save_folder", "/output/filescheme/files"))
             
             self.pattern_var.set(settings.get("pattern", "snake"))
             
@@ -769,8 +767,7 @@ class ExperimentWindow:
             off_t, on_t, off2 = map(float, toks)
             
             # Get other settings
-            self.feedrate = float(self.feedrate_ent.get().strip()) if self.feedrate_ent.get().strip() else 100.0
-            folder = self.folder_ent.get().strip() or os.path.expanduser("~")
+            folder = self.folder_ent.get().strip() or "/output/filescheme/files"
             os.makedirs(folder, exist_ok=True)
             scheme = self.scheme_ent.get().strip() or DEFAULT_SCHEME
             res_x = int(self.res_x_ent.get().strip())
@@ -900,7 +897,9 @@ class ExperimentWindow:
                 logger.warning(f"Could not set preliminary acceleration: {e}")
             
             try:
+                self.status_lbl.config(text="Homing printer...")
                 self.robocam.home()
+                self.status_lbl.config(text="Homing complete")
             except Exception as e:
                 logger.error(f"Homing failed: {e}")
                 self.status_lbl.config(text=f"Error: Homing failed - {e}")
@@ -914,18 +913,18 @@ class ExperimentWindow:
             except Exception as e:
                 logger.warning(f"Could not set between-wells acceleration: {e}")
             
-            # Use feedrate override if provided, otherwise use between-wells feedrate
-            use_feedrate = float(self.feedrate_ent.get().strip()) if self.feedrate_ent.get().strip() else self.between_wells_feedrate
+            # Use between-wells feedrate from motion config
+            use_feedrate = self.between_wells_feedrate
             
             for x_val, y_val, x_lbl, y_lbl in self.seq:
                 if not self.running: break
-                self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Moving to ({x_val:.2f},{y_val:.2f})")
+                self.status_lbl.config(text=f"Moving to well {y_lbl}{x_lbl} at ({x_val:.2f}, {y_val:.2f})")
                 try:
                     # Use Z value from calibration (stored in self.z_val)
                     self.robocam.move_absolute(X=x_val, Y=y_val, Z=self.z_val, speed=use_feedrate)
                     time.sleep(1)
                 except Exception as e:
-                    self.status_lbl.config(text=f"Error: Movement failed - {e}")
+                    self.status_lbl.config(text=f"Error: Movement to {y_lbl}{x_lbl} failed - {e}")
                     self.running = False
                     break
 
@@ -940,31 +939,33 @@ class ExperimentWindow:
 
                 if export == "JPEG":
                     # single JPEG still
+                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Capturing JPEG...")
                     self.picam2.capture_file(path, format="jpeg") #, q=quality)
-                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Captured JPEG")
+                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: JPEG captured")
                 else:
                     # video (H264 or MJPEG)
                     self.picam2.start_recording(self.encoder, path)
                     self.recording = True
+                    self.start_recording_flash()
 
                     # OFF
                     self.laser.switch(0); self.laser_on = False
                     t0 = time.time()
-                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: OFF for {off_t}s")
+                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - OFF for {off_t}s")
                     while time.time() - t0 < off_t and self.running:
                         time.sleep(0.05 if not self.paused else 0.1)
 
                     # ON
                     self.laser.switch(1); self.laser_on = True
                     t1 = time.time()
-                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: ON for {on_t}s")
+                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - ON for {on_t}s")
                     while time.time() - t1 < on_t and self.running:
                         time.sleep(0.05 if not self.paused else 0.1)
 
                     # OFF2
                     self.laser.switch(0); self.laser_on = False
                     t2 = time.time()
-                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: OFF for {off2}s")
+                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - OFF for {off2}s")
                     while time.time() - t2 < off2 and self.running:
                         time.sleep(0.05 if not self.paused else 0.1)
 
@@ -973,9 +974,13 @@ class ExperimentWindow:
                     except:
                         pass
                     self.recording = False
+                    self.stop_recording_flash()
                     self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Done")
 
             self.running = False
+            if self.recording:
+                self.stop_recording_flash()
+            self.status_lbl.config(text="Experiment completed")
 
         self.thread = threading.Thread(target=run_loop, daemon=True)
         self.thread.start()
@@ -990,6 +995,34 @@ class ExperimentWindow:
         if self.running:
             self.paused = not self.paused
 
+    def start_recording_flash(self) -> None:
+        """Start flashing the recording button."""
+        if not hasattr(self, 'recording_btn'):
+            return
+        self.recording_btn.config(state="normal", bg="red", text="● REC")
+        self.recording_flash_state = True
+        self.flash_recording_button()
+    
+    def stop_recording_flash(self) -> None:
+        """Stop flashing the recording button."""
+        if not hasattr(self, 'recording_btn'):
+            return
+        self.recording_flash_state = False
+        if self.recording_flash_job:
+            self.parent.after_cancel(self.recording_flash_job)
+            self.recording_flash_job = None
+        self.recording_btn.config(state="disabled", bg="gray", text="● REC")
+    
+    def flash_recording_button(self) -> None:
+        """Flash the recording button between red and dark red."""
+        if not self.recording_flash_state or not hasattr(self, 'recording_btn'):
+            return
+        if self.recording_btn.cget("bg") == "red":
+            self.recording_btn.config(bg="darkred")
+        else:
+            self.recording_btn.config(bg="red")
+        self.recording_flash_job = self.parent.after(500, self.flash_recording_button)
+    
     def stop(self) -> None:
         """
         Stop the experiment.
@@ -1010,6 +1043,7 @@ class ExperimentWindow:
             except Exception:
                 pass
             self.recording = False
+            self.stop_recording_flash()
 
 if __name__ == "__main__":
     """
