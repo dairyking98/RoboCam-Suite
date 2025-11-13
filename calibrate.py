@@ -79,6 +79,9 @@ class CameraApp:
         self.picam2.configure(self.picam2_config)
         
         # Set up FPS tracking
+        # Note: With hardware-accelerated preview (DRM/QTGL), post_callback may not
+        # be called for every frame, so FPS reading may be lower than actual camera FPS.
+        # The actual preview display FPS may be higher than what's reported here.
         self.fps_tracker: FPSTracker = FPSTracker()
         
         def frame_callback(request):

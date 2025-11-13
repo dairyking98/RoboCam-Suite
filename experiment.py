@@ -121,6 +121,8 @@ class ExperimentWindow:
         self.calibration_file: Optional[str] = None
         self.well_checkboxes: Dict[str, tk.BooleanVar] = {}
         self.checkbox_frame: Optional[tk.Frame] = None
+        self.checkbox_widgets: Dict[str, tk.Checkbutton] = {}
+        self.label_to_row_col: Dict[str, Tuple[int, int]] = {}
 
 
     def save_csv(self) -> None:
@@ -151,20 +153,34 @@ class ExperimentWindow:
         
         Creates or raises the experiment configuration window with all
         settings fields. Loads saved configuration if available.
+        If called from __main__, uses the root window directly.
         """
+        # If window already exists, just raise it
         if self.window and self.window.winfo_exists():
             self.window.lift()
             return
 
-        w   = tk.Toplevel(self.parent)
-        w.title("Experiment")
-        self.window = w
+        # Use root window directly if this is the main window (no existing window and parent is empty)
+        # Otherwise create a Toplevel for embedded use
+        if (self.window is None and isinstance(self.parent, tk.Tk) and 
+            len(self.parent.winfo_children()) == 0):
+            w = self.parent
+            w.title("Experiment")
+            self.window = w
+        else:
+            w = tk.Toplevel(self.parent)
+            w.title("Experiment")
+            self.window = w
 
         def on_close():
             self.stop()
             self.save_csv()
-            w.destroy()
-            self.window = None
+            if isinstance(w, tk.Toplevel):
+                w.destroy()
+                self.window = None
+            else:
+                # If using root window, quit the application
+                self.parent.quit()
         w.protocol("WM_DELETE_WINDOW", on_close)
 
         # Calibration loading section
@@ -187,28 +203,15 @@ class ExperimentWindow:
         self.calibration_status_label = tk.Label(w, text="No calibration loaded", fg="red", font=("Arial", 9))
         self.calibration_status_label.grid(row=0, column=3, sticky="w", padx=5)
         
-        # Manual coordinate entry (hidden when calibration loaded)
-        self.manual_frame = tk.LabelFrame(w, text="Manual Coordinate Entry", padx=5, pady=5)
-        self.manual_frame.grid(row=1, column=0, columnspan=4, padx=5, pady=5, sticky="ew")
-        
-        tk.Label(self.manual_frame, text="X Values (comma/newline):").grid(row=0, column=0)
-        self.x_vals = tk.Text(self.manual_frame, height=4, width=30)
-        self.x_vals.grid(row=1, column=0, padx=5, pady=5)
-        tk.Label(self.manual_frame, text="X Labels:").grid(row=0, column=1)
-        self.x_lbls = tk.Text(self.manual_frame, height=4, width=30)
-        self.x_lbls.grid(row=1, column=1, padx=5, pady=5)
-
-        tk.Label(self.manual_frame, text="Y Values (comma/newline):").grid(row=2, column=0)
-        self.y_vals = tk.Text(self.manual_frame, height=4, width=30)
-        self.y_vals.grid(row=3, column=0, padx=5, pady=5)
-        tk.Label(self.manual_frame, text="Y Labels:").grid(row=2, column=1)
-        self.y_lbls = tk.Text(self.manual_frame, height=4, width=30)
-        self.y_lbls.grid(row=3, column=1, padx=5, pady=5)
-        
         # Checkbox grid frame (shown when calibration loaded)
         self.checkbox_frame_container = tk.LabelFrame(w, text="Select Wells", padx=5, pady=5)
         self.checkbox_frame_container.grid(row=1, column=0, columnspan=4, padx=5, pady=5, sticky="ew")
         self.checkbox_frame_container.grid_remove()  # Hidden by default
+        
+        # Instructions label (shown when calibration loaded)
+        self.checkbox_instructions_label = tk.Label(w, text="", fg="gray", font=("Arial", 8), justify="left")
+        self.checkbox_instructions_label.grid(row=1, column=4, sticky="nw", padx=5, pady=5)
+        self.checkbox_instructions_label.grid_remove()  # Hidden by default
 
         tk.Label(w, text="Times (Off,On,Off sec):").grid(row=2, column=0, columnspan=2)
         self.times = tk.Text(w, height=4, width=30)
@@ -335,10 +338,19 @@ class ExperimentWindow:
             sch    = self.scheme_ent.get() or DEFAULT_SCHEME
             ext_map = {"H264": ".h264", "MJPEG": ".mjpeg", "JPEG": ".jpeg"}
             ext    = ext_map.get(self.export_var.get(), ".h264")
-            xl     = [v for v in re.split(r"[\s,]+", self.x_lbls.get("1.0",tk.END).strip()) if v]
-            yl     = [v for v in re.split(r"[\s,]+", self.y_lbls.get("1.0",tk.END).strip()) if v]
-            x0     = xl[0] if xl else "{x}"
-            y0     = yl[0] if yl else "{y}"
+            # Use calibration labels if available, otherwise use placeholders
+            if self.loaded_calibration and self.loaded_calibration.get("labels"):
+                labels = self.loaded_calibration.get("labels", [])
+                if labels:
+                    first_label = labels[0]
+                    x0 = first_label[1:] if len(first_label) > 1 else "1"  # Column number
+                    y0 = first_label[0] if len(first_label) > 0 else "A"  # Row letter
+                else:
+                    x0 = "{x}"
+                    y0 = "{y}"
+            else:
+                x0 = "{x}"
+                y0 = "{y}"
             ts     = time.strftime("%H%M%S")
             ds     = time.strftime("%b%-d")
             try:
@@ -347,14 +359,19 @@ class ExperimentWindow:
                 fn = sch + ext
             self.status_lbl.config(text=f"Example: {os.path.join(fld,fn)}")
 
-        for wgt in (self.scheme_ent, self.folder_ent, self.x_lbls, self.y_lbls,
+        for wgt in (self.scheme_ent, self.folder_ent,
                     self.res_x_ent, self.res_y_ent, self.fps_ent):
             wgt.bind("<KeyRelease>", upd)
         self.export_var.trace_add("write", lambda *a: upd())
+        # Also update when calibration changes
+        if hasattr(self, 'calibration_var'):
+            self.calibration_var.trace_add("write", lambda *a: upd())
         upd()
 
-        w.transient(self.parent)
-        w.grab_set()
+        # Only set transient and grab if it's a Toplevel window
+        if isinstance(w, tk.Toplevel):
+            w.transient(self.parent)
+            w.grab_set()
     
     def refresh_calibrations(self) -> None:
         """Refresh the list of available calibrations."""
@@ -386,9 +403,9 @@ class ExperimentWindow:
             self.loaded_calibration = None
             self.calibration_file = None
             self.calibration_status_label.config(text="No calibration loaded", fg="red")
-            # Show manual entry, hide checkbox grid
-            self.manual_frame.grid()
+            # Hide checkbox grid
             self.checkbox_frame_container.grid_remove()
+            self.checkbox_instructions_label.grid_remove()
             self.update_run_button_state()
             return
         
@@ -422,10 +439,10 @@ class ExperimentWindow:
                 fg="green"
             )
             
-            # Hide manual entry, show checkbox grid
-            self.manual_frame.grid_remove()
+            # Show checkbox grid
             self.create_checkbox_grid()
             self.checkbox_frame_container.grid()
+            self.checkbox_instructions_label.grid()
             
             self.update_run_button_state()
             
@@ -444,11 +461,20 @@ class ExperimentWindow:
         if not self.loaded_calibration:
             return
         
-        # Clear existing checkboxes
-        if self.checkbox_frame:
-            self.checkbox_frame.destroy()
+        # Clear existing checkboxes and button frame
+        for widget in self.checkbox_frame_container.winfo_children():
+            widget.destroy()
         
         self.well_checkboxes = {}
+        self.checkbox_widgets = {}  # Store checkbox widgets for shift/ctrl click
+        self.label_to_row_col = {}  # Map label to (row, col) for shift/ctrl click
+        
+        # Create button frame for check all/uncheck all
+        button_frame = tk.Frame(self.checkbox_frame_container)
+        button_frame.pack(fill="x", padx=5, pady=5)
+        
+        tk.Button(button_frame, text="Check All", command=self.check_all_wells).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Uncheck All", command=self.uncheck_all_wells).pack(side=tk.LEFT, padx=5)
         
         # Create scrollable frame
         canvas = tk.Canvas(self.checkbox_frame_container)
@@ -478,7 +504,9 @@ class ExperimentWindow:
             
             row = i // x_qty
             col = i % x_qty
+            self.label_to_row_col[label] = (row, col)
             
+            # Create checkbox with custom click handler
             checkbox = tk.Checkbutton(
                 self.checkbox_frame,
                 text=label,
@@ -487,6 +515,63 @@ class ExperimentWindow:
                 command=self.update_run_button_state  # Update state when toggled
             )
             checkbox.grid(row=row, column=col, padx=2, pady=2, sticky="w")
+            self.checkbox_widgets[label] = checkbox
+            
+            # Bind shift-click and control-click
+            def make_click_handler(lbl, r, c):
+                def on_click(event):
+                    # Check if shift or control is pressed
+                    # Note: event.state uses bit flags: Shift=0x1, Control=0x4
+                    if event.state & 0x1:  # Shift key pressed
+                        # Prevent default toggle by toggling back, then check all in row
+                        var.set(not var.get())  # Undo the default toggle
+                        self.check_row(r)
+                        return "break"  # Prevent further event propagation
+                    elif event.state & 0x4:  # Control key pressed
+                        # Prevent default toggle by toggling back, then check all in column
+                        var.set(not var.get())  # Undo the default toggle
+                        self.check_column(c)
+                        return "break"  # Prevent further event propagation
+                return on_click
+            
+            checkbox.bind("<Button-1>", make_click_handler(label, row, col), add="+")
+        
+        # Update instructions
+        instructions = (
+            "Checkbox Controls:\n"
+            "• Click: Toggle single well\n"
+            "• Shift+Click: Check all in same row\n"
+            "• Ctrl+Click: Check all in same column\n"
+            "• Use buttons above to check/uncheck all"
+        )
+        self.checkbox_instructions_label.config(text=instructions)
+    
+    def check_all_wells(self) -> None:
+        """Check all wells."""
+        for var in self.well_checkboxes.values():
+            var.set(True)
+        self.update_run_button_state()
+    
+    def uncheck_all_wells(self) -> None:
+        """Uncheck all wells."""
+        for var in self.well_checkboxes.values():
+            var.set(False)
+        self.update_run_button_state()
+    
+    def check_row(self, row: int) -> None:
+        """Check all wells in the specified row."""
+        x_qty = self.loaded_calibration.get("x_quantity", 0)
+        for label, (r, c) in self.label_to_row_col.items():
+            if r == row:
+                self.well_checkboxes[label].set(True)
+        self.update_run_button_state()
+    
+    def check_column(self, col: int) -> None:
+        """Check all wells in the specified column."""
+        for label, (r, c) in self.label_to_row_col.items():
+            if c == col:
+                self.well_checkboxes[label].set(True)
+        self.update_run_button_state()
     
     def update_run_button_state(self) -> None:
         """Update Run button state based on calibration and well selection."""
@@ -930,8 +1015,7 @@ if __name__ == "__main__":
     """
     Main entry point for experiment application.
     
-    Creates main window with "Open Experiment" button to launch
-    experiment configuration and execution interface.
+    Opens the experiment configuration and execution interface directly.
     """
     root: tk.Tk = tk.Tk()
     picam2: Picamera2 = Picamera2()
@@ -940,5 +1024,5 @@ if __name__ == "__main__":
     baudrate = config.get("hardware.printer.baudrate", 115200)
     robocam: RoboCam = RoboCam(baudrate=baudrate, config=config)
     app: ExperimentWindow = ExperimentWindow(root, picam2, robocam)
-    tk.Button(root, text="Open Experiment", command=app.open).pack(padx=20, pady=20)
+    app.open()  # Open experiment window directly
     root.mainloop()

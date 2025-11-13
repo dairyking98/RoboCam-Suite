@@ -6,8 +6,8 @@
     "acceleration": 500
   },
   "between_wells": {
-    "feedrate": 5000,
-    "acceleration": 1000
+    "feedrate": 1200,
+    "acceleration": 300
   }
 }
 
