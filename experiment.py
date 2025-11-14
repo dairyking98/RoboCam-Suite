@@ -702,26 +702,85 @@ class ExperimentWindow:
             "• Ctrl+Click: Smart fill/unfill column based on state\n"
             "• Use buttons above to check/uncheck all"
         )
-        tk.Label(instructions_frame, text=instructions, fg="gray", font=("Arial", 8), justify="left").pack(anchor="w")
+        instructions_label = tk.Label(instructions_frame, text=instructions, fg="gray", font=("Arial", 8), justify="left")
+        instructions_label.pack(anchor="w")
         
-        # Set window size to show all checkboxes (with some padding)
-        # Calculate approximate size needed
-        num_cols = x_qty
-        num_rows = (len(labels) + x_qty - 1) // x_qty if x_qty > 0 else 1
+        # Force update to get actual widget sizes
+        self.checkbox_window.update_idletasks()
         
-        # Estimate checkbox size (approximately 50x25 pixels each)
-        checkbox_width = 50
-        checkbox_height = 25
-        padding = 50
+        # Calculate actual size needed based on widget requirements
+        # Get checkbox frame required size (this includes all checkboxes)
+        checkbox_frame_width = max(self.checkbox_frame.winfo_reqwidth(), 1)
+        checkbox_frame_height = max(self.checkbox_frame.winfo_reqheight(), 1)
         
-        window_width = min(num_cols * checkbox_width + padding + 20, 800)  # Max 800px wide
-        window_height = min(num_rows * checkbox_height + padding + 150, 600)  # Max 600px tall
+        # Get sizes of other components
+        button_frame_height = max(button_frame.winfo_reqheight(), 1)
+        instructions_height = max(instructions_label.winfo_reqheight(), 1)
         
-        self.checkbox_window.geometry(f"{window_width}x{window_height}")
+        # Account for padding and margins
+        window_padding_x = 20  # Main frame horizontal padding (padx * 2)
+        window_padding_y = 20  # Main frame vertical padding (pady * 2)
+        frame_spacing = 20  # Space between frames (pady values combined)
+        scrollbar_width = 20  # Vertical scrollbar width
+        horizontal_scrollbar_height = 20  # Horizontal scrollbar height
         
-        # Update canvas scroll region after widgets are created
+        # Determine maximum reasonable display size (to avoid windows that are too large)
+        max_display_width = 1000  # Maximum width before horizontal scrolling
+        max_display_height = 700  # Maximum height before vertical scrolling
+        
+        # Calculate if scrolling will be needed
+        needs_horizontal_scroll = checkbox_frame_width > max_display_width
+        needs_vertical_scroll = checkbox_frame_height > max_display_height
+        
+        # Calculate required window width
+        if needs_horizontal_scroll:
+            # Use max display width + scrollbar
+            required_width = max_display_width + scrollbar_width + window_padding_x * 2
+        else:
+            # Use actual checkbox width + scrollbar space (always reserve space for scrollbar)
+            required_width = checkbox_frame_width + scrollbar_width + window_padding_x * 2
+        
+        # Calculate required window height
+        # Include: button frame + checkbox area (or max) + instructions + all spacing
+        checkbox_display_height = min(checkbox_frame_height, max_display_height) if needs_vertical_scroll else checkbox_frame_height
+        required_height = (
+            button_frame_height +
+            checkbox_display_height +
+            instructions_height +
+            frame_spacing * 3 +  # Space: after buttons, before instructions, plus margins
+            window_padding_y * 2
+        )
+        
+        # Add horizontal scrollbar height if needed
+        if needs_horizontal_scroll:
+            required_height += horizontal_scrollbar_height
+        
+        # Ensure minimum window size for usability
+        min_width = 400
+        min_height = 300
+        required_width = max(int(required_width), min_width)
+        required_height = max(int(required_height), min_height)
+        
+        # Set window size
+        self.checkbox_window.geometry(f"{required_width}x{required_height}")
+        
+        # Update canvas scroll region after widgets are created and window is sized
         self.checkbox_window.update_idletasks()
         canvas.configure(scrollregion=canvas.bbox("all"))
+        
+        # Center the window on screen if possible
+        try:
+            self.checkbox_window.update_idletasks()
+            screen_width = self.checkbox_window.winfo_screenwidth()
+            screen_height = self.checkbox_window.winfo_screenheight()
+            window_width = self.checkbox_window.winfo_width()
+            window_height = self.checkbox_window.winfo_height()
+            # Center on screen
+            x = max(0, (screen_width - window_width) // 2)
+            y = max(0, (screen_height - window_height) // 2)
+            self.checkbox_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        except:
+            pass  # If positioning fails, just use default position
     
     def check_all_wells(self) -> None:
         """Check all wells."""
