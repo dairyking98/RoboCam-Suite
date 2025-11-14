@@ -103,6 +103,12 @@ The preview application enables users to:
 ### Starting the Application
 
 ```bash
+./start_preview.sh
+```
+
+Or manually:
+
+```bash
 source venv/bin/activate
 python preview.py
 ```
@@ -396,7 +402,8 @@ After creating a new calibration in calibrate.py:
 
 ```bash
 # Start preview
-python preview.py
+./start_preview.sh
+# Or: python preview.py
 
 # Load calibration
 # Select "Calibration File" → Load → Select "new_plate.json"
@@ -416,7 +423,8 @@ Before running an experiment:
 
 ```bash
 # Start preview
-python preview.py
+./start_preview.sh
+# Or: python preview.py
 
 # Load experiment settings
 # Select "Experiment Save File" → Load → Select "experiment_1.json"
@@ -435,7 +443,8 @@ Quick check of a few wells:
 
 ```bash
 # Start preview
-python preview.py
+./start_preview.sh
+# Or: python preview.py
 
 # Load calibration
 # Select "Calibration File" → Load → Select calibration

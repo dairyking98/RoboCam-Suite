@@ -200,6 +200,8 @@ The preview application (`preview.py`) allows you to sequentially navigate throu
 ### Starting Preview
 
 ```bash
+./start_preview.sh
+# Or manually:
 source venv/bin/activate
 python preview.py
 # Or: python preview.py --backend auto

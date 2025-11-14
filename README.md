@@ -122,6 +122,8 @@ python calibrate.py
 ### Starting the Preview Application
 
 ```bash
+./start_preview.sh
+# Or manually:
 source venv/bin/activate
 python preview.py
 # Or with backend selection:
@@ -450,6 +452,13 @@ Launches the calibration application:
 ./start_calibrate.sh
 ```
 
+### start_preview.sh
+
+Launches the preview application:
+```bash
+./start_preview.sh
+```
+
 ### start_experiment.sh
 
 Launches the experiment application:
@@ -466,6 +475,7 @@ RoboCam-Suite/
 ├── experiment.py             # Experiment automation GUI
 ├── setup.sh                  # Setup script
 ├── start_calibrate.sh        # Calibration launcher
+├── start_preview.sh          # Preview launcher
 ├── start_experiment.sh       # Experiment launcher
 ├── requirements.txt          # Python dependencies
 ├── robocam/                  # Core modules
