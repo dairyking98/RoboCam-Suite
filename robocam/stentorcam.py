@@ -192,13 +192,28 @@ class WellPlatePathGenerator:
         x4, y4, z4 = lower_right_loc
         
         # Generate grid of XYZ locations using bilinear interpolation
+        # This properly accounts for rotation and skew by interpolating along both axes together
         for i in range(depth):
             for j in range(width):
-                # Interpolate X, Y, Z positions
-                x = x1 + j * (x3 - x1) / (width - 1) if width > 1 else x1
-                y = y1 + i * (y2 - y1) / (depth - 1) if depth > 1 else y1
-                z = z1 + (i * (z2 - z1) / (depth - 1) if depth > 1 else 0) + \
-                    (j * (z3 - z1) / (width - 1) if width > 1 else 0)
+                # Calculate normalized coordinates [0, 1]
+                u = j / (width - 1) if width > 1 else 0.0  # Horizontal position (0 = left, 1 = right)
+                v = i / (depth - 1) if depth > 1 else 0.0  # Vertical position (0 = top, 1 = bottom)
+                
+                # Bilinear interpolation:
+                # 1. Interpolate along top edge (UL to UR) at horizontal position u
+                top_x = x1 + u * (x3 - x1)
+                top_y = y1 + u * (y3 - y1)
+                top_z = z1 + u * (z3 - z1)
+                
+                # 2. Interpolate along bottom edge (LL to LR) at horizontal position u
+                bottom_x = x2 + u * (x4 - x2)
+                bottom_y = y2 + u * (y4 - y2)
+                bottom_z = z2 + u * (z4 - z2)
+                
+                # 3. Interpolate between top and bottom at vertical position v
+                x = top_x + v * (bottom_x - top_x)
+                y = top_y + v * (bottom_y - top_y)
+                z = top_z + v * (bottom_z - top_z)
                 
                 # Append the location as a tuple
                 path.append((x, y, z))

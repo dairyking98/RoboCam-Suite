@@ -29,7 +29,7 @@ class CameraApp:
     
     Provides:
     - Native hardware-accelerated camera preview (separate window)
-    - Precise movement controls (0.1mm, 1.0mm, 10.0mm steps)
+    - Precise movement controls (0.1mm, 1.0mm, 10.0mm, or custom step size)
     - Real-time position display
     - FPS monitoring
     - Home functionality
@@ -39,7 +39,8 @@ class CameraApp:
         picam2 (Picamera2): Camera instance
         robocam (RoboCam): Printer control instance
         running (bool): Application running state
-        step_size (tk.DoubleVar): Current step size selection
+        step_size_type (tk.StringVar): Current step size selection ("0.1", "1.0", "10.0", or "custom")
+        custom_step_entry (tk.Entry): Entry field for custom step size (default: 9.0 mm)
         position_label (tk.Label): Current position display
         fps_label (tk.Label): FPS display
         fps_tracker (FPSTracker): FPS tracking instance
@@ -166,24 +167,35 @@ class CameraApp:
 
         # Radio buttons for step size
         tk.Label(self.root, text="Step Size:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.step_size = tk.DoubleVar(value=1.0)
-        tk.Radiobutton(self.root, text="0.1 mm", variable=self.step_size, value=0.1).grid(row=1, column=1, padx=5)
-        tk.Radiobutton(self.root, text="1.0 mm", variable=self.step_size, value=1.0).grid(row=1, column=2, padx=5)
-        tk.Radiobutton(self.root, text="10.0 mm", variable=self.step_size, value=10.0).grid(row=1, column=3, padx=5)
+        self.step_size_type = tk.StringVar(value="1.0")  # Store selected value: "0.1", "1.0", "10.0", or "custom"
+        tk.Radiobutton(self.root, text="0.1 mm", variable=self.step_size_type, value="0.1").grid(row=1, column=1, padx=5)
+        tk.Radiobutton(self.root, text="1.0 mm", variable=self.step_size_type, value="1.0").grid(row=1, column=2, padx=5)
+        tk.Radiobutton(self.root, text="10.0 mm", variable=self.step_size_type, value="10.0").grid(row=1, column=3, padx=5)
+        
+        # Custom step size option
+        custom_frame = tk.Frame(self.root)
+        custom_frame.grid(row=1, column=4, padx=5)
+        tk.Radiobutton(custom_frame, text="Custom:", variable=self.step_size_type, value="custom").pack(side=tk.LEFT)
+        self.custom_step_entry = tk.Entry(custom_frame, width=8)
+        self.custom_step_entry.insert(0, "9.0")
+        self.custom_step_entry.pack(side=tk.LEFT, padx=2)
+        tk.Label(custom_frame, text="mm").pack(side=tk.LEFT)
+        # Bind entry change to validate input
+        self.custom_step_entry.bind("<KeyRelease>", self.update_custom_step_size)
 
         # XYZ movement buttons layout
         tk.Label(self.root, text="Movement Controls:").grid(row=2, column=0, columnspan=4, sticky="w", padx=5, pady=5)
-        tk.Button(self.root, text="Y+", command=lambda: self.robocam.move_relative(Y=self.step_size.get()),
+        tk.Button(self.root, text="Y+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Y=self.get_step_size())),
                  width=8, height=2).grid(row=3, column=2, padx=2, pady=2)
-        tk.Button(self.root, text="X-", command=lambda: self.robocam.move_relative(X=-self.step_size.get()),
+        tk.Button(self.root, text="X-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(X=-self.get_step_size())),
                  width=8, height=2).grid(row=4, column=1, padx=2, pady=2)
-        tk.Button(self.root, text="X+", command=lambda: self.robocam.move_relative(X=self.step_size.get()),
+        tk.Button(self.root, text="X+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(X=self.get_step_size())),
                  width=8, height=2).grid(row=4, column=3, padx=2, pady=2)
-        tk.Button(self.root, text="Y-", command=lambda: self.robocam.move_relative(Y=-self.step_size.get()),
+        tk.Button(self.root, text="Y-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Y=-self.get_step_size())),
                  width=8, height=2).grid(row=5, column=2, padx=2, pady=2)
-        tk.Button(self.root, text="Z-", command=lambda: self.robocam.move_relative(Z=-self.step_size.get()),
+        tk.Button(self.root, text="Z-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Z=-self.get_step_size())),
                  width=8, height=2).grid(row=3, column=4, padx=2, pady=2)
-        tk.Button(self.root, text="Z+", command=lambda: self.robocam.move_relative(Z=self.step_size.get()),
+        tk.Button(self.root, text="Z+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Z=self.get_step_size())),
                  width=8, height=2).grid(row=5, column=4, padx=2, pady=2)
 
         # Position label
@@ -229,6 +241,54 @@ class CameraApp:
         
         # 4-Corner Calibration Section
         self.create_calibration_section()
+    
+    def get_step_size(self) -> float:
+        """
+        Get the current step size value.
+        
+        Returns the preset value if a preset is selected, or the custom entry value
+        if custom is selected. Defaults to 1.0 if custom entry is invalid.
+        
+        Returns:
+            float: Current step size in mm
+        """
+        if self.step_size_type.get() == "custom":
+            try:
+                custom_value = float(self.custom_step_entry.get().strip())
+                if custom_value > 0:
+                    return custom_value
+                else:
+                    return 1.0  # Default if invalid
+            except ValueError:
+                return 1.0  # Default if not a number
+        else:
+            # Preset value selected
+            try:
+                return float(self.step_size_type.get())
+            except ValueError:
+                return 1.0  # Default fallback
+    
+    def update_custom_step_size(self, event=None) -> None:
+        """
+        Update custom step size entry validation.
+        
+        Called when the custom step size entry is modified.
+        Validates the input and provides visual feedback if invalid.
+        """
+        try:
+            value = float(self.custom_step_entry.get().strip())
+            if value <= 0:
+                # Invalid (negative or zero)
+                self.custom_step_entry.config(fg="red")
+            else:
+                # Valid
+                self.custom_step_entry.config(fg="black")
+        except ValueError:
+            # Not a number
+            if self.custom_step_entry.get().strip():  # Only show error if not empty
+                self.custom_step_entry.config(fg="red")
+            else:
+                self.custom_step_entry.config(fg="black")
     
     def _safe_move(self, move_func) -> None:
         """
@@ -363,48 +423,69 @@ class CameraApp:
         self.y_qty_entry.grid(row=13, column=3, padx=5, pady=5)
         self.y_qty_entry.bind("<KeyRelease>", self.on_quantity_change)
         
-        # Corner coordinate displays and buttons
+        # Corner coordinate displays and buttons arranged in a 2x2 grid matching actual corner positions
+        # Create a frame for the corner grid layout
+        corner_grid_frame = tk.Frame(self.root)
+        corner_grid_frame.grid(row=14, column=0, columnspan=6, padx=5, pady=10)
+        # Configure equal column weights for balanced layout
+        corner_grid_frame.columnconfigure(0, weight=1)
+        corner_grid_frame.columnconfigure(1, weight=1)
+        
+        # Define corners in a 2x2 layout: [Upper-Left, Upper-Right]
+        #                                   [Lower-Left, Lower-Right]
         corners = [
-            ("Upper-Left", "upper_left", 14),
-            ("Lower-Left", "lower_left", 15),
-            ("Upper-Right", "upper_right", 16),
-            ("Lower-Right", "lower_right", 17)
+            ("Upper-Left", "upper_left", 0, 0),   # Top-left of grid
+            ("Upper-Right", "upper_right", 0, 1), # Top-right of grid
+            ("Lower-Left", "lower_left", 1, 0),   # Bottom-left of grid
+            ("Lower-Right", "lower_right", 1, 1)  # Bottom-right of grid
         ]
         
         self.corner_labels = {}
         self.corner_status_labels = {}
         
-        for corner_name, attr_name, row in corners:
-            tk.Label(self.root, text=f"{corner_name}:").grid(
-                row=row, column=0, sticky="e", padx=5, pady=2
-            )
+        # Create a frame for each corner in the 2x2 grid
+        for corner_name, attr_name, grid_row, grid_col in corners:
+            # Frame for this corner's UI elements
+            corner_frame = tk.Frame(corner_grid_frame, relief=tk.RIDGE, borderwidth=1, padx=5, pady=5)
+            corner_frame.grid(row=grid_row, column=grid_col, padx=5, pady=5, sticky="nsew")
             
-            # Coordinate display (read-only)
-            coord_frame = tk.Frame(self.root)
-            coord_frame.grid(row=row, column=1, columnspan=2, padx=5, pady=2, sticky="w")
+            # Corner label
+            tk.Label(corner_frame, text=corner_name, font=("Arial", 9, "bold")).pack(pady=(0, 3))
             
-            coord_label = tk.Label(coord_frame, text="Not set", font=("Courier", 9), fg="gray", width=30)
-            coord_label.pack(side=tk.LEFT)
-            self.corner_labels[attr_name] = coord_label
-            
-            # Set button
+            # Set button (prominent, positioned at the corner)
             set_btn = tk.Button(
-                self.root, 
-                text=f"Set {corner_name}",
+                corner_frame, 
+                text=f"Set",
                 command=lambda a=attr_name: self.set_corner(a),
-                width=12
+                width=12,
+                height=2,
+                bg="#4CAF50",
+                fg="white",
+                font=("Arial", 9, "bold")
             )
-            set_btn.grid(row=row, column=3, padx=5, pady=2)
+            set_btn.pack(pady=3)
             
             # Status indicator
-            status_label = tk.Label(self.root, text="○", fg="gray", font=("Arial", 12))
-            status_label.grid(row=row, column=4, padx=5, pady=2)
+            status_label = tk.Label(corner_frame, text="○", fg="gray", font=("Arial", 16))
+            status_label.pack(pady=2)
             self.corner_status_labels[attr_name] = status_label
+            
+            # Coordinate display (read-only, smaller)
+            coord_label = tk.Label(
+                corner_frame, 
+                text="Not set", 
+                font=("Courier", 8), 
+                fg="gray",
+                wraplength=120,
+                justify=tk.CENTER
+            )
+            coord_label.pack(pady=2)
+            self.corner_labels[attr_name] = coord_label
         
-        # Calibration name entry
-        tk.Label(self.root, text="Calibration Name:").grid(row=18, column=0, sticky="e", padx=5, pady=5)
+        # Calibration name entry (positioned below the corner grid)
+        tk.Label(self.root, text="Calibration Name:").grid(row=15, column=0, sticky="e", padx=5, pady=5)
         self.calib_name_entry = tk.Entry(self.root, width=30)
-        self.calib_name_entry.grid(row=18, column=1, columnspan=2, padx=5, pady=5)
+        self.calib_name_entry.grid(row=15, column=1, columnspan=2, padx=5, pady=5)
         
         # Save calibration button
         self.save_calib_btn = tk.Button(
@@ -415,7 +496,7 @@ class CameraApp:
             fg="white",
             width=15
         )
-        self.save_calib_btn.grid(row=18, column=3, padx=5, pady=5)
+        self.save_calib_btn.grid(row=15, column=3, padx=5, pady=5)
         
         # Preview/validation display
         self.calib_preview_label = tk.Label(
@@ -424,7 +505,7 @@ class CameraApp:
             font=("Arial", 9),
             fg="gray"
         )
-        self.calib_preview_label.grid(row=19, column=0, columnspan=5, padx=5, pady=5, sticky="w")
+        self.calib_preview_label.grid(row=16, column=0, columnspan=5, padx=5, pady=5, sticky="w")
     
     def on_quantity_change(self, event=None) -> None:
         """Update preview when X/Y quantities change."""

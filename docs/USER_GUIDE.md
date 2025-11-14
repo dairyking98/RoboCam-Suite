@@ -187,11 +187,19 @@ The system uses bilinear interpolation to calculate all well positions from the 
 - **Upper-Right (UR)**: Top-right corner well
 - **Lower-Right (LR)**: Bottom-right corner well
 
-The interpolation accounts for:
+**How It Works**:
+The bilinear interpolation method works in three steps:
+1. For each horizontal position in the grid, interpolates along the top edge (UL → UR)
+2. For the same horizontal position, interpolates along the bottom edge (LL → LR)
+3. Interpolates vertically between the top and bottom points to get the final well position
+
+This approach properly accounts for:
 - Linear spacing between wells
-- Slight rotation of the well plate
-- Non-perpendicular alignment
+- Rotation of the well plate (correctly handles angled alignment)
+- Non-perpendicular alignment (handles skew/distortion)
 - Z-axis variations across the plate
+
+By considering both horizontal and vertical components together (rather than independently), the interpolation ensures accurate well positioning even when the plate is rotated or misaligned with the printer axes. This means wells will be correctly aligned when moving from top-left to top-right, and throughout the entire grid.
 
 ## Preview Alignment Check
 

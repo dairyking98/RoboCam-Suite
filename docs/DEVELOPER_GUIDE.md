@@ -107,7 +107,7 @@ The system communicates with 3D printers using standard G-code commands:
 
 - **Baudrate**: Default 115200 (configurable via `hardware.printer.baudrate`)
 - **Default Timeout**: 1 second (configurable via `hardware.printer.timeout`)
-- **Home Timeout**: 45 seconds (configurable via `hardware.printer.home_timeout`)
+- **Home Timeout**: 90 seconds / 1.5 minutes (configurable via `hardware.printer.home_timeout`)
   - Used for G28 homing command
   - Longer timeout allows printer to complete homing sequence
 - **Movement Wait Timeout**: 30 seconds (configurable via `hardware.printer.movement_wait_timeout`)
@@ -203,7 +203,7 @@ The configuration system uses JSON files in `config/default_config.json`:
     "printer": {
       "baudrate": 115200,
       "timeout": 1.0,
-      "home_timeout": 45.0,
+      "home_timeout": 90.0,
       "movement_wait_timeout": 30.0,
       "command_delay": 0.1,
       "position_update_delay": 0.1,
@@ -232,7 +232,7 @@ The configuration system uses JSON files in `config/default_config.json`:
 **Key Configuration Options**:
 
 - **Printer Timeouts**:
-  - `home_timeout`: Timeout for G28 homing command (default: 45.0 seconds)
+  - `home_timeout`: Timeout for G28 homing command (default: 90.0 seconds / 1.5 minutes)
   - `movement_wait_timeout`: Timeout for M400 wait command (default: 30.0 seconds)
   - Can be overridden via environment variables: `ROBOCAM_HOME_TIMEOUT`, `ROBOCAM_MOVEMENT_WAIT_TIMEOUT`
 
@@ -507,7 +507,15 @@ When contributing:
 **Location**: `robocam.stentorcam.WellPlatePathGenerator`
 
 **Methods**:
-- `generate_path(width, depth, upper_left_loc, lower_left_loc, upper_right_loc, lower_right_loc) -> List[Tuple]`: Generate well positions from 4 corners using linear interpolation
+- `generate_path(width, depth, upper_left_loc, lower_left_loc, upper_right_loc, lower_right_loc) -> List[Tuple]`: Generate well positions from 4 corners using bilinear interpolation
+
+**Interpolation Method**:
+The bilinear interpolation works in three steps:
+1. For each horizontal position, interpolates along the top edge (UL → UR)
+2. For the same horizontal position, interpolates along the bottom edge (LL → LR)
+3. Interpolates vertically between the top and bottom points
+
+This properly accounts for rotation and skew by considering both horizontal and vertical components together, rather than treating X and Y independently.
 
 **Usage**:
 ```python

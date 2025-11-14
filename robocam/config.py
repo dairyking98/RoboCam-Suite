@@ -35,7 +35,7 @@ class Config:
             "printer": {
                 "baudrate": 115200,
                 "timeout": 1.0,
-                "home_timeout": 45.0,
+                "home_timeout": 90.0,
                 "movement_wait_timeout": 30.0,
                 "command_delay": 0.1,
                 "position_update_delay": 0.1,

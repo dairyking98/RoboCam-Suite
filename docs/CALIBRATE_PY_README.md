@@ -58,7 +58,7 @@ The calibration application enables users to:
   - Click "Go" button to move to specified coordinates
   - Useful for quickly jumping to known positions
 - **Home Function**: Return printer to origin (0, 0, 0) position
-  - Uses configurable timeout (default: 45 seconds)
+  - Uses configurable timeout (default: 90 seconds / 1.5 minutes)
   - Automatically updates position after homing
 - **Real-Time Position Display**: Current X, Y, Z coordinates updated continuously
 
@@ -82,7 +82,8 @@ The 4-corner calibration method accounts for slight angles and misalignment in w
 
 3. **Automatic Interpolation**:
    - System calculates all well positions using bilinear interpolation
-   - Accounts for rotation, skew, and Z-axis variations
+   - Properly accounts for rotation and skew by interpolating along both axes together
+   - Handles Z-axis variations across the plate
    - Generates labels automatically (A1, A2, ..., B1, B2, etc.)
 
 4. **Save Calibration**:
@@ -100,11 +101,18 @@ The system uses bilinear interpolation to calculate all well positions from the 
 - **Upper-Right (UR)**: Top-right corner well
 - **Lower-Right (LR)**: Bottom-right corner well
 
-The interpolation accounts for:
+**How Bilinear Interpolation Works**:
+1. For each horizontal position in the grid, interpolates along the top edge (UL → UR)
+2. For the same horizontal position, interpolates along the bottom edge (LL → LR)
+3. Interpolates vertically between the top and bottom points to get the final well position
+
+This method properly accounts for:
 - Linear spacing between wells
-- Slight rotation of the well plate
-- Non-perpendicular alignment
+- Rotation of the well plate (handles angled alignment)
+- Non-perpendicular alignment (handles skew/distortion)
 - Z-axis variations across the plate
+
+The interpolation considers both horizontal and vertical components together, ensuring accurate positioning even when the well plate is rotated or misaligned with the printer axes.
 
 ### 4. Real-Time Status Monitoring
 
@@ -172,13 +180,16 @@ FPS is tracked using a callback on each camera frame, providing real-time perfor
 
 ```python
 def generate_path(width, depth, upper_left, lower_left, upper_right, lower_right):
-    # Bilinear interpolation across the grid
-    # Accounts for rotation and skew
+    # Bilinear interpolation across the grid:
+    # 1. Interpolate along top edge (UL → UR) for each horizontal position
+    # 2. Interpolate along bottom edge (LL → LR) for same horizontal position
+    # 3. Interpolate vertically between top and bottom points
+    # This properly accounts for rotation and skew by considering both axes together
     # Returns list of (X, Y, Z) tuples for all wells
     pass
 ```
 
-The interpolation uses `WellPlatePathGenerator` from `robocam.stentorcam` to calculate all well positions from the four corners.
+The interpolation uses `WellPlatePathGenerator` from `robocam.stentorcam` to calculate all well positions from the four corners. The bilinear method ensures accurate positioning even when the well plate is rotated or skewed relative to the printer axes.
 
 ### Movement Control Logic
 
@@ -345,14 +356,14 @@ Saved calibrations are stored in `config/calibrations/{name}.json`:
 ### Movement Control
 
 - **G-code Commands**:
-  - `G28`: Homing (timeout: configurable via `home_timeout`, default: 45 seconds)
+  - `G28`: Homing (timeout: configurable via `home_timeout`, default: 90 seconds / 1.5 minutes)
   - `G90`: Absolute positioning mode (used for "Go to Coordinate")
   - `G91`: Relative positioning mode (used for step movements)
   - `G0 X Y Z`: Movement command
   - `M114`: Get current position
   - `M400`: Wait for movement completion (timeout: configurable via `movement_wait_timeout`, default: 30 seconds)
 - **Timeout Configuration**:
-  - `home_timeout`: Timeout for homing command (default: 45.0 seconds)
+  - `home_timeout`: Timeout for homing command (default: 90.0 seconds / 1.5 minutes)
   - `movement_wait_timeout`: Timeout for M400 wait command (default: 30.0 seconds)
   - Configurable in `config/default_config.json` under `hardware.printer`
   - Can be overridden via environment variables: `ROBOCAM_HOME_TIMEOUT`, `ROBOCAM_MOVEMENT_WAIT_TIMEOUT`
@@ -390,7 +401,7 @@ Saved calibrations are stored in `config/calibrations/{name}.json`:
    - **Solution**: Check for mechanical obstructions
    - **Solution**: Review error message in status label
    - **Solution**: If timeout errors occur, increase timeout values in `config/default_config.json`:
-     - `home_timeout`: Increase if homing takes longer (default: 45 seconds)
+     - `home_timeout`: Increase if homing takes longer (default: 90 seconds / 1.5 minutes)
      - `movement_wait_timeout`: Increase if movements take longer (default: 30 seconds)
    - **Solution**: Can override via environment variables: `ROBOCAM_HOME_TIMEOUT=60.0`
 

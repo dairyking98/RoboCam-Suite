@@ -16,7 +16,7 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 - **High-Performance Camera Preview**: Native hardware-accelerated preview (DRM/QTGL) with FPS tracking
   - Configurable preview resolution (default: 800x600) and frame rate (default: 30 FPS)
   - Optimized for maximum performance with hardware acceleration
-- **4-Corner Path Calibration**: Guided calibration procedure to account for angled well plates with automatic interpolation
+- **4-Corner Path Calibration**: Guided calibration procedure to account for angled well plates with automatic bilinear interpolation (properly handles rotation and skew)
 - **Go to Coordinate**: Direct navigation to specific X, Y, Z coordinates in calibration mode
 - **Video/Still Capture**: Record videos or capture still images at each well
 - **Laser Control**: GPIO-controlled laser with configurable timing sequences (OFF-ON-OFF)
@@ -157,7 +157,7 @@ python experiment.py
    - Navigate to well positions using directional buttons
    - Adjust step size (0.1 mm, 1.0 mm, or 10.0 mm)
    - **Go to Coordinate**: Enter X, Y, Z coordinates and click "Go" to move directly to that position
-   - Home the printer using the "Home" button (timeout: 45 seconds, configurable)
+   - Home the printer using the "Home" button (timeout: 90 seconds / 1.5 minutes, configurable)
    - Monitor position and preview FPS
 
 4. Use the camera preview window to visually align with wells
@@ -329,7 +329,7 @@ The system uses `config/default_config.json` for configuration. Key settings inc
 #### Printer Settings
 
 - **Timeouts**:
-  - `home_timeout`: Timeout for homing command (default: 45.0 seconds)
+  - `home_timeout`: Timeout for homing command (default: 90.0 seconds / 1.5 minutes)
   - `movement_wait_timeout`: Timeout for movement completion (default: 30.0 seconds)
   - Can be overridden via environment variables: `ROBOCAM_HOME_TIMEOUT`, `ROBOCAM_MOVEMENT_WAIT_TIMEOUT`
 - **Baudrate**: Serial communication baudrate (default: 115200)
