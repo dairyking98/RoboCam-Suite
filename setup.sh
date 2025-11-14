@@ -141,60 +141,57 @@ echo ""
 
 # Create configuration directories
 echo "Creating configuration directories..."
-mkdir -p config/motion_configs
+mkdir -p config/calibrations
 mkdir -p config/templates
 mkdir -p docs
 echo "Configuration directories created."
 
 echo ""
 
-# Create default motion configuration files if they don't exist
-if [ ! -f "config/motion_configs/default_motion.json" ]; then
-    echo "Creating default motion configuration..."
-    cat > config/motion_configs/default_motion.json << 'EOF'
+# Create motion configuration file with all profiles if it doesn't exist
+if [ ! -f "config/motion_config.json" ]; then
+    echo "Creating motion configuration file with profiles..."
+    cat > config/motion_config.json << 'EOF'
 {
-  "preliminary_feedrate": 2000,
-  "preliminary_acceleration": 1000,
-  "between_wells_feedrate": 1500,
-  "between_wells_acceleration": 800,
-  "description": "Default motion profile - balanced speed and precision",
-  "author": "RoboCam-Suite",
-  "created": "2025-01-01"
+  "default": {
+    "name": "Default Profile",
+    "description": "Balanced speed and precision for general use",
+    "preliminary": {
+      "feedrate": 3000,
+      "acceleration": 500
+    },
+    "between_wells": {
+      "feedrate": 1200,
+      "acceleration": 300
+    }
+  },
+  "precise": {
+    "name": "Precise Profile",
+    "description": "Lower speed and acceleration for maximum precision",
+    "preliminary": {
+      "feedrate": 2000,
+      "acceleration": 300
+    },
+    "between_wells": {
+      "feedrate": 3000,
+      "acceleration": 500
+    }
+  },
+  "fast": {
+    "name": "Fast Profile",
+    "description": "Maximum speed for rapid well-to-well movements",
+    "preliminary": {
+      "feedrate": 5000,
+      "acceleration": 1000
+    },
+    "between_wells": {
+      "feedrate": 8000,
+      "acceleration": 1500
+    }
+  }
 }
 EOF
-    echo "Default motion configuration created."
-fi
-
-if [ ! -f "config/motion_configs/fast_motion.json" ]; then
-    echo "Creating fast motion configuration..."
-    cat > config/motion_configs/fast_motion.json << 'EOF'
-{
-  "preliminary_feedrate": 3000,
-  "preliminary_acceleration": 1500,
-  "between_wells_feedrate": 2500,
-  "between_wells_acceleration": 1200,
-  "description": "Fast motion profile - high speed and acceleration",
-  "author": "RoboCam-Suite",
-  "created": "2025-01-01"
-}
-EOF
-    echo "Fast motion configuration created."
-fi
-
-if [ ! -f "config/motion_configs/precise_motion.json" ]; then
-    echo "Creating precise motion configuration..."
-    cat > config/motion_configs/precise_motion.json << 'EOF'
-{
-  "preliminary_feedrate": 1000,
-  "preliminary_acceleration": 500,
-  "between_wells_feedrate": 800,
-  "between_wells_acceleration": 400,
-  "description": "Precise motion profile - lower speed for accuracy",
-  "author": "RoboCam-Suite",
-  "created": "2025-01-01"
-}
-EOF
-    echo "Precise motion configuration created."
+    echo "Motion configuration file created with default, precise, and fast profiles."
 fi
 
 echo ""

@@ -615,36 +615,74 @@ class ExperimentWindow:
             self.checkbox_widgets[label] = checkbox
             
             # Bind shift-click and control-click
-            def make_click_handler(lbl, r, c, v):
-                def on_click(event):
+            # Use ButtonPress-1 which fires earlier, and check modifier state more reliably
+            def make_click_handler(lbl, r, c, v, cb):
+                def on_button_press(event):
                     # Check if shift or control is pressed
-                    # Note: event.state uses bit flags: Shift=0x1, Control=0x4
-                    # The checkbox has already toggled by the time this handler runs,
-                    # so if it's now False, it was True before (user clicked checked box)
-                    current_state = v.get()
-                    if event.state & 0x1:  # Shift key pressed
-                        # Prevent default toggle by toggling back
-                        v.set(not current_state)  # Undo the default toggle
-                        # If was checked (now unchecked), uncheck all in row
-                        # If was unchecked (now checked), check all in row
-                        if not current_state:  # Was checked, now unchecked
-                            self.uncheck_row(r)
-                        else:  # Was unchecked, now checked
-                            self.check_row(r)
-                        return "break"  # Prevent further event propagation
-                    elif event.state & 0x4:  # Control key pressed
-                        # Prevent default toggle by toggling back
-                        v.set(not current_state)  # Undo the default toggle
-                        # If was checked (now unchecked), uncheck all in column
-                        # If was unchecked (now checked), check all in column
-                        if not current_state:  # Was checked, now unchecked
-                            self.uncheck_column(c)
-                        else:  # Was unchecked, now checked
-                            self.check_column(c)
-                        return "break"  # Prevent further event propagation
-                return on_click
+                    # event.state uses bit flags: Shift=0x1 (0x0001), Control=0x4 (0x0004)
+                    # On Raspberry Pi (Linux), event.state bit flags are reliable
+                    state = event.state
+                    has_shift = bool(state & 0x0001)
+                    has_control = bool(state & 0x0004)
+                    
+                    if has_shift or has_control:
+                        # Get the state BEFORE tkinter processes the click and toggles the checkbox
+                        checkbox_state = v.get()  # True = checked, False = unchecked
+                        
+                        # Assess row and column states
+                        row_state = self.assess_row_state(r)
+                        col_state = self.assess_column_state(c)
+                        
+                        # Temporarily remove the command callback to prevent the toggle
+                        original_command = cb.cget('command')
+                        cb.config(command=lambda: None)  # Temporarily disable
+                        
+                        # Determine action based on checkbox state, row state, and column state
+                        if has_shift:
+                            # Shift-click: operate on row
+                            if checkbox_state:  # Checkbox is checked
+                                # State: checked, action: fill row (check all)
+                                self.check_row(r)
+                            else:  # Checkbox is unchecked
+                                if row_state == "all_unchecked":
+                                    # State: unchecked, row: all unchecked, action: fill row (check all)
+                                    self.check_row(r)
+                                elif row_state == "some_checked":
+                                    # State: unchecked, row: some checked, action: unfill row (uncheck all)
+                                    self.uncheck_row(r)
+                                else:  # row_state == "all_checked" (shouldn't happen if checkbox is unchecked)
+                                    # Edge case: fill row
+                                    self.check_row(r)
+                        else:  # has_control
+                            # Control-click: operate on column
+                            if checkbox_state:  # Checkbox is checked
+                                # State: checked, action: fill column (check all)
+                                self.check_column(c)
+                            else:  # Checkbox is unchecked
+                                if col_state == "all_unchecked":
+                                    # State: unchecked, column: all unchecked, action: fill column (check all)
+                                    self.check_column(c)
+                                elif col_state == "some_checked":
+                                    # State: unchecked, column: some checked, action: unfill column (uncheck all)
+                                    self.uncheck_column(c)
+                                else:  # col_state == "all_checked" (shouldn't happen if checkbox is unchecked)
+                                    # Edge case: fill column
+                                    self.check_column(c)
+                        
+                        # Restore the command callback
+                        def restore_command():
+                            cb.config(command=original_command)
+                            self.update_run_button_state()
+                        
+                        # Restore after event processing completes
+                        self.checkbox_window.after_idle(restore_command)
+                        
+                        # Prevent the default checkbox toggle since we handled it via row/col action
+                        return "break"
+                return on_button_press
             
-            checkbox.bind("<Button-1>", make_click_handler(label, row, col, var), add="+")
+            # Bind to ButtonPress-1 which fires earlier than Button-1 (before checkbox processes click)
+            checkbox.bind("<ButtonPress-1>", make_click_handler(label, row, col, var, checkbox), add="+")
         
         # Update instructions
         instructions_frame = tk.Frame(main_frame)
@@ -652,8 +690,8 @@ class ExperimentWindow:
         instructions = (
             "Checkbox Controls:\n"
             "• Click: Toggle single well\n"
-            "• Shift+Click: Toggle all in same row (check if unchecked, uncheck if checked)\n"
-            "• Ctrl+Click: Toggle all in same column (check if unchecked, uncheck if checked)\n"
+            "• Shift+Click: Smart fill/unfill row based on state\n"
+            "• Ctrl+Click: Smart fill/unfill column based on state\n"
             "• Use buttons above to check/uncheck all"
         )
         tk.Label(instructions_frame, text=instructions, fg="gray", font=("Arial", 8), justify="left").pack(anchor="w")
@@ -718,6 +756,60 @@ class ExperimentWindow:
             if c == col:
                 self.well_checkboxes[label].set(False)
         self.update_run_button_state()
+    
+    def assess_row_state(self, row: int) -> str:
+        """
+        Assess the state of all checkboxes in a row.
+        
+        Args:
+            row: Row number to assess
+            
+        Returns:
+            "all_checked" if all checkboxes in row are checked,
+            "all_unchecked" if all checkboxes in row are unchecked,
+            "some_checked" if some (but not all) checkboxes are checked
+        """
+        checked_count = 0
+        total_count = 0
+        for label, (r, c) in self.label_to_row_col.items():
+            if r == row:
+                total_count += 1
+                if self.well_checkboxes[label].get():
+                    checked_count += 1
+        
+        if checked_count == 0:
+            return "all_unchecked"
+        elif checked_count == total_count:
+            return "all_checked"
+        else:
+            return "some_checked"
+    
+    def assess_column_state(self, col: int) -> str:
+        """
+        Assess the state of all checkboxes in a column.
+        
+        Args:
+            col: Column number to assess
+            
+        Returns:
+            "all_checked" if all checkboxes in column are checked,
+            "all_unchecked" if all checkboxes in column are unchecked,
+            "some_checked" if some (but not all) checkboxes are checked
+        """
+        checked_count = 0
+        total_count = 0
+        for label, (r, c) in self.label_to_row_col.items():
+            if c == col:
+                total_count += 1
+                if self.well_checkboxes[label].get():
+                    checked_count += 1
+        
+        if checked_count == 0:
+            return "all_unchecked"
+        elif checked_count == total_count:
+            return "all_checked"
+        else:
+            return "some_checked"
     
     def update_run_button_state(self) -> None:
         """Update Run button state based on calibration and well selection."""

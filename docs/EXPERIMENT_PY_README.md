@@ -38,9 +38,15 @@ The application automates the execution of well-plate experiments by:
   - Scrollable grid ensures all wells are visible
   - All wells are checked by default
   - **Check All / Uncheck All Buttons**: Quick selection controls in the window
-  - **Keyboard Shortcuts**:
-    - **Shift+Click**: Check all wells in the same row
-    - **Ctrl+Click**: Check all wells in the same column
+  - **Keyboard Shortcuts** (Smart Fill/Unfill Logic):
+    - **Shift+Click**: Smart fill/unfill all wells in the same row
+      - If clicked checkbox is checked: fills (checks all) in row
+      - If clicked checkbox is unchecked and row is all unchecked: fills (checks all) in row
+      - If clicked checkbox is unchecked and row has some checked: unfills (unchecks all) in row
+    - **Ctrl+Click**: Smart fill/unfill all wells in the same column
+      - If clicked checkbox is checked: fills (checks all) in column
+      - If clicked checkbox is unchecked and column is all unchecked: fills (checks all) in column
+      - If clicked checkbox is unchecked and column has some checked: unfills (unchecks all) in column
   - **GUI Instructions**: Helpful instructions displayed next to the grid explaining all interaction methods
 - **Auto-Generated Labels**: Wells labeled automatically (A1, A2, ..., B1, B2, etc.)
 - **Interpolated Positions**: All well positions calculated from 4-corner calibration
@@ -236,7 +242,7 @@ Values are extracted and validated before use.
    - ✅ Support for angled well plates
    - ✅ Separate well selection window with "Select Cells" button
    - ✅ Checkbox grid with Check All/Uncheck All buttons
-   - ✅ Shift+Click and Ctrl+Click shortcuts for row/column selection
+   - ✅ Shift+Click and Ctrl+Click shortcuts with smart fill/unfill logic based on checkbox and row/column state
    - ✅ GUI instructions displayed in selection window
 
 2. **GUI Consistency**
@@ -387,8 +393,8 @@ Values are extracted and validated before use.
 
 2. **Load Calibration** (Required):
    - Click "Open Experiment"
-   - Select calibration from dropdown (e.g., "well_plate_8x6.json")
-   - Status should show "Loaded: well_plate_8x6.json (48 wells)"
+   - Select calibration from dropdown (e.g., "20241215_143022_well_plate_8x6.json" - files are automatically prefixed with date/time in format YYYYMMDD_HHMMSS)
+   - Status should show "Loaded: 20241215_143022_well_plate_8x6.json (48 wells)"
    - "Select Cells" button will be enabled
 
 3. **Select Wells**:
@@ -397,8 +403,8 @@ Values are extracted and validated before use.
    - All wells are checked by default
    - Uncheck wells to exclude from experiment
    - Use "Check All" or "Uncheck All" buttons for quick selection
-   - **Shift+Click** a checkbox to check all wells in the same row
-   - **Ctrl+Click** a checkbox to check all wells in the same column
+   - **Shift+Click** a checkbox for smart row fill/unfill (see Smart Fill/Unfill Logic above)
+   - **Ctrl+Click** a checkbox for smart column fill/unfill (see Smart Fill/Unfill Logic above)
    - Instructions are displayed next to the grid explaining all features
 
 4. **Configure Experiment**:
@@ -431,7 +437,7 @@ Values are extracted and validated before use.
 When exporting experiment settings:
 ```json
 {
-  "calibration_file": "well_plate_8x6.json",
+  "calibration_file": "20241215_143022_well_plate_8x6.json",
   "selected_wells": ["A1", "A2", "B1", "B3", "C2"],
   "times": [30, 0, 0],
   "resolution": [1920, 1080],
@@ -447,7 +453,7 @@ When exporting experiment settings:
 
 ### Calibration File Format
 
-`config/calibrations/{date_time}_{name}.json` (automatically prefixed with date and time):
+Calibration files are saved in `config/calibrations/` with filenames automatically prefixed with date and time in format `YYYYMMDD_HHMMSS_{name}.json` (e.g., `20241215_143022_well_plate_8x6.json`):
 ```json
 {
   "name": "well_plate_8x6",
@@ -464,19 +470,31 @@ When exporting experiment settings:
 
 ### Motion Configuration Format
 
-`config/motion_configs/default.json`:
+All motion profiles are stored in `config/motion_config.json`. Each profile has the following structure:
+
 ```json
 {
-  "preliminary": {
-    "feedrate": 3000,
-    "acceleration": 500
+  "default": {
+    "name": "Default Profile",
+    "description": "Balanced speed and precision for general use",
+    "preliminary": {
+      "feedrate": 3000,
+      "acceleration": 500
+    },
+    "between_wells": {
+      "feedrate": 1200,
+      "acceleration": 300
+    }
   },
-  "between_wells": {
-    "feedrate": 5000,
-    "acceleration": 1000
-  }
+  "precise": { ... },
+  "fast": { ... }
 }
 ```
+
+- **name**: Display name for the profile
+- **description**: Description of the profile's characteristics
+- **preliminary**: Settings for homing and initial positioning moves
+- **between_wells**: Settings for movements between wells during experiments
 
 ## Dependencies
 

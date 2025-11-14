@@ -101,7 +101,7 @@ Status: **COMPLETED**
 - [x] Create motion configuration file structure (JSON)
 - [x] Add preliminary_feedrate and preliminary_acceleration settings
 - [x] Add between_wells_feedrate and between_wells_acceleration settings
-- [x] Create template configuration files in config/motion_configs/
+- [x] Create motion configuration profiles in config/motion_config.json
 - [x] Add configuration file selector in experiment.py GUI
 - [x] Implement G-code acceleration commands (M204) in robocam_ccc.py
 - [x] Add set_acceleration method to RoboCam class

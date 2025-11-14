@@ -72,7 +72,7 @@ The calibration application opens two windows:
 2. **Controls Window**:
    - **Position Display**: Current X, Y, Z coordinates
    - **FPS Display**: Real-time preview frames per second
-   - **Step Size Selection**: 0.1 mm, 1.0 mm, or 10.0 mm
+   - **Step Size Selection**: 0.1 mm, 1.0 mm, 10.0 mm, or custom value (default: 9.0 mm)
    - **Movement Controls**:
      - **Y+**: Move forward (positive Y)
      - **Y-**: Move backward (negative Y)
@@ -170,8 +170,9 @@ The 4-corner calibration method accounts for slight angles and misalignment in w
 8. **Save Calibration**:
    - Enter a calibration name (e.g., "well_plate_8x6")
    - Click "Save Calibration" button
-   - Calibration is saved to `config/calibrations/{date_time}_{name}.json` (automatically prefixed with date and time)
-   - Status will confirm successful save
+   - Calibration is saved to `config/calibrations/{YYYYMMDD_HHMMSS}_{name}.json` (automatically prefixed with date and time, e.g., `20241215_143022_well_plate_8x6.json`)
+   - Status will confirm successful save with full filename
+   - The date/time prefix (format: YYYYMMDD_HHMMSS) helps track when calibrations were created and allows multiple versions with the same name
 
 9. **Use in Experiment**:
    - Calibration is now available in experiment.py
@@ -338,9 +339,15 @@ The preview tool fits into the overall workflow:
    - All wells are checked by default
    - Uncheck wells you want to exclude from the experiment
    - Use "Check All" or "Uncheck All" buttons (above the grid) for quick selection
-   - **Keyboard Shortcuts**:
-     - **Shift+Click**: Check all wells in the same row
-     - **Ctrl+Click**: Check all wells in the same column
+   - **Keyboard Shortcuts** (Smart Fill/Unfill Logic):
+     - **Shift+Click**: Smart fill/unfill all wells in the same row
+       - If the clicked checkbox is checked: fills (checks all) in the row
+       - If the clicked checkbox is unchecked and the row is all unchecked: fills (checks all) in the row
+       - If the clicked checkbox is unchecked and the row has some checked: unfills (unchecks all) in the row
+     - **Ctrl+Click**: Smart fill/unfill all wells in the same column
+       - If the clicked checkbox is checked: fills (checks all) in the column
+       - If the clicked checkbox is unchecked and the column is all unchecked: fills (checks all) in the column
+       - If the clicked checkbox is unchecked and the column has some checked: unfills (unchecks all) in the column
    - Instructions are displayed next to the grid explaining all interaction methods
    - Run button will be disabled if no wells are selected
 
@@ -416,37 +423,45 @@ Motion configuration files control the feedrate (speed) and acceleration for dif
   - All movements between wells during experiment
   - Well-to-well transitions
 
-### Selecting a Motion Configuration
+### Selecting a Motion Profile
 
-1. In the experiment window, find "Motion Config" dropdown
-2. Select from available configurations:
-   - **default_motion.json**: Balanced speed and precision
-   - **fast_motion.json**: High speed for faster experiments
-   - **precise_motion.json**: Lower speed for accuracy
-   - Custom configurations you've created
+1. In the experiment window, find the "Motion Profile" dropdown
+2. Select from available profiles:
+   - **default**: Balanced speed and precision for general use
+   - **precise**: Lower speed and acceleration for maximum precision
+   - **fast**: Maximum speed for rapid well-to-well movements
 
-### Creating Custom Motion Configuration
+The selected profile's settings are displayed below the dropdown, showing:
+- Preliminary feedrate and acceleration (for homing and initial moves)
+- Between-wells feedrate and acceleration (for well-to-well movements)
 
-1. Copy a template file:
-   ```bash
-   cp config/motion_configs/default_motion.json config/motion_configs/my_config.json
-   ```
+### Creating Custom Motion Profile
 
-2. Edit the file with your preferred values:
+1. Open `config/motion_config.json` in a text editor
+
+2. Add a new profile entry with your preferred values:
    ```json
    {
-     "preliminary_feedrate": 2000,
-     "preliminary_acceleration": 1000,
-     "between_wells_feedrate": 1500,
-     "between_wells_acceleration": 800,
-     "description": "My custom motion profile",
-     "author": "Your Name",
-     "created": "2025-01-15"
+     "default": { ... },
+     "precise": { ... },
+     "fast": { ... },
+     "my_custom_profile": {
+       "name": "My Custom Profile",
+       "description": "Custom settings for my experiments",
+       "preliminary": {
+         "feedrate": 2000,
+         "acceleration": 1000
+       },
+       "between_wells": {
+         "feedrate": 1500,
+         "acceleration": 800
+       }
+     }
    }
    ```
 
 3. Save the file
-4. Restart experiment.py to see the new configuration in the dropdown
+4. Restart experiment.py to see the new profile in the dropdown
 
 ### Motion Configuration Guidelines
 

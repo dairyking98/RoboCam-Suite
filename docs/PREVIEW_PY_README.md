@@ -45,7 +45,7 @@ The preview application enables users to:
 #### Loading from Calibration Files
 
 - **Source**: All wells from a saved calibration file
-- **Location**: `config/calibrations/*.json` (files are automatically prefixed with date and time: `{date_time}_{name}.json`)
+- **Location**: `config/calibrations/*.json` (files are automatically prefixed with date/time in format `YYYYMMDD_HHMMSS_{name}.json`, e.g., `20241215_143022_well_plate_8x6.json`)
 - **Use Case**: Preview all wells after calibration to verify interpolation accuracy
 - **Process**:
   1. Select "Calibration File" radio button
@@ -162,8 +162,8 @@ python preview.py
 
 # In GUI:
 # 1. Select "Calibration File"
-# 2. Click "Load" → Select "well_plate_8x6.json"
-# 3. Status shows: "Loaded 48 wells from well_plate_8x6.json"
+# 2. Click "Load" → Select "20240115_143022_well_plate_8x6.json" (files are prefixed with date_time)
+# 3. Status shows: "Loaded 48 wells from 20240115_143022_well_plate_8x6.json"
 # 4. (Optional) Click "Home Printer" to start from origin
 # 5. Click "Next" repeatedly to go through all wells
 # 6. Verify alignment at each position
@@ -177,10 +177,10 @@ python preview.py
 
 # In GUI:
 # 1. Select "Experiment Save File"
-# 2. Click "Load" → Select "my_experiment.json"
+# 2. Click "Load" → Select "20240115_143022_my_experiment.json" (files prefixed with date_time)
 # 3. Application loads referenced calibration
 # 4. Filters to only selected wells (e.g., A1, A2, B1, B3)
-# 5. Status shows: "Loaded 4 selected wells from my_experiment.json"
+# 5. Status shows: "Loaded 4 selected wells from 20240115_143022_my_experiment.json"
 # 6. (Optional) Click "Home Printer" to start from origin
 # 7. Navigate through only the selected wells
 # 8. Verify alignment before running experiment
@@ -260,14 +260,14 @@ Experiment save files are JSON files exported from experiment.py (automatically 
 
 ```json
 {
-  "calibration_file": "well_plate_8x6.json",
+  "calibration_file": "20241215_143022_well_plate_8x6.json",
   "selected_wells": ["A1", "A2", "B1", "B3"],
   "times": [30, 0, 0],
   "resolution": [1920, 1080],
   "fps": 30.0,
   "export_type": "H264",
   "quality": 85,
-  "motion_config_file": "default.json",
+  "motion_config_profile": "default",
   "filename_scheme": "exp_{y}{x}_{time}_{date}",
   "save_folder": "/output/filescheme/files",
   "pattern": "snake"
@@ -408,7 +408,7 @@ After creating a new calibration in calibrate.py:
 # Or: python preview.py
 
 # Load calibration
-# Select "Calibration File" → Load → Select "new_plate.json"
+# Select "Calibration File" → Load → Select "20241215_143022_new_plate.json" (files prefixed with date/time in format YYYYMMDD_HHMMSS)
 
 # Home printer
 # Click "Home Printer"
@@ -429,7 +429,7 @@ Before running an experiment:
 # Or: python preview.py
 
 # Load experiment settings
-# Select "Experiment Save File" → Load → Select "experiment_1.json"
+# Select "Experiment Save File" → Load → Select "20240115_143022_experiment_1.json" (files prefixed with date_time)
 
 # Home printer
 # Click "Home Printer"

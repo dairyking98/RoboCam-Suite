@@ -54,7 +54,7 @@ class Config:
         },
         "paths": {
             "config_dir": "config",
-            "motion_configs_dir": "config/motion_configs",
+            "motion_config_file": "config/motion_config.json",
             "calibration_dir": "config/calibrations",
             "experiment_config": "experiment_config.json"
         }

@@ -177,21 +177,26 @@ The system communicates with 3D printers using standard G-code commands:
 
 ### Adding Motion Profiles
 
-1. **Create Motion Config File**:
+1. **Create Motion Profile**:
    ```json
    {
-     "preliminary_feedrate": 2000,
-     "preliminary_acceleration": 1000,
-     "between_wells_feedrate": 1500,
-     "between_wells_acceleration": 800,
-     "description": "Custom profile",
-     "author": "Your Name",
-     "created": "2025-01-15"
+     "my_custom_profile": {
+       "name": "My Custom Profile",
+       "description": "Custom settings for my experiments",
+       "preliminary": {
+         "feedrate": 2000,
+         "acceleration": 1000
+       },
+       "between_wells": {
+         "feedrate": 1500,
+         "acceleration": 800
+       }
+     }
    }
    ```
 
-2. **Save to `config/motion_configs/`**
-3. **Select in experiment.py GUI**
+2. **Add to `config/motion_config.json`** (add as a new key in the JSON object alongside existing profiles)
+3. **Select in experiment.py GUI** (profile will appear in dropdown after restart)
 
 ### Configuration File Structure
 
@@ -222,7 +227,7 @@ The configuration system uses JSON files in `config/default_config.json`:
   },
   "paths": {
     "config_dir": "config",
-    "motion_configs_dir": "config/motion_configs",
+    "motion_config_file": "config/motion_config.json",
     "calibration_dir": "config/calibrations",
     "experiment_config": "experiment_config.json"
   }
@@ -343,7 +348,7 @@ RoboCam-Suite/
 │   ├── pihqcamera.py    # Camera wrapper
 │   └── stentorcam.py    # Extended RoboCam
 ├── config/              # Configuration files
-│   ├── motion_configs/ # Motion profiles
+│   ├── motion_config.json # Motion profiles (all profiles in one file)
 │   ├── calibrations/    # 4-corner calibration files
 │   └── templates/       # Experiment templates
 └── docs/                # Documentation

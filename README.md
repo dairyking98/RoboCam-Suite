@@ -58,7 +58,7 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 
 ### Quick Setup
 
-**Note: These commands are for Raspberry Pi OS (Linux). If you're on Windows, you'll need to use WSL or transfer files to a Raspberry Pi.**
+**Note: This software is designed for Raspberry Pi OS (Linux) only. All commands assume Raspberry Pi hardware and operating system.**
 
 1. Clone or download this repository:
 ```bash
@@ -91,7 +91,7 @@ sudo apt-get install -y python3-libcamera libcap-dev python3-dev build-essential
 2. Create a virtual environment with system site packages (required to access `python3-libcamera`):
 ```bash
 python3 -m venv --system-site-packages venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 ```
 
 **Note**: The `--system-site-packages` flag is required so the virtual environment can access system-installed packages like `python3-libcamera`, which is needed by `picamera2`.
@@ -104,7 +104,7 @@ pip install -r requirements.txt
 
 4. Create configuration directories:
 ```bash
-mkdir -p config/motion_configs
+mkdir -p config/calibrations
 mkdir -p config/templates
 ```
 
@@ -232,7 +232,7 @@ python experiment.py
 
 #### Calibration Files (config/calibrations/*.json)
 
-Calibration files are automatically saved with a date and time prefix (format: `{date_time}_{name}.json`). They store 4-corner calibration data with interpolated well positions:
+Calibration files are automatically saved with a date and time prefix in format `YYYYMMDD_HHMMSS` (e.g., `20241215_143022_well_plate_8x6.json`). They store 4-corner calibration data with interpolated well positions:
 
 ```json
 {
@@ -254,14 +254,14 @@ Users can export experiment settings to JSON files for reuse (automatically pref
 
 ```json
 {
-  "calibration_file": "well_plate_8x6.json",
+  "calibration_file": "20240115_143022_well_plate_8x6.json",
   "selected_wells": ["A1", "A2", "B1", "B3"],
   "times": [30, 0, 0],
   "resolution": [1920, 1080],
   "fps": 30.0,
   "export_type": "H264",
   "quality": 85,
-  "motion_config_file": "default.json",
+  "motion_config_profile": "default",
   "feedrate_override": "1500",
   "filename_scheme": "exp_{y}{x}_{time}_{date}",
   "save_folder": "/path/to/output",
@@ -269,29 +269,58 @@ Users can export experiment settings to JSON files for reuse (automatically pref
 }
 ```
 
-#### Motion Configuration (config/motion_configs/*.json)
+#### Motion Configuration (config/motion_config.json)
 
-Motion configuration files define feedrate and acceleration settings:
+Motion profiles define feedrate and acceleration settings for different use cases. All profiles are stored in a single file `config/motion_config.json`:
 
 ```json
 {
-  "preliminary_feedrate": 2000,
-  "preliminary_acceleration": 1000,
-  "between_wells_feedrate": 1500,
-  "between_wells_acceleration": 800,
-  "description": "Default motion profile",
-  "author": "User",
-  "created": "2025-01-01"
+  "default": {
+    "name": "Default Profile",
+    "description": "Balanced speed and precision for general use",
+    "preliminary": {
+      "feedrate": 3000,
+      "acceleration": 500
+    },
+    "between_wells": {
+      "feedrate": 1200,
+      "acceleration": 300
+    }
+  },
+  "precise": {
+    "name": "Precise Profile",
+    "description": "Lower speed and acceleration for maximum precision",
+    "preliminary": {
+      "feedrate": 2000,
+      "acceleration": 300
+    },
+    "between_wells": {
+      "feedrate": 3000,
+      "acceleration": 500
+    }
+  },
+  "fast": {
+    "name": "Fast Profile",
+    "description": "Maximum speed for rapid well-to-well movements",
+    "preliminary": {
+      "feedrate": 5000,
+      "acceleration": 1000
+    },
+    "between_wells": {
+      "feedrate": 8000,
+      "acceleration": 1500
+    }
+  }
 }
 ```
 
-- **preliminary_feedrate/acceleration**: Used for homing and initial positioning moves
-- **between_wells_feedrate/acceleration**: Used for movements between wells during experiment
+- **preliminary**: Used for homing and initial positioning moves
+- **between_wells**: Used for movements between wells during experiment
 
-Templates are available in `config/motion_configs/`:
-- `default_motion.json`: Balanced settings
-- `fast_motion.json`: High speed/acceleration
-- `precise_motion.json`: Lower speed/acceleration for precision
+Available profiles in `config/motion_config.json`:
+- **default**: Balanced speed and precision
+- **precise**: Lower speed/acceleration for maximum precision
+- **fast**: High speed/acceleration for rapid experiments
 
 ## File Naming
 
@@ -487,7 +516,7 @@ RoboCam-Suite/
 │   ├── pihqcamera.py        # Camera wrapper
 │   └── stentorcam.py        # StentorCam with well plate support
 ├── config/                   # Configuration files
-│   ├── motion_configs/       # Motion configuration templates
+│   ├── motion_config.json    # Motion configuration profiles
 │   ├── calibrations/         # Saved 4-corner calibrations
 │   └── templates/            # Experiment templates
 └── docs/                     # Documentation

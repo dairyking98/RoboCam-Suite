@@ -166,7 +166,7 @@ All files in `robocam/` are part of the core package and should be kept:
 
 All configuration files should be kept:
 - `default_config.json` - Default configuration
-- `motion_configs/` - Motion configuration templates
+- `motion_config.json` - Motion configuration profiles (all profiles in one file)
 
 ---
 
