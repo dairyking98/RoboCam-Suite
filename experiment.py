@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 
 # Configuration constants
 CSV_NAME: str = "experiment_points.csv"
-DEFAULT_SCHEME: str = "exp_{y}{x}_{time}_{date}"
+DEFAULT_FOLDER: str = "/output/filescheme/files"
 DEFAULT_RES: tuple[int, int] = (1920, 1080)
 DEFAULT_FPS: float = 30.0
 DEFAULT_EXPORT: str = "H264"
@@ -142,7 +142,7 @@ class ExperimentWindow:
         """
         if not self.seq:
             return
-        folder: str = self.folder_ent.get().strip() or "/output/filescheme/files"
+        folder: str = DEFAULT_FOLDER
         os.makedirs(folder, exist_ok=True)
         csv_path: str = os.path.join(folder, CSV_NAME)
         with open(csv_path, "w", newline="") as f:
@@ -216,31 +216,29 @@ class ExperimentWindow:
         self.select_cells_btn = tk.Button(w, text="Select Cells", command=self.open_checkbox_window, state="disabled")
         self.select_cells_btn.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="w")
 
-        tk.Label(w, text="Times (Off,On,Off sec):").grid(row=2, column=0, columnspan=2)
-        self.times = tk.Text(w, height=4, width=30, wrap=tk.WORD)
-        self.times.grid(row=3, column=0, columnspan=2, padx=5, pady=5)
+        # GPIO Action Phases section
+        tk.Label(w, text="GPIO Action Phases:").grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 0))
+        
+        # Frame to contain phase rows
+        self.action_phases_frame = tk.Frame(w)
+        self.action_phases_frame.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
+        
+        # Initialize with default phase (GPIO OFF, 30 seconds)
+        self.action_phases = []
+        self.add_action_phase("GPIO OFF", 30.0)
+        
+        # Add Action button
+        tk.Button(w, text="Add Action", command=self.add_action_phase).grid(row=4, column=0, padx=5, pady=5, sticky="w")
 
-        # Initialize times field (empty by default)
-        self.times.insert(tk.END, "30, 0, 0\n")
+        # Pattern, experiment name
+        tk.Label(w, text="Pattern:").grid(row=5, column=0)
+        self.pattern_var = tk.StringVar(value="raster →↓")
+        tk.OptionMenu(w, self.pattern_var, "snake ↙↗", "raster →↓").grid(row=5, column=1)
 
-        # Pattern, filename, folder
-        tk.Label(w, text="Pattern:").grid(row=4, column=0)
-        self.pattern_var = tk.StringVar(value="snake")
-        tk.OptionMenu(w, self.pattern_var, "snake", "raster").grid(row=4, column=1)
-
-        tk.Label(w, text="Filename Scheme:").grid(row=5, column=0)
-        self.scheme_ent = tk.Entry(w, width=40)
-        self.scheme_ent.insert(0, DEFAULT_SCHEME)
-        self.scheme_ent.grid(row=5, column=1, columnspan=2, pady=5, sticky="ew")
-
-        tk.Label(w, text="Save Folder:").grid(row=6, column=0)
-        self.folder_ent = tk.Entry(w, width=40)
-        self.folder_ent.insert(0, "/output/filescheme/files")
-        self.folder_ent.grid(row=6, column=1, sticky="ew")
-        tk.Button(w, text="Browse…", command=lambda: (
-            self.folder_ent.delete(0, tk.END),
-            self.folder_ent.insert(0, filedialog.askdirectory())
-        )).grid(row=6, column=2)
+        tk.Label(w, text="Experiment Name:").grid(row=6, column=0)
+        self.experiment_name_ent = tk.Entry(w, width=40)
+        self.experiment_name_ent.insert(0, "exp")
+        self.experiment_name_ent.grid(row=6, column=1, columnspan=2, pady=5, sticky="ew")
 
         # Resolution, FPS, export, quality, feedrate
         tk.Label(w, text="Resolution X:").grid(row=7, column=0)
@@ -285,31 +283,31 @@ class ExperimentWindow:
 
         # Experiment settings export/import
         exp_settings_frame = tk.Frame(w)
-        exp_settings_frame.grid(row=15, column=0, columnspan=3, padx=5, pady=5)
+        exp_settings_frame.grid(row=16, column=0, columnspan=3, padx=5, pady=5)
         tk.Button(exp_settings_frame, text="Export Experiment Settings", command=self.export_experiment_settings).pack(side=tk.LEFT, padx=5)
         tk.Button(exp_settings_frame, text="Load Experiment Settings", command=self.load_experiment_settings).pack(side=tk.LEFT, padx=5)
 
         # Status & controls
-        tk.Label(w, text="Status:").grid(row=16, column=0, sticky="w")
+        tk.Label(w, text="Status:").grid(row=17, column=0, sticky="w")
         self.status_lbl = tk.Label(w, text="Idle")
-        self.status_lbl.grid(row=16, column=1, columnspan=2, sticky="w")
+        self.status_lbl.grid(row=17, column=1, columnspan=2, sticky="w")
 
         # Recording indicator button (flashing when recording)
         self.recording_btn = tk.Button(w, text="● REC", bg="gray", state="disabled", relief="flat", width=8)
-        self.recording_btn.grid(row=16, column=3, padx=5, pady=5)
+        self.recording_btn.grid(row=17, column=3, padx=5, pady=5)
 
         self.run_btn = tk.Button(w, text="Run", command=self.start)
-        self.run_btn.grid(row=17, column=0, padx=5, pady=5)
-        tk.Button(w, text="Pause", command=self.pause).grid(row=17, column=1, padx=5, pady=5)
-        tk.Button(w, text="Stop",  command=self.stop).grid(row=17, column=2, padx=5, pady=5)
+        self.run_btn.grid(row=18, column=0, padx=5, pady=5)
+        tk.Button(w, text="Pause", command=self.pause).grid(row=18, column=1, padx=5, pady=5)
+        tk.Button(w, text="Stop",  command=self.stop).grid(row=18, column=2, padx=5, pady=5)
 
         # Timers
-        tk.Label(w, text="Duration:").grid(row=18, column=0, sticky="e")
-        self.duration_lbl = tk.Label(w, text="00:00:00"); self.duration_lbl.grid(row=18, column=1)
-        tk.Label(w, text="Elapsed:").grid(row=19, column=0, sticky="e")
-        self.elapsed_lbl = tk.Label(w, text="00:00:00");   self.elapsed_lbl.grid(row=19, column=1)
-        tk.Label(w, text="Remaining:").grid(row=20, column=0, sticky="e")
-        self.remaining_lbl = tk.Label(w, text="00:00:00"); self.remaining_lbl.grid(row=20, column=1)
+        tk.Label(w, text="Duration:").grid(row=19, column=0, sticky="e")
+        self.duration_lbl = tk.Label(w, text="00:00:00"); self.duration_lbl.grid(row=19, column=1)
+        tk.Label(w, text="Elapsed:").grid(row=20, column=0, sticky="e")
+        self.elapsed_lbl = tk.Label(w, text="00:00:00");   self.elapsed_lbl.grid(row=20, column=1)
+        tk.Label(w, text="Remaining:").grid(row=21, column=0, sticky="e")
+        self.remaining_lbl = tk.Label(w, text="00:00:00"); self.remaining_lbl.grid(row=21, column=1)
         
         # Prevent window resizing when entry fields expand
         w.resizable(False, False)
@@ -346,8 +344,8 @@ class ExperimentWindow:
 
         # Live example filename
         def upd(e=None):
-            fld    = self.folder_ent.get() or "/output/filescheme/files"
-            sch    = self.scheme_ent.get() or DEFAULT_SCHEME
+            fld    = DEFAULT_FOLDER
+            exp_name = self.experiment_name_ent.get().strip() or "exp"
             ext_map = {"H264": ".h264", "MJPEG": ".mjpeg", "JPEG": ".jpeg"}
             ext    = ext_map.get(self.export_var.get(), ".h264")
             # Use calibration labels if available, otherwise use placeholders
@@ -358,20 +356,17 @@ class ExperimentWindow:
                     x0 = first_label[1:] if len(first_label) > 1 else "1"  # Column number
                     y0 = first_label[0] if len(first_label) > 0 else "A"  # Row letter
                 else:
-                    x0 = "{x}"
-                    y0 = "{y}"
+                    x0 = "1"
+                    y0 = "A"
             else:
-                x0 = "{x}"
-                y0 = "{y}"
+                x0 = "1"
+                y0 = "A"
             ts     = time.strftime("%H%M%S")
-            ds     = time.strftime("%b%-d")
-            try:
-                fn = sch.format(x=x0, y=y0, time=ts, date=ds) + ext
-            except:
-                fn = sch + ext
+            ds     = time.strftime("%b%d").replace(" 0", " ").strip()  # Remove leading zero from day
+            fn = f"{ds}_{ts}_{exp_name}_{y0}{x0}{ext}"
             self.status_lbl.config(text=f"Example: {os.path.join(fld,fn)}")
 
-        for wgt in (self.scheme_ent, self.folder_ent,
+        for wgt in (self.experiment_name_ent,
                     self.res_x_ent, self.res_y_ent, self.fps_ent):
             wgt.bind("<KeyRelease>", upd)
         self.export_var.trace_add("write", lambda *a: upd())
@@ -902,6 +897,139 @@ class ExperimentWindow:
         if hasattr(self, 'status_lbl'):
             self.status_lbl.config(text=f"Ready - {len(selected_wells)} wells selected")
     
+    def add_action_phase(self, action: Optional[str] = None, time: Optional[float] = None) -> None:
+        """
+        Add a new GPIO action phase row to the GUI.
+        
+        Args:
+            action: Action type ("GPIO ON" or "GPIO OFF"). If None, defaults to "GPIO OFF".
+            time: Time in seconds. If None, defaults to 0.0.
+        """
+        if not self.action_phases_frame:
+            return
+        
+        if action is None:
+            action = "GPIO OFF"
+        if time is None:
+            time = 0.0
+        
+        phase_num = len(self.action_phases) + 1
+        
+        # Create frame for this phase row
+        phase_frame = tk.Frame(self.action_phases_frame)
+        phase_frame.grid(row=len(self.action_phases), column=0, sticky="ew", padx=2, pady=2)
+        
+        # Phase number label
+        phase_label = tk.Label(phase_frame, text=f"Phase {phase_num}:")
+        phase_label.grid(row=0, column=0, padx=5)
+        
+        # Action dropdown
+        action_var = tk.StringVar(value=action)
+        action_menu = tk.OptionMenu(phase_frame, action_var, "GPIO ON", "GPIO OFF")
+        action_menu.grid(row=0, column=1, padx=5)
+        
+        # Time entry
+        time_ent = tk.Entry(phase_frame, width=10)
+        time_ent.insert(0, str(time))
+        time_ent.grid(row=0, column=2, padx=5)
+        
+        # Delete button (disabled for first phase)
+        delete_btn = tk.Button(
+            phase_frame, 
+            text="Delete", 
+            command=lambda: self.remove_action_phase(phase_num - 1),
+            state="normal" if phase_num > 1 else "disabled"
+        )
+        delete_btn.grid(row=0, column=3, padx=5)
+        
+        # Store phase data
+        phase_data = {
+            "frame": phase_frame,
+            "phase_num": phase_num,
+            "phase_label": phase_label,
+            "action_var": action_var,
+            "time_ent": time_ent,
+            "delete_btn": delete_btn
+        }
+        self.action_phases.append(phase_data)
+        
+        # Update phase numbers for all phases
+        self._update_phase_numbers()
+    
+    def remove_action_phase(self, index: int) -> None:
+        """
+        Remove an action phase from the GUI.
+        
+        Args:
+            index: Index of the phase to remove (0-based)
+        """
+        if index < 0 or index >= len(self.action_phases):
+            return
+        
+        # Cannot remove first phase
+        if index == 0:
+            return
+        
+        # Destroy the frame and remove from list
+        phase_data = self.action_phases[index]
+        phase_data["frame"].destroy()
+        self.action_phases.pop(index)
+        
+        # Update phase numbers
+        self._update_phase_numbers()
+    
+    def _update_phase_numbers(self) -> None:
+        """Update phase number labels and delete button states."""
+        for i, phase_data in enumerate(self.action_phases):
+            phase_data["phase_num"] = i + 1
+            # Update label
+            phase_data["phase_label"].config(text=f"Phase {i + 1}:")
+            # Update delete button state (disabled for first phase)
+            phase_data["delete_btn"].config(state="normal" if i > 0 else "disabled")
+            # Update delete button command to use correct index
+            phase_data["delete_btn"].config(command=lambda idx=i: self.remove_action_phase(idx))
+    
+    def get_action_phases(self) -> List[Tuple[str, float]]:
+        """
+        Get list of action phases from GUI.
+        
+        Returns:
+            List of (action, time) tuples where action is "GPIO ON" or "GPIO OFF"
+        """
+        phases = []
+        for phase_data in self.action_phases:
+            action = phase_data["action_var"].get()
+            try:
+                time_val = float(phase_data["time_ent"].get().strip())
+                phases.append((action, time_val))
+            except ValueError:
+                # Invalid time, skip this phase
+                continue
+        return phases
+    
+    def validate_action_phases(self) -> Tuple[bool, str]:
+        """
+        Validate that all action phases have valid times.
+        
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if not self.action_phases:
+            return False, "At least one action phase is required"
+        
+        for i, phase_data in enumerate(self.action_phases):
+            time_str = phase_data["time_ent"].get().strip()
+            if not time_str:
+                return False, f"Phase {i + 1} has no time specified"
+            try:
+                time_val = float(time_str)
+                if time_val < 0:
+                    return False, f"Phase {i + 1} has negative time"
+            except ValueError:
+                return False, f"Phase {i + 1} has invalid time: {time_str}"
+        
+        return True, ""
+    
     def export_experiment_settings(self) -> None:
         """Export current experiment settings to JSON file."""
         if not self.loaded_calibration:
@@ -915,24 +1043,30 @@ class ExperimentWindow:
             return
         
         try:
-            # Get all settings
-            times_str = self.times.get("1.0", tk.END).strip()
-            times_list = [v for v in re.split(r"[\s,]+", times_str) if v]
-            if len(times_list) != 3:
-                raise ValueError("Invalid times: must provide 3 values (OFF, ON, OFF)")
+            # Get action phases
+            phases = self.get_action_phases()
+            if not phases:
+                raise ValueError("At least one action phase is required")
+            
+            # Validate phases
+            is_valid, error_msg = self.validate_action_phases()
+            if not is_valid:
+                raise ValueError(error_msg)
+            
+            # Convert phases to list of dicts for export
+            phases_data = [{"action": action, "time": time} for action, time in phases]
             
             settings = {
                 "calibration_file": self.calibration_file,
                 "selected_wells": selected_wells,
-                "times": [float(t) for t in times_list],
+                "action_phases": phases_data,
                 "resolution": [int(self.res_x_ent.get().strip()), int(self.res_y_ent.get().strip())],
                 "fps": float(self.fps_ent.get().strip()),
                 "export_type": self.export_var.get(),
                 "quality": int(self.quality_ent.get().strip()),
                 "motion_config_profile": self.motion_config_var.get(),
-                "filename_scheme": self.scheme_ent.get().strip(),
-                "save_folder": self.folder_ent.get().strip(),
-                "pattern": self.pattern_var.get()
+                "experiment_name": self.experiment_name_ent.get().strip(),
+                "pattern": self.pattern_var.get()  # Stores format like "snake ↙↗" or "raster →↓"
             }
             
             # Ask user for save location
@@ -1005,9 +1139,19 @@ class ExperimentWindow:
             for label, var in self.well_checkboxes.items():
                 var.set(label in selected_wells)
             
-            times = settings.get("times", [30, 0, 0])
-            self.times.delete("1.0", tk.END)
-            self.times.insert("1.0", f"{times[0]}, {times[1]}, {times[2]}")
+            # Load action phases
+            phases_data = settings.get("action_phases", [{"action": "GPIO OFF", "time": 30.0}])
+            # Clear all existing phases (remove from end to avoid index issues)
+            while len(self.action_phases) > 1:
+                self.remove_action_phase(len(self.action_phases) - 1)
+            # Update first phase with loaded data
+            if self.action_phases and phases_data:
+                self.action_phases[0]["action_var"].set(phases_data[0].get("action", "GPIO OFF"))
+                self.action_phases[0]["time_ent"].delete(0, tk.END)
+                self.action_phases[0]["time_ent"].insert(0, str(phases_data[0].get("time", 30.0)))
+            # Add remaining phases
+            for phase_dict in phases_data[1:]:
+                self.add_action_phase(phase_dict.get("action", "GPIO OFF"), phase_dict.get("time", 0.0))
             
             resolution = settings.get("resolution", list(DEFAULT_RES))
             self.res_x_ent.delete(0, tk.END)
@@ -1029,13 +1173,25 @@ class ExperimentWindow:
                 motion_profile = motion_profile[:-5]  # Remove .json
             self.motion_config_var.set(motion_profile)
             
-            self.scheme_ent.delete(0, tk.END)
-            self.scheme_ent.insert(0, settings.get("filename_scheme", DEFAULT_SCHEME))
+            # Handle both old format (filename_scheme) and new format (experiment_name)
+            experiment_name = settings.get("experiment_name")
+            if not experiment_name:
+                # Try to extract from old filename_scheme format if present
+                old_scheme = settings.get("filename_scheme", "exp_{y}{x}_{time}_{date}")
+                # Try to extract exp name from old scheme (default was "exp")
+                if "exp" in old_scheme:
+                    experiment_name = "exp"
+                else:
+                    experiment_name = "exp"
+            self.experiment_name_ent.delete(0, tk.END)
+            self.experiment_name_ent.insert(0, experiment_name)
             
-            self.folder_ent.delete(0, tk.END)
-            self.folder_ent.insert(0, settings.get("save_folder", "/output/filescheme/files"))
-            
-            self.pattern_var.set(settings.get("pattern", "snake"))
+            # Handle both old format (plain "snake"/"raster") and new format (with symbols)
+            pattern_setting = settings.get("pattern", "raster →↓")
+            if pattern_setting in ["snake", "raster"]:
+                # Old format - add symbols
+                pattern_setting = "snake ↙↗" if pattern_setting == "snake" else "raster →↓"
+            self.pattern_var.set(pattern_setting)
             
             self.update_run_button_state()
             self.status_lbl.config(text=f"Settings loaded from {os.path.basename(filename)}", fg="green")
@@ -1076,18 +1232,26 @@ class ExperimentWindow:
             return
         
         try:
-            # Parse timing
-            toks = [v for v in re.split(r"[\s,]+", self.times.get("1.0",tk.END).strip()) if v]
-            if len(toks) != 3:
-                logger.error("Invalid times: must provide 3 values (OFF, ON, OFF)")
-                self.status_lbl.config(text="Error: Enter 3 times (OFF, ON, OFF)")
+            # Get and validate action phases
+            phases = self.get_action_phases()
+            if not phases:
+                logger.error("No action phases configured")
+                self.status_lbl.config(text="Error: At least one action phase is required")
                 return
-            off_t, on_t, off2 = map(float, toks)
+            
+            is_valid, error_msg = self.validate_action_phases()
+            if not is_valid:
+                logger.error(f"Invalid action phases: {error_msg}")
+                self.status_lbl.config(text=f"Error: {error_msg}")
+                return
+            
+            # Store phases for use in run_loop
+            self.action_phases_list = phases
             
             # Get other settings
-            folder = self.folder_ent.get().strip() or "/output/filescheme/files"
+            folder = DEFAULT_FOLDER
             os.makedirs(folder, exist_ok=True)
-            scheme = self.scheme_ent.get().strip() or DEFAULT_SCHEME
+            experiment_name = self.experiment_name_ent.get().strip() or "exp"
             res_x = int(self.res_x_ent.get().strip())
             res_y = int(self.res_y_ent.get().strip())
             fps = float(self.fps_ent.get().strip())
@@ -1178,6 +1342,11 @@ class ExperimentWindow:
         
         # Sort by pattern
         pattern = self.pattern_var.get()
+        # Extract pattern name (handle both old format "snake"/"raster" and new format with symbols)
+        if pattern.startswith("snake"):
+            pattern = "snake"
+        elif pattern.startswith("raster"):
+            pattern = "raster"
         if pattern == "snake":
             # Snake pattern: alternate row direction
             selected_positions.sort(key=lambda x: (x[4], x[5] if x[4] % 2 == 0 else -x[5]))
@@ -1199,7 +1368,9 @@ class ExperimentWindow:
             self.z_val = selected_positions[0][2]  # Z from first position
 
         self.save_csv()
-        self.total_time = len(self.seq) * (off_t + on_t + off2)
+        # Calculate total time from all phases
+        phase_total_time = sum(time for _, time in self.action_phases_list)
+        self.total_time = len(self.seq) * phase_total_time
         self.duration_lbl.config(text=format_hms(self.total_time))
         self.start_ts, self.running, self.paused = time.time(), True, False
 
@@ -1253,10 +1424,10 @@ class ExperimentWindow:
                     break
 
                 ts   = time.strftime("%H%M%S")
-                ds   = time.strftime("%b%-d")
+                ds   = time.strftime("%b%d").replace(" 0", " ").strip()  # Remove leading zero from day
                 ext_map = {"H264": ".h264", "MJPEG": ".mjpeg", "JPEG": ".jpeg"}
                 ext  = ext_map.get(export, ".jpeg")
-                fname= scheme.format(x=x_lbl, y=y_lbl, time=ts, date=ds) + ext
+                fname = f"{ds}_{ts}_{experiment_name}_{y_lbl}{x_lbl}{ext}"
                 path = os.path.join(folder, fname)
                 
                 os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -1272,26 +1443,22 @@ class ExperimentWindow:
                     self.recording = True
                     self.start_recording_flash()
 
-                    # OFF
-                    self.laser.switch(0); self.laser_on = False
-                    t0 = time.time()
-                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - OFF for {off_t}s")
-                    while time.time() - t0 < off_t and self.running:
-                        time.sleep(0.05 if not self.paused else 0.1)
-
-                    # ON
-                    self.laser.switch(1); self.laser_on = True
-                    t1 = time.time()
-                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - ON for {on_t}s")
-                    while time.time() - t1 < on_t and self.running:
-                        time.sleep(0.05 if not self.paused else 0.1)
-
-                    # OFF2
-                    self.laser.switch(0); self.laser_on = False
-                    t2 = time.time()
-                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - OFF for {off2}s")
-                    while time.time() - t2 < off2 and self.running:
-                        time.sleep(0.05 if not self.paused else 0.1)
+                    # Execute all action phases
+                    for phase_idx, (action, phase_time) in enumerate(self.action_phases_list, 1):
+                        if not self.running:
+                            break
+                        
+                        # Determine GPIO state
+                        state = 1 if action == "GPIO ON" else 0
+                        self.laser.switch(state)
+                        self.laser_on = (state == 1)
+                        
+                        # Wait for phase duration
+                        phase_start = time.time()
+                        action_name = "ON" if action == "GPIO ON" else "OFF"
+                        self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(phases)})")
+                        while time.time() - phase_start < phase_time and self.running:
+                            time.sleep(0.05 if not self.paused else 0.1)
 
                     try:
                         self.picam2.stop_recording()
