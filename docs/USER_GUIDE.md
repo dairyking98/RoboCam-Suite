@@ -256,10 +256,10 @@ The preview application opens two windows:
    - Click "Load" and select the file
    - Status will show number of wells loaded
 
-2. **Home Printer**:
-   - Click "Home Printer" button
-   - Wait for homing to complete (status will show "Homed successfully")
-   - **Important**: Homing is required before navigation
+2. **Home Printer** (Optional):
+   - Click "Home Printer" button if you want to start from origin
+   - Current coordinates are shown on startup
+   - Navigation works from current position - homing is not required
 
 3. **Navigate Through Wells**:
    - **Click on a well** in the list to select it
@@ -282,7 +282,7 @@ The preview application opens two windows:
 
 ### Tips for Preview
 
-- **Always home first**: Navigation requires the printer to be homed
+- **Homing is optional**: Navigation works from current position, just like calibrate.py
 - **Use sequential navigation**: The "Next" and "Previous" buttons make it easy to go through all wells in order
 - **Check critical wells**: Focus on wells that are critical for your experiment
 - **Verify before experiment**: Use preview to catch alignment issues before running a long experiment

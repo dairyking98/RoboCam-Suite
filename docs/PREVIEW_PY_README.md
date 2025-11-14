@@ -80,7 +80,8 @@ The preview application enables users to:
 ### 4. Homing Integration
 
 - **Home Button**: Returns printer to origin (0, 0, 0) position
-- **Required Before Navigation**: Homing is required before any well navigation
+- **Optional**: Homing is not required - navigation works from current position
+- **Current Position Display**: Shows current coordinates on startup (like calibrate.py)
 - **Status Indicator**: Shows homing status and completion
 - **Automatic Updates**: Position display updates after homing completes
 - **Error Handling**: Clear error messages if homing fails
@@ -126,8 +127,10 @@ python preview.py --backend null    # Headless mode
 
 1. **Launch Application**:
    ```bash
-   python preview.py
+   ./start_preview.sh
+   # Or: python preview.py
    ```
+   - Current coordinates are displayed on startup
 
 2. **Load Wells**:
    - Choose source type: "Calibration File" or "Experiment Save File"
@@ -135,10 +138,9 @@ python preview.py --backend null    # Headless mode
    - Select the appropriate file
    - Status will show number of wells loaded
 
-3. **Home Printer**:
-   - Click "Home Printer" button
-   - Wait for homing to complete
-   - Status will show "Homed successfully"
+3. **Home Printer** (Optional):
+   - Click "Home Printer" button if you want to start from origin
+   - Navigation works from current position - homing is not required
 
 4. **Navigate Through Wells**:
    - Click on a well in the list to select it
@@ -162,7 +164,7 @@ python preview.py
 # 1. Select "Calibration File"
 # 2. Click "Load" → Select "well_plate_8x6.json"
 # 3. Status shows: "Loaded 48 wells from well_plate_8x6.json"
-# 4. Click "Home Printer"
+# 4. (Optional) Click "Home Printer" to start from origin
 # 5. Click "Next" repeatedly to go through all wells
 # 6. Verify alignment at each position
 ```
@@ -179,7 +181,7 @@ python preview.py
 # 3. Application loads referenced calibration
 # 4. Filters to only selected wells (e.g., A1, A2, B1, B3)
 # 5. Status shows: "Loaded 4 selected wells from my_experiment.json"
-# 6. Click "Home Printer"
+# 6. (Optional) Click "Home Printer" to start from origin
 # 7. Navigate through only the selected wells
 # 8. Verify alignment before running experiment
 ```
@@ -380,7 +382,7 @@ The preview tool is designed to fit into the overall RoboCam-Suite workflow:
 
 ## Best Practices
 
-1. **Always Home First**: Navigation requires homing - do this before previewing wells
+1. **Homing is Optional**: Navigation works from current position, just like calibrate.py
 2. **Verify After Calibration**: Use preview to check interpolation accuracy after creating calibration
 3. **Preview Before Experiments**: Check alignment of selected wells before running long experiments
 4. **Use Sequential Navigation**: The Next/Previous buttons make it easy to go through all wells

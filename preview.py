@@ -111,7 +111,7 @@ class PreviewApp:
         self.create_widgets()
 
         self.running: bool = True
-        self.homed: bool = False
+        self.homed: bool = False  # Track homing status, but not required for movement
         self.wells: List[Tuple[Tuple[float, float, float], str]] = []  # (position, label)
         self.current_index: int = -1
         
@@ -192,6 +192,7 @@ class PreviewApp:
         
         tk.Button(nav_frame, text="Home Printer", command=self.home_printer,
                  width=15, height=2, bg="#4CAF50", fg="white").pack(side=tk.LEFT, padx=5)
+        # Note: Homing is optional - movement works from current position
         tk.Button(nav_frame, text="Previous", command=self.previous_well,
                  width=12, bg="#FF9800", fg="white").pack(side=tk.LEFT, padx=5)
         tk.Button(nav_frame, text="Next", command=self.next_well,
@@ -388,10 +389,7 @@ class PreviewApp:
             self.status_label.config(text="Printer not initialized", fg="red")
             return
         
-        if not self.homed:
-            self.status_label.config(text="Please home printer first", fg="orange")
-            return
-        
+        # Homing is not required - movement works from current position
         position, label = self.wells[index]
         x, y, z = position
         

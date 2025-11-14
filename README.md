@@ -185,8 +185,9 @@ python experiment.py
    - For calibration files: All wells are loaded
    - For experiment save files: Only checked wells from the experiment are loaded
 
-4. Home the printer:
-   - Click "Home Printer" button (required before navigation)
+4. Home the printer (optional):
+   - Click "Home Printer" button if you want to start from origin
+   - Navigation works from current position - homing is not required
 
 5. Navigate through wells:
    - Click on a well in the list to select it
