@@ -341,11 +341,13 @@ The preview tool fits into the overall workflow:
    - Use "Check All" or "Uncheck All" buttons (above the grid) for quick selection
    - **Keyboard Shortcuts** (Smart Fill/Unfill Logic):
      - **Shift+Click**: Smart fill/unfill all wells in the same row
-       - If the clicked checkbox is checked: fills (checks all) in the row
+       - If the clicked checkbox is checked and the row is all checked: unfills (unchecks all) in the row
+       - If the clicked checkbox is checked and the row is not all checked: fills (checks all) in the row
        - If the clicked checkbox is unchecked and the row is all unchecked: fills (checks all) in the row
        - If the clicked checkbox is unchecked and the row has some checked: unfills (unchecks all) in the row
      - **Ctrl+Click**: Smart fill/unfill all wells in the same column
-       - If the clicked checkbox is checked: fills (checks all) in the column
+       - If the clicked checkbox is checked and the column is all checked: unfills (unchecks all) in the column
+       - If the clicked checkbox is checked and the column is not all checked: fills (checks all) in the column
        - If the clicked checkbox is unchecked and the column is all unchecked: fills (checks all) in the column
        - If the clicked checkbox is unchecked and the column has some checked: unfills (unchecks all) in the column
    - Instructions are displayed next to the grid explaining all interaction methods

@@ -40,11 +40,13 @@ The application automates the execution of well-plate experiments by:
   - **Check All / Uncheck All Buttons**: Quick selection controls in the window
   - **Keyboard Shortcuts** (Smart Fill/Unfill Logic):
     - **Shift+Click**: Smart fill/unfill all wells in the same row
-      - If clicked checkbox is checked: fills (checks all) in row
+      - If clicked checkbox is checked and row is all checked: unfills (unchecks all) in row
+      - If clicked checkbox is checked and row is not all checked: fills (checks all) in row
       - If clicked checkbox is unchecked and row is all unchecked: fills (checks all) in row
       - If clicked checkbox is unchecked and row has some checked: unfills (unchecks all) in row
     - **Ctrl+Click**: Smart fill/unfill all wells in the same column
-      - If clicked checkbox is checked: fills (checks all) in column
+      - If clicked checkbox is checked and column is all checked: unfills (unchecks all) in column
+      - If clicked checkbox is checked and column is not all checked: fills (checks all) in column
       - If clicked checkbox is unchecked and column is all unchecked: fills (checks all) in column
       - If clicked checkbox is unchecked and column has some checked: unfills (unchecks all) in column
   - **GUI Instructions**: Helpful instructions displayed next to the grid explaining all interaction methods

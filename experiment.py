@@ -641,8 +641,12 @@ class ExperimentWindow:
                         if has_shift:
                             # Shift-click: operate on row
                             if checkbox_state:  # Checkbox is checked
-                                # State: checked, action: fill row (check all)
-                                self.check_row(r)
+                                if row_state == "all_checked":
+                                    # State: checked, row: all checked, action: unfill row (uncheck all)
+                                    self.uncheck_row(r)
+                                else:
+                                    # State: checked, row: not all checked, action: fill row (check all)
+                                    self.check_row(r)
                             else:  # Checkbox is unchecked
                                 if row_state == "all_unchecked":
                                     # State: unchecked, row: all unchecked, action: fill row (check all)
@@ -656,8 +660,12 @@ class ExperimentWindow:
                         else:  # has_control
                             # Control-click: operate on column
                             if checkbox_state:  # Checkbox is checked
-                                # State: checked, action: fill column (check all)
-                                self.check_column(c)
+                                if col_state == "all_checked":
+                                    # State: checked, column: all checked, action: unfill column (uncheck all)
+                                    self.uncheck_column(c)
+                                else:
+                                    # State: checked, column: not all checked, action: fill column (check all)
+                                    self.check_column(c)
                             else:  # Checkbox is unchecked
                                 if col_state == "all_unchecked":
                                     # State: unchecked, column: all unchecked, action: fill column (check all)
