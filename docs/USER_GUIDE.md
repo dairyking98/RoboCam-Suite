@@ -375,10 +375,13 @@ The preview tool fits into the overall workflow:
    - Separate settings for preliminary movements (homing) and between-wells movements
 
 8. **File Settings**:
-   - **Filename Scheme**: Pattern for output files
-     - Placeholders: `{x}`, `{y}`, `{time}`, `{date}`
-     - Example: `exp_{y}{x}_{time}_{date}`
-   - **Save Folder**: Directory to save output files (default: `/output/filescheme/files`)
+   - **Pattern**: Choose well traversal pattern
+     - `snake →↙`: Zig-zag pattern (alternates row direction)
+     - `raster →↓`: Rectilinear pattern (consistent direction, default)
+   - **Experiment Name**: Name identifier for the experiment (default: "exp")
+     - Used in generated filenames: `{date}_{time}_{experiment_name}_{y}{x}.{ext}`
+     - Example: `Jan15_143022_exp_B2.h264`
+   - **Save Folder**: Files are automatically saved to `/output/filescheme/files` (not configurable via GUI)
 
 9. **Status and Recording Indicator**:
    - **Status Display**: Shows current experiment progress, well being processed, and any errors
@@ -404,11 +407,21 @@ The preview tool fits into the overall workflow:
     - Configuration is auto-saved when you close the window
     - You can also manually save
 
-### Filename Scheme Examples
+### Filename Format
 
-- `exp_{y}{x}_{time}_{date}` → `exp_B2_143022_Jan1.mjpeg`
-- `well_{y}{x}_{date}` → `well_B2_Jan1.mjpeg`
-- `test_{time}` → `test_143022.mjpeg`
+Files are automatically named using the format: `{date}_{time}_{experiment_name}_{y}{x}.{ext}`
+
+**Examples**:
+- Experiment name "exp", well B2, captured at 14:30:22 on January 15th → `Jan15_143022_exp_B2.h264`
+- Experiment name "test1", well A5, captured at 09:15:30 on December 3rd → `Dec3_091530_test1_A5.mjpeg`
+
+**Components**:
+- `{date}`: Date in MMMDD format (e.g., "Jan15", "Dec3")
+- `{time}`: Time in HHMMSS format (e.g., "143022", "091530")
+- `{experiment_name}`: Value from "Experiment Name" field (default: "exp")
+- `{y}`: Row letter (A, B, C, etc.)
+- `{x}`: Column number (1, 2, 3, etc.)
+- `{ext}`: File extension based on export type (`.h264`, `.mjpeg`, `.jpeg`)
 
 ## Motion Configuration
 
@@ -509,12 +522,12 @@ The selected profile's settings are displayed below the dropdown, showing:
 ### After Experiment
 
 1. **Check Output Files**:
-   - Navigate to save folder
+   - Navigate to `/output/filescheme/files`
    - Verify all files were created
    - Check file sizes (should be non-zero)
 
 2. **Review CSV File**:
-   - Open `experiment_points.csv` in save folder
+   - Open `experiment_points.csv` in `/output/filescheme/files`
    - Verify all wells were visited
    - Check coordinates match expectations
 
@@ -592,9 +605,9 @@ For detailed documentation on specific applications:
 
 ### Files Not Saving
 
-- **Check folder permissions**: Ensure save folder is writable
+- **Check folder permissions**: Ensure `/output/filescheme/files` is writable
 - **Verify disk space**: Check available space with `df -h`
-- **Check filename scheme**: Invalid characters may cause issues
+- **Check experiment name**: Invalid characters in experiment name may cause filename issues
 - **Review log file**: Look for file write errors
 
 ## Best Practices
@@ -619,7 +632,7 @@ For detailed documentation on specific applications:
    - Higher speeds may cause vibration
 
 4. **File Management**:
-   - Use descriptive filename schemes
+   - Use descriptive experiment names
    - Organize experiments in dated folders
    - Keep CSV files with video files for reference
 
@@ -643,8 +656,8 @@ You can create custom well patterns by:
 To run multiple experiments:
 1. Save different experiment configurations
 2. Load configuration before each run
-3. Change save folder for each experiment
-4. Use different filename schemes to distinguish
+3. Use different experiment names to distinguish experiments
+4. All files are saved to `/output/filescheme/files`
 
 ### Integration with Analysis Tools
 

@@ -268,9 +268,13 @@ Experiment save files are JSON files exported from experiment.py (automatically 
   "export_type": "H264",
   "quality": 85,
   "motion_config_profile": "default",
-  "filename_scheme": "exp_{y}{x}_{time}_{date}",
-  "save_folder": "/output/filescheme/files",
-  "pattern": "snake"
+  "action_phases": [
+    {"action": "GPIO OFF", "time": 30.0},
+    {"action": "GPIO ON", "time": 0.0},
+    {"action": "GPIO OFF", "time": 0.0}
+  ],
+  "experiment_name": "exp",
+  "pattern": "raster →↓"
 }
 ```
 

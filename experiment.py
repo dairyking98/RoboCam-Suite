@@ -60,7 +60,7 @@ class ExperimentWindow:
     
     Provides GUI for:
     - Configuring well positions (X, Y coordinates and labels)
-    - Setting timing sequences (OFF-ON-OFF durations)
+    - Setting adjustable GPIO action phases (customizable ON/OFF sequences with durations)
     - Camera settings (resolution, FPS, export type, quality)
     - Motion settings (feedrate, motion configuration)
     - File naming and save location
@@ -233,7 +233,7 @@ class ExperimentWindow:
         # Pattern, experiment name
         tk.Label(w, text="Pattern:").grid(row=5, column=0)
         self.pattern_var = tk.StringVar(value="raster →↓")
-        tk.OptionMenu(w, self.pattern_var, "snake ↙↗", "raster →↓").grid(row=5, column=1)
+        tk.OptionMenu(w, self.pattern_var, "snake →↙", "raster →↓").grid(row=5, column=1)
 
         tk.Label(w, text="Experiment Name:").grid(row=6, column=0)
         self.experiment_name_ent = tk.Entry(w, width=40)
@@ -1066,7 +1066,7 @@ class ExperimentWindow:
                 "quality": int(self.quality_ent.get().strip()),
                 "motion_config_profile": self.motion_config_var.get(),
                 "experiment_name": self.experiment_name_ent.get().strip(),
-                "pattern": self.pattern_var.get()  # Stores format like "snake ↙↗" or "raster →↓"
+                "pattern": self.pattern_var.get()  # Stores format like "snake →↙" or "raster →↓"
             }
             
             # Ask user for save location
@@ -1190,7 +1190,7 @@ class ExperimentWindow:
             pattern_setting = settings.get("pattern", "raster →↓")
             if pattern_setting in ["snake", "raster"]:
                 # Old format - add symbols
-                pattern_setting = "snake ↙↗" if pattern_setting == "snake" else "raster →↓"
+                pattern_setting = "snake →↙" if pattern_setting == "snake" else "raster →↓"
             self.pattern_var.set(pattern_setting)
             
             self.update_run_button_state()

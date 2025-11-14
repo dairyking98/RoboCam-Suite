@@ -211,9 +211,12 @@ python experiment.py
    - Use checkboxes to select which wells to include in experiment
    - All wells are checked by default
    - Uncheck wells you want to skip
-5. Configure timing:
-   - Enter three times: OFF duration, ON duration, OFF duration (seconds)
-6. Select pattern: "snake" or "raster"
+5. Configure GPIO action phases:
+   - By default, one GPIO OFF phase is present (30 seconds)
+   - Click "Add Action" to add more phases
+   - For each phase, select "GPIO ON" or "GPIO OFF" and enter duration in seconds
+   - Example: OFF (30s) → ON (20s) → OFF (10s)
+6. Select pattern: "snake →↙" (zig-zag) or "raster →↓" (rectilinear, default)
 7. Configure camera settings:
    - Resolution (X and Y)
    - FPS
@@ -221,7 +224,7 @@ python experiment.py
    - JPEG quality (if applicable)
 8. Set feedrate override (optional, mm/min)
 9. Select motion configuration file (for feed/acceleration settings)
-10. Set filename scheme and save folder
+10. Set experiment name (files use format: `{date}_{time}_{experiment_name}_{y}{x}.{ext}`)
 11. **Export/Import Settings** (Optional):
     - Click "Export Experiment Settings" to save current configuration
     - Click "Load Experiment Settings" to restore saved configuration
@@ -256,16 +259,18 @@ Users can export experiment settings to JSON files for reuse (automatically pref
 {
   "calibration_file": "20240115_143022_well_plate_8x6.json",
   "selected_wells": ["A1", "A2", "B1", "B3"],
-  "times": [30, 0, 0],
+  "action_phases": [
+    {"action": "GPIO OFF", "time": 30.0},
+    {"action": "GPIO ON", "time": 20.0},
+    {"action": "GPIO OFF", "time": 10.0}
+  ],
   "resolution": [1920, 1080],
   "fps": 30.0,
   "export_type": "H264",
   "quality": 85,
   "motion_config_profile": "default",
-  "feedrate_override": "1500",
-  "filename_scheme": "exp_{y}{x}_{time}_{date}",
-  "save_folder": "/path/to/output",
-  "pattern": "snake"
+  "experiment_name": "exp",
+  "pattern": "raster →↓"
 }
 ```
 
@@ -324,13 +329,17 @@ Available profiles in `config/motion_config.json`:
 
 ## File Naming
 
-The filename scheme supports the following placeholders:
-- `{x}`: X label (e.g., "2", "5")
-- `{y}`: Y label (e.g., "B", "D")
-- `{time}`: Timestamp (HHMMSS format)
-- `{date}`: Date (MMMD format, e.g., "Jan1")
+Files are automatically named using a fixed format: `{date}_{time}_{experiment_name}_{y}{x}.{ext}`
 
-Example: `exp_{y}{x}_{time}_{date}` → `exp_B2_143022_Jan1.mjpeg`
+The format includes:
+- `{date}`: Date in MMMDD format (e.g., "Jan15", "Dec3")
+- `{time}`: Timestamp in HHMMSS format (e.g., "143022", "091530")
+- `{experiment_name}`: Experiment name from "Experiment Name" field (default: "exp")
+- `{y}`: Row letter (e.g., "A", "B", "C")
+- `{x}`: Column number (e.g., "1", "2", "3")
+- `{ext}`: File extension based on export type (`.h264`, `.mjpeg`, `.jpeg`)
+
+Example: Experiment name "exp", well B2, captured at 14:30:22 on January 15th → `Jan15_143022_exp_B2.h264`
 
 ## Output Files
 
@@ -347,7 +356,7 @@ xlabel,ylabel,xval,yval,zval
 
 ### Video/Image Files
 
-Videos or images are saved to the specified save folder with the configured filename scheme.
+Videos or images are automatically saved to `/output/filescheme/files` with the fixed filename format.
 
 ## Configuration
 

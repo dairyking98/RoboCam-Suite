@@ -53,16 +53,24 @@ The application automates the execution of well-plate experiments by:
 - **Auto-Generated Labels**: Wells labeled automatically (A1, A2, ..., B1, B2, etc.)
 - **Interpolated Positions**: All well positions calculated from 4-corner calibration
 - **Z Value**: Automatically set from calibration interpolation (no manual entry)
-- **Pattern Selection**: Choose between "snake" (alternating row direction) or "raster" (consistent direction)
+- **Pattern Selection**: Choose between "snake →↙" (alternating row direction/zig-zag) or "raster →↓" (consistent direction/rectilinear, default)
 - **Calibration Required**: Experiment cannot start without a loaded calibration
 - **No Manual Entry**: Manual coordinate entry has been removed - calibration is required
 
-### 2. Timing Control
+### 2. GPIO Action Phases
 
-- **Three-Phase Timing**: Configure OFF-ON-OFF laser sequence durations
-  - First OFF period: Baseline capture before stimulation
-  - ON period: Laser stimulation duration
-  - Second OFF period: Post-stimulation observation
+- **Adjustable Action List**: Configure custom GPIO action sequences with GUI-friendly controls
+  - **Default Phase**: Always starts with one GPIO OFF phase (default: 30 seconds)
+  - **Add Actions**: Click "Add Action" button to add additional phases
+  - **Action Types**: Each phase can be set to "GPIO ON" or "GPIO OFF"
+  - **Time Entry**: Each phase has its own time entry field (in seconds)
+  - **Phase Management**: 
+    - Phase numbers are automatically updated (Phase 1, Phase 2, etc.)
+    - Delete button available for all phases except the first (which cannot be removed)
+    - Minimum of one phase required
+- **Flexible Sequences**: Create any combination of ON/OFF phases with custom durations
+  - Example: OFF (30s) → ON (20s) → OFF (10s) → ON (5s) → OFF (15s)
+  - Example: OFF (30s) → ON (60s) → OFF (30s) (traditional three-phase)
 - **Pause/Resume**: Pause experiment execution at any time
 - **Stop Control**: Emergency stop with automatic laser shutdown and recording termination
 
@@ -88,14 +96,19 @@ The application automates the execution of well-plate experiments by:
 
 ### 5. File Management
 
-- **Filename Scheme**: Customizable naming pattern with placeholders:
-  - `{x}`: X-axis label (column number)
-  - `{y}`: Y-axis label (row letter)
-  - `{time}`: Timestamp (HHMMSS)
-  - `{date}`: Date (MMMDD)
-  - Example: `exp_{y}{x}_{time}_{date}` → `exp_B2_143022_Jan15.h264`
-- **Save Folder**: Configurable output directory with browse dialog (default: `/output/filescheme/files`)
-- **CSV Export**: Automatic generation of `experiment_points.csv` with well coordinates
+- **Experiment Name**: Name identifier for the experiment (default: "exp")
+  - Used in filename generation to identify the experiment
+  - Replaces the `{exp}` placeholder in the filename format
+- **Filename Format**: Fixed format `{date}_{time}_{experiment_name}_{y}{x}.{ext}`
+  - `{date}`: Date (MMMDD format, e.g., "Jan15")
+  - `{time}`: Timestamp (HHMMSS format, e.g., "143022")
+  - `{experiment_name}`: Experiment name from the "Experiment Name" field
+  - `{y}`: Row letter (e.g., "A", "B", "C")
+  - `{x}`: Column number (e.g., "1", "2", "3")
+  - `{ext}`: File extension based on export type (`.h264`, `.mjpeg`, `.jpeg`)
+  - Example: `Jan15_143022_exp_B2.h264`
+- **Save Folder**: Fixed default directory `/output/filescheme/files` (not configurable via GUI)
+- **CSV Export**: Automatic generation of `experiment_points.csv` with well coordinates in the save folder
 - **Experiment Settings Export**: Save complete experiment configuration to JSON (automatically prefixed with date and time: `{date_time}_{name}.json`)
 - **Experiment Settings Import**: Load saved configurations with calibration validation
 
@@ -150,11 +163,18 @@ for label in selected_wells:
     selected_positions.append((pos[0], pos[1], pos[2], label, row_num, col_num))
 
 # Sort by pattern
+pattern = pattern_var.get()
+# Extract pattern name (handles both "snake"/"raster" and "snake →↙"/"raster →↓" formats)
+if pattern.startswith("snake"):
+    pattern = "snake"
+elif pattern.startswith("raster"):
+    pattern = "raster"
+
 if pattern == "snake":
-    # Snake: alternate row direction
+    # Snake: alternate row direction (zig-zag pattern)
     selected_positions.sort(key=lambda x: (x[4], x[5] if x[4] % 2 == 0 else -x[5]))
-else:  # raster
-    # Raster: consistent direction
+else:  # raster (default)
+    # Raster: consistent direction (rectilinear pattern)
     selected_positions.sort(key=lambda x: (x[4], x[5]))
 ```
 
@@ -192,20 +212,21 @@ The application uses separate camera configurations for different phases:
 For each well (video modes only):
 
 ```python
-# Phase 1: OFF (baseline)
-laser.switch(0)
 start_recording()
-wait(off_t seconds)
-
-# Phase 2: ON (stimulation)
-laser.switch(1)
-wait(on_t seconds)
-
-# Phase 3: OFF (post-stimulation)
-laser.switch(0)
-wait(off2 seconds)
+for action, phase_time in action_phases:
+    state = 1 if action == "GPIO ON" else 0
+    laser.switch(state)
+    wait(phase_time seconds)
 stop_recording()
 ```
+
+The system iterates through all configured action phases in order, switching the GPIO state and waiting for the specified duration for each phase. This allows for fully customizable sequences beyond the traditional OFF-ON-OFF pattern.
+
+**Example Sequences**:
+- **Traditional**: OFF (30s) → ON (20s) → OFF (10s)
+- **Extended**: OFF (30s) → ON (20s) → OFF (10s) → ON (5s) → OFF (15s)
+- **Simple**: OFF (30s) only
+- **Multiple Pulses**: OFF (10s) → ON (5s) → OFF (5s) → ON (5s) → OFF (10s)
 
 For JPEG mode:
 - Single capture at well position (no timing sequence)
@@ -225,14 +246,13 @@ For JPEG mode:
   - Allows pause/stop control from GUI
   - Automatic cleanup on application exit
 
-### Configuration Parsing
+### Action Phase Validation
 
-Text widgets are parsed using regex to handle multiple input formats:
-- Comma-separated: `"1, 2, 3"`
-- Newline-separated: `"1\n2\n3"`
-- Mixed: `"1, 2\n3, 4"`
-
-Values are extracted and validated before use.
+Action phases are validated before experiment execution:
+- At least one phase must be configured
+- All phases must have valid time values (non-negative numbers)
+- Time values are parsed as floats (supports decimals)
+- Invalid phases are skipped during execution (with warning)
 
 ## Suggested Improvements
 
@@ -409,26 +429,29 @@ Values are extracted and validated before use.
    - **Ctrl+Click** a checkbox for smart column fill/unfill (see Smart Fill/Unfill Logic above)
    - Instructions are displayed next to the grid explaining all features
 
-4. **Configure Experiment**:
-   - Set timing: `30, 0, 0` (30s OFF, 0s ON, 0s OFF)
-   - Choose pattern: `snake` or `raster`
+4. **Configure GPIO Action Phases**:
+   - By default, one GPIO OFF phase is present (30 seconds)
+   - Click "Add Action" to add more phases
+   - For each phase:
+     - Select action: "GPIO ON" or "GPIO OFF" from dropdown
+     - Enter time in seconds (e.g., 30.0, 20.5, etc.)
+   - Example: Add phases for OFF (30s) → ON (20s) → OFF (10s)
+   - Delete phases (except first) using the "Delete" button
+   - Choose pattern: `snake →↙` (zig-zag) or `raster →↓` (rectilinear, default)
+   - Enter experiment name (default: "exp")
    - Z value is automatically set from calibration
 
-3. **Configure Camera**:
+5. **Configure Camera**:
    - Resolution: `1920` x `1080` (default)
    - FPS: `30.0` (default)
    - Export type: `H264`, `MJPEG`, or `JPEG`
    - Quality: `85` (for JPEG/MJPEG)
 
-4. **Configure Motion**:
+6. **Configure Motion**:
    - Select motion config: `default.json`
    - Motion settings are automatically applied based on movement phase
 
-5. **Set Output**:
-   - Filename scheme: `exp_{y}{x}_{time}_{date}`
-   - Save folder: `/output/filescheme/files` (default)
-
-6. **Run Experiment**:
+7. **Run Experiment**:
    - Click "Run" to start
    - Monitor progress via status and timers
    - Use "Pause" to pause/resume
@@ -441,17 +464,22 @@ When exporting experiment settings:
 {
   "calibration_file": "20241215_143022_well_plate_8x6.json",
   "selected_wells": ["A1", "A2", "B1", "B3", "C2"],
-  "times": [30, 0, 0],
+  "action_phases": [
+    {"action": "GPIO OFF", "time": 30.0},
+    {"action": "GPIO ON", "time": 20.0},
+    {"action": "GPIO OFF", "time": 10.0}
+  ],
   "resolution": [1920, 1080],
   "fps": 30.0,
   "export_type": "H264",
   "quality": 85,
-  "motion_config_file": "default.json",
-  "filename_scheme": "exp_{y}{x}_{time}_{date}",
-  "save_folder": "/output/filescheme/files",
+  "motion_config_profile": "default",
+  "experiment_name": "exp",
   "pattern": "snake"
 }
 ```
+
+**Note**: The old `times` format (3-value array) is no longer supported. All exported settings use the new `action_phases` format.
 
 ### Calibration File Format
 
@@ -543,8 +571,14 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
 
 ### Common Issues
 
-1. **"Invalid times: must provide 3 values"**
-   - Ensure timing field contains exactly 3 numbers (OFF, ON, OFF)
+1. **"At least one action phase is required"**
+   - Ensure at least one GPIO action phase is configured
+   - The first phase cannot be deleted
+
+2. **"Phase X has invalid time"**
+   - Ensure all phase time entries contain valid numbers
+   - Time values must be non-negative
+   - Supports decimal values (e.g., 30.5)
 
 2. **"Homing failed"**
    - Check printer connection
