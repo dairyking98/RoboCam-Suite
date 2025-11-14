@@ -232,7 +232,7 @@ python experiment.py
 
 #### Calibration Files (config/calibrations/*.json)
 
-Calibration files store 4-corner calibration data with interpolated well positions:
+Calibration files are automatically saved with a date and time prefix (format: `{date_time}_{name}.json`). They store 4-corner calibration data with interpolated well positions:
 
 ```json
 {
@@ -250,7 +250,7 @@ Calibration files store 4-corner calibration data with interpolated well positio
 
 #### Experiment Settings Export
 
-Users can export experiment settings to JSON files for reuse:
+Users can export experiment settings to JSON files for reuse (automatically prefixed with date and time: `{date_time}_{name}.json`):
 
 ```json
 {

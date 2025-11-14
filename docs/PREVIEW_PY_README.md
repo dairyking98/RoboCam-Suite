@@ -45,7 +45,7 @@ The preview application enables users to:
 #### Loading from Calibration Files
 
 - **Source**: All wells from a saved calibration file
-- **Location**: `config/calibrations/*.json`
+- **Location**: `config/calibrations/*.json` (files are automatically prefixed with date and time: `{date_time}_{name}.json`)
 - **Use Case**: Preview all wells after calibration to verify interpolation accuracy
 - **Process**:
   1. Select "Calibration File" radio button
@@ -56,7 +56,7 @@ The preview application enables users to:
 #### Loading from Experiment Save Files
 
 - **Source**: Only checked wells from an exported experiment settings file
-- **Location**: Any JSON file exported from experiment.py
+- **Location**: Any JSON file exported from experiment.py (files are automatically prefixed with date and time: `{date_time}_{name}.json`)
 - **Use Case**: Preview only the wells that will be used in an experiment
 - **Process**:
   1. Select "Experiment Save File" radio button
@@ -256,7 +256,7 @@ When loading from calibration file:
 
 ### Experiment Save File Format
 
-Experiment save files are JSON files exported from experiment.py:
+Experiment save files are JSON files exported from experiment.py (automatically prefixed with date and time: `{date_time}_{name}.json`):
 
 ```json
 {

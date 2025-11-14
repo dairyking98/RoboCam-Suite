@@ -88,7 +88,7 @@ The application automates the execution of well-plate experiments by:
   - Example: `exp_{y}{x}_{time}_{date}` → `exp_B2_143022_Jan15.h264`
 - **Save Folder**: Configurable output directory with browse dialog (default: `/output/filescheme/files`)
 - **CSV Export**: Automatic generation of `experiment_points.csv` with well coordinates
-- **Experiment Settings Export**: Save complete experiment configuration to JSON
+- **Experiment Settings Export**: Save complete experiment configuration to JSON (automatically prefixed with date and time: `{date_time}_{name}.json`)
 - **Experiment Settings Import**: Load saved configurations with calibration validation
 
 ### 6. Configuration Persistence
@@ -447,7 +447,7 @@ When exporting experiment settings:
 
 ### Calibration File Format
 
-`config/calibrations/{name}.json`:
+`config/calibrations/{date_time}_{name}.json` (automatically prefixed with date and time):
 ```json
 {
   "name": "well_plate_8x6",

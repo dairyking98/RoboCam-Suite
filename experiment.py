@@ -19,6 +19,7 @@ import re
 import csv
 import tkinter as tk
 from tkinter import filedialog
+from datetime import datetime
 from typing import Optional, Dict, List, Tuple, Any
 from picamera2 import Picamera2
 from picamera2.encoders import H264Encoder, JpegEncoder
@@ -262,14 +263,19 @@ class ExperimentWindow:
         self.quality_ent = tk.Entry(w); self.quality_ent.grid(row=11, column=1)
         self.quality_ent.insert(0, str(DEFAULT_QUALITY))
 
-        tk.Label(w, text="Motion Config:").grid(row=12, column=0)
-        self.motion_config_var = tk.StringVar(value="default.json")
-        # List available motion config files
-        motion_configs_dir = os.path.join("config", "motion_configs")
-        motion_configs = ["default.json"]
-        if os.path.exists(motion_configs_dir):
-            motion_configs = [f for f in os.listdir(motion_configs_dir) if f.endswith(".json")]
-        motion_config_menu = tk.OptionMenu(w, self.motion_config_var, *motion_configs)
+        tk.Label(w, text="Motion Profile:").grid(row=12, column=0)
+        self.motion_config_var = tk.StringVar(value="default")
+        # Load profiles from motion_config.json
+        motion_config_path = os.path.join("config", "motion_config.json")
+        profiles = ["default"]
+        if os.path.exists(motion_config_path):
+            try:
+                with open(motion_config_path, 'r') as f:
+                    motion_config_data = json.load(f)
+                    profiles = list(motion_config_data.keys())
+            except Exception as e:
+                logger.warning(f"Error loading motion config: {e}")
+        motion_config_menu = tk.OptionMenu(w, self.motion_config_var, *profiles)
         motion_config_menu.grid(row=12, column=1, padx=5, pady=5)
         
         # Motion settings display
@@ -310,18 +316,23 @@ class ExperimentWindow:
         
         # Load and display motion config on selection change
         def update_motion_info(*args):
-            """Update motion settings display when config file changes."""
+            """Update motion settings display when profile changes."""
             try:
-                config_file = self.motion_config_var.get()
-                config_path = os.path.join("config", "motion_configs", config_file)
+                profile_name = self.motion_config_var.get()
+                config_path = os.path.join("config", "motion_config.json")
                 if os.path.exists(config_path):
                     with open(config_path, 'r') as f:
-                        motion_cfg = json.load(f)
-                    prelim = motion_cfg.get("preliminary", {})
-                    between = motion_cfg.get("between_wells", {})
-                    info = f"Preliminary: {prelim.get('feedrate', 'N/A')} mm/min, {prelim.get('acceleration', 'N/A')} mm/s² | "
-                    info += f"Between Wells: {between.get('feedrate', 'N/A')} mm/min, {between.get('acceleration', 'N/A')} mm/s²"
-                    self.motion_info_label.config(text=info, fg="black")
+                        motion_config_data = json.load(f)
+                    if profile_name in motion_config_data:
+                        motion_cfg = motion_config_data[profile_name]
+                        prelim = motion_cfg.get("preliminary", {})
+                        between = motion_cfg.get("between_wells", {})
+                        profile_display = motion_cfg.get("name", profile_name)
+                        info = f"{profile_display}: Preliminary: {prelim.get('feedrate', 'N/A')} mm/min, {prelim.get('acceleration', 'N/A')} mm/s² | "
+                        info += f"Between Wells: {between.get('feedrate', 'N/A')} mm/min, {between.get('acceleration', 'N/A')} mm/s²"
+                        self.motion_info_label.config(text=info, fg="black")
+                    else:
+                        self.motion_info_label.config(text=f"Profile '{profile_name}' not found", fg="red")
                 else:
                     self.motion_info_label.config(text="Config file not found", fg="red")
             except Exception as e:
@@ -608,15 +619,28 @@ class ExperimentWindow:
                 def on_click(event):
                     # Check if shift or control is pressed
                     # Note: event.state uses bit flags: Shift=0x1, Control=0x4
+                    # The checkbox has already toggled by the time this handler runs,
+                    # so if it's now False, it was True before (user clicked checked box)
+                    current_state = v.get()
                     if event.state & 0x1:  # Shift key pressed
-                        # Prevent default toggle by toggling back, then check all in row
-                        v.set(not v.get())  # Undo the default toggle
-                        self.check_row(r)
+                        # Prevent default toggle by toggling back
+                        v.set(not current_state)  # Undo the default toggle
+                        # If was checked (now unchecked), uncheck all in row
+                        # If was unchecked (now checked), check all in row
+                        if not current_state:  # Was checked, now unchecked
+                            self.uncheck_row(r)
+                        else:  # Was unchecked, now checked
+                            self.check_row(r)
                         return "break"  # Prevent further event propagation
                     elif event.state & 0x4:  # Control key pressed
-                        # Prevent default toggle by toggling back, then check all in column
-                        v.set(not v.get())  # Undo the default toggle
-                        self.check_column(c)
+                        # Prevent default toggle by toggling back
+                        v.set(not current_state)  # Undo the default toggle
+                        # If was checked (now unchecked), uncheck all in column
+                        # If was unchecked (now checked), check all in column
+                        if not current_state:  # Was checked, now unchecked
+                            self.uncheck_column(c)
+                        else:  # Was unchecked, now checked
+                            self.check_column(c)
                         return "break"  # Prevent further event propagation
                 return on_click
             
@@ -628,8 +652,8 @@ class ExperimentWindow:
         instructions = (
             "Checkbox Controls:\n"
             "• Click: Toggle single well\n"
-            "• Shift+Click: Check all in same row\n"
-            "• Ctrl+Click: Check all in same column\n"
+            "• Shift+Click: Toggle all in same row (check if unchecked, uncheck if checked)\n"
+            "• Ctrl+Click: Toggle all in same column (check if unchecked, uncheck if checked)\n"
             "• Use buttons above to check/uncheck all"
         )
         tk.Label(instructions_frame, text=instructions, fg="gray", font=("Arial", 8), justify="left").pack(anchor="w")
@@ -678,6 +702,21 @@ class ExperimentWindow:
         for label, (r, c) in self.label_to_row_col.items():
             if c == col:
                 self.well_checkboxes[label].set(True)
+        self.update_run_button_state()
+    
+    def uncheck_row(self, row: int) -> None:
+        """Uncheck all wells in the specified row."""
+        x_qty = self.loaded_calibration.get("x_quantity", 0)
+        for label, (r, c) in self.label_to_row_col.items():
+            if r == row:
+                self.well_checkboxes[label].set(False)
+        self.update_run_button_state()
+    
+    def uncheck_column(self, col: int) -> None:
+        """Uncheck all wells in the specified column."""
+        for label, (r, c) in self.label_to_row_col.items():
+            if c == col:
+                self.well_checkboxes[label].set(False)
         self.update_run_button_state()
     
     def update_run_button_state(self) -> None:
@@ -731,7 +770,7 @@ class ExperimentWindow:
                 "fps": float(self.fps_ent.get().strip()),
                 "export_type": self.export_var.get(),
                 "quality": int(self.quality_ent.get().strip()),
-                "motion_config_file": self.motion_config_var.get(),
+                "motion_config_profile": self.motion_config_var.get(),
                 "filename_scheme": self.scheme_ent.get().strip(),
                 "save_folder": self.folder_ent.get().strip(),
                 "pattern": self.pattern_var.get()
@@ -745,9 +784,18 @@ class ExperimentWindow:
             )
             
             if filename:
-                with open(filename, 'w') as f:
+                # Generate date_time prefix and add to filename
+                date_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                file_dir = os.path.dirname(filename)
+                file_base = os.path.basename(filename)
+                # Remove .json extension if present, add prefix, then add .json back
+                if file_base.endswith('.json'):
+                    file_base = file_base[:-5]  # Remove .json
+                prefixed_filename = os.path.join(file_dir, f"{date_time_str}_{file_base}.json")
+                
+                with open(prefixed_filename, 'w') as f:
                     json.dump(settings, f, indent=2)
-                self.status_lbl.config(text=f"Settings exported to {os.path.basename(filename)}", fg="green")
+                self.status_lbl.config(text=f"Settings exported to {os.path.basename(prefixed_filename)}", fg="green")
                 
         except Exception as e:
             logger.error(f"Error exporting settings: {e}")
@@ -815,7 +863,12 @@ class ExperimentWindow:
             self.quality_ent.delete(0, tk.END)
             self.quality_ent.insert(0, str(settings.get("quality", 85)))
             
-            self.motion_config_var.set(settings.get("motion_config_file", "default.json"))
+            # Handle both old format (motion_config_file) and new format (motion_config_profile)
+            motion_profile = settings.get("motion_config_profile") or settings.get("motion_config_file", "default")
+            # If old format had .json extension, remove it
+            if motion_profile.endswith(".json"):
+                motion_profile = motion_profile[:-5]  # Remove .json
+            self.motion_config_var.set(motion_profile)
             
             self.scheme_ent.delete(0, tk.END)
             self.scheme_ent.insert(0, settings.get("filename_scheme", DEFAULT_SCHEME))
@@ -888,17 +941,23 @@ class ExperimentWindow:
 
         # Load motion configuration
         try:
-            config_file = self.motion_config_var.get()
-            config_path = os.path.join("config", "motion_configs", config_file)
+            profile_name = self.motion_config_var.get()
+            config_path = os.path.join("config", "motion_config.json")
             if os.path.exists(config_path):
                 with open(config_path, 'r') as f:
-                    self.motion_config = json.load(f)
-                prelim = self.motion_config.get("preliminary", {})
-                between = self.motion_config.get("between_wells", {})
-                self.preliminary_feedrate = float(prelim.get("feedrate", 3000))
-                self.preliminary_acceleration = float(prelim.get("acceleration", 500))
-                self.between_wells_feedrate = float(between.get("feedrate", 5000))
-                self.between_wells_acceleration = float(between.get("acceleration", 1000))
+                    motion_config_data = json.load(f)
+                if profile_name in motion_config_data:
+                    self.motion_config = motion_config_data[profile_name]
+                    prelim = self.motion_config.get("preliminary", {})
+                    between = self.motion_config.get("between_wells", {})
+                    self.preliminary_feedrate = float(prelim.get("feedrate", 3000))
+                    self.preliminary_acceleration = float(prelim.get("acceleration", 500))
+                    self.between_wells_feedrate = float(between.get("feedrate", 5000))
+                    self.between_wells_acceleration = float(between.get("acceleration", 1000))
+                else:
+                    # Use defaults if profile not found
+                    logger.warning(f"Motion profile '{profile_name}' not found, using defaults")
+                    self.motion_config = None
             else:
                 # Use defaults if file not found
                 logger.warning(f"Motion config file not found: {config_path}, using defaults")

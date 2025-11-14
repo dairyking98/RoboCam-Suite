@@ -89,7 +89,7 @@ The 4-corner calibration method accounts for slight angles and misalignment in w
 4. **Save Calibration**:
    - Enter calibration name (e.g., "well_plate_8x6")
    - Click "Save Calibration"
-   - Saved to `config/calibrations/{name}.json`
+   - Saved to `config/calibrations/{date_time}_{name}.json` (automatically prefixed with date and time)
    - Status confirms successful save
 
 #### Understanding 4-Corner Interpolation
@@ -280,7 +280,7 @@ Calibrations are saved as JSON files for easy loading in `experiment.py`.
 7. **Save Calibration**:
    - Enter name: `well_plate_8x6`
    - Click "Save Calibration"
-   - Status shows: "✓ Calibration saved: well_plate_8x6.json"
+   - Status shows: "✓ Calibration saved: {date_time}_well_plate_8x6.json" (automatically prefixed with date and time)
 
 ### Preview Backend Selection
 
@@ -304,7 +304,7 @@ python calibrate.py --backend null
 
 ## Calibration File Format
 
-Saved calibrations are stored in `config/calibrations/{name}.json`:
+Saved calibrations are stored in `config/calibrations/{date_time}_{name}.json` (automatically prefixed with date and time in format YYYYMMDD_HHMMSS):
 
 ```json
 {

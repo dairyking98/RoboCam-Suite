@@ -11,6 +11,7 @@ Author: RoboCam-Suite
 import tkinter as tk
 import os
 import json
+from datetime import datetime
 from typing import Optional, List, Tuple
 from picamera2 import Picamera2
 from robocam.robocam_ccc import RoboCam
@@ -679,17 +680,21 @@ class CameraApp:
                 "labels": self.labels
             }
             
-            # Save to file
-            calib_file = os.path.join(calib_dir, f"{calib_name}.json")
+            # Generate date_time prefix
+            date_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Save to file with date_time prefix
+            calib_file = os.path.join(calib_dir, f"{date_time_str}_{calib_name}.json")
             with open(calib_file, 'w') as f:
                 json.dump(calib_data, f, indent=2)
             
+            filename = f"{date_time_str}_{calib_name}.json"
             self.status_label.config(
-                text=f"Calibration saved: {calib_name}.json",
+                text=f"Calibration saved: {filename}",
                 fg="green"
             )
             self.calib_preview_label.config(
-                text=f"✓ Saved {len(self.interpolated_positions)} wells to {calib_name}.json",
+                text=f"✓ Saved {len(self.interpolated_positions)} wells to {filename}",
                 fg="green"
             )
             

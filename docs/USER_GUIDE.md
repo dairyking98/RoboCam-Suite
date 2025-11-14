@@ -170,7 +170,7 @@ The 4-corner calibration method accounts for slight angles and misalignment in w
 8. **Save Calibration**:
    - Enter a calibration name (e.g., "well_plate_8x6")
    - Click "Save Calibration" button
-   - Calibration is saved to `config/calibrations/{name}.json`
+   - Calibration is saved to `config/calibrations/{date_time}_{name}.json` (automatically prefixed with date and time)
    - Status will confirm successful save
 
 9. **Use in Experiment**:
