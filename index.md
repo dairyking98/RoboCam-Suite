@@ -17,6 +17,7 @@ Robotic microscopy system for FluorCam, StentorCam, and other automated microsco
 
 ### Application Documentation
 - [Calibrate.py README](docs/CALIBRATE_PY_README.md) - Complete documentation for calibrate.py
+- [Preview.py README](docs/PREVIEW_PY_README.md) - Complete documentation for preview.py
 - [Experiment.py README](docs/EXPERIMENT_PY_README.md) - Complete documentation for experiment.py
 
 ### Project Documentation
@@ -34,16 +35,19 @@ Robotic microscopy system for FluorCam, StentorCam, and other automated microsco
 ### User Guides
 - [Calibration Procedure](docs/USER_GUIDE.md#calibration-procedure)
 - [4-Corner Calibration](docs/USER_GUIDE.md#4-corner-path-calibration)
+- [Preview Alignment Check](docs/USER_GUIDE.md#preview-alignment-check)
 - [Experiment Setup](docs/USER_GUIDE.md#experiment-setup)
 - [Motion Configuration](docs/USER_GUIDE.md#motion-configuration)
 
 ### Application Details
 - [Calibrate.py Features](docs/CALIBRATE_PY_README.md#features)
+- [Preview.py Features](docs/PREVIEW_PY_README.md#features)
 - [Experiment.py Features](docs/EXPERIMENT_PY_README.md#features)
 - [Camera Preview Backends](docs/CALIBRATE_PY_README.md#preview-backend-options)
 
 ### Troubleshooting
 - [Common Issues](README.md#troubleshooting)
 - [Calibration Troubleshooting](docs/CALIBRATE_PY_README.md#troubleshooting)
+- [Preview Troubleshooting](docs/PREVIEW_PY_README.md#troubleshooting)
 - [Experiment Troubleshooting](docs/EXPERIMENT_PY_README.md#troubleshooting)
 
