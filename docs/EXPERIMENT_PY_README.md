@@ -107,12 +107,14 @@ The application automates the execution of well-plate experiments by:
   - `{x}`: Column number (e.g., "1", "2", "3")
   - `{ext}`: File extension based on export type (`.h264`, `.mjpeg`, `.jpeg`)
   - Example: `Jan15_143022_exp_B2.h264`
-- **Save Folder**: Fixed default directory `experiments/` (not configurable via GUI)
+- **Save Folder**: Output files are saved to `outputs/{experiment_name}/` (not configurable via GUI)
   - The application automatically creates the directory if it doesn't exist
+  - Each experiment name gets its own subfolder in `outputs/`
   - Provides detailed error messages if directory creation fails
   - Verifies write permissions before starting experiments
-- **CSV Export**: Automatic generation of CSV file with format `{date}_{time}_{exp}_points.csv` containing well coordinates in the save folder
-- **Experiment Settings Export**: Save complete experiment configuration to JSON with format `{date}_{time}_{exp}_profile.json`
+- **CSV Export**: Automatic generation of CSV file with format `{date}_{time}_{exp}_points.csv` containing well coordinates in `outputs/{experiment_name}/`
+- **Experiment Settings Export**: Save complete experiment configuration to JSON with format `{date}_{time}_{exp}_profile.json` directly to `experiments/` folder (no file dialog)
+- **Experiment Settings Load**: Load settings from dropdown (similar to calibration dropdown) - selects from `experiments/` folder
 - **Experiment Settings Import**: Load saved configurations with calibration validation
 
 ### 6. Configuration Persistence
@@ -576,12 +578,12 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
 
 1. **"Permission denied: Cannot create directory"**
    - **Symptom**: Error message when starting experiment or saving CSV
-   - **Cause**: Insufficient permissions to create `experiments/` directory
+   - **Cause**: Insufficient permissions to create `outputs/` directory or subdirectories
    - **Solution**:
      ```bash
      # Create directory with proper permissions
-     mkdir -p experiments
-     chmod 777 experiments
+     mkdir -p outputs
+     chmod 777 outputs
      ```
    - **Alternative**: Run the application with sudo (not recommended for production):
      ```bash
@@ -594,7 +596,7 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
    - **Cause**: Directory lacks write permissions
    - **Solution**: Fix permissions for the directory:
      ```bash
-     chmod 777 experiments
+     chmod 777 outputs
      ```
 
 3. **"At least one action phase is required"**
@@ -623,10 +625,10 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
    - Ensure preview is disabled during recording
 
 5. **Files not saving**
-   - **Save folder permissions**: Check that `experiments/` is writable
-     - The application automatically creates the directory if it doesn't exist
+   - **Save folder permissions**: Check that `outputs/` is writable
+     - The application automatically creates the directory structure if it doesn't exist
      - If creation fails, check error message for specific issue
-     - Fix with: `mkdir -p experiments && chmod 777 experiments`
+     - Fix with: `mkdir -p outputs && chmod 777 outputs`
    - Verify disk space availability
    - Check filename scheme is valid
 

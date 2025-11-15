@@ -143,6 +143,7 @@ echo ""
 echo "Creating configuration directories..."
 mkdir -p calibrations
 mkdir -p experiments
+mkdir -p outputs
 mkdir -p config/templates
 mkdir -p docs
 echo "Configuration directories created."

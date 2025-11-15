@@ -350,7 +350,9 @@ RoboCam-Suite/
 ├── config/              # Configuration files
 │   ├── motion_config.json # Motion profiles (all profiles in one file)
 ├── calibrations/        # 4-corner calibration files
-├── experiments/         # Experiment output files
+├── experiments/         # Exported experiment settings (profile JSON files)
+├── outputs/             # Experiment output files (organized by experiment name)
+│   └── {experiment_name}/  # Video recordings and CSV files for each experiment
 │   └── templates/       # Experiment templates
 └── docs/                # Documentation
 ```

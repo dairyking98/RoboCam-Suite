@@ -387,7 +387,9 @@ The preview tool fits into the overall workflow:
    - **Experiment Name**: Name identifier for the experiment (default: "exp")
      - Used in generated filenames: `{date}_{time}_{experiment_name}_{y}{x}.{ext}`
      - Example: `Jan15_143022_exp_B2.h264`
-   - **Save Folder**: Files are automatically saved to `experiments/` (not configurable via GUI)
+   - **Save Folder**: Files are automatically saved to `outputs/{experiment_name}/` (not configurable via GUI)
+     - Each experiment name gets its own subfolder
+     - Example: experiment name "exp" saves to `outputs/exp/`
 
 9. **Status and Recording Indicator**:
    - **Status Display**: Shows current experiment progress, well being processed, and any errors
@@ -400,18 +402,17 @@ The preview tool fits into the overall workflow:
    - Check the example filename at the bottom
    - Verify all settings are correct
 
-12. **Export/Import Experiment Settings** (Optional):
-    - **Export**: Click "Export Experiment Settings" to save current configuration
+11. **Export/Load Experiment Settings** (Optional):
+    - **Export**: Click "Export" to save current configuration directly to `experiments/` folder (no file dialog)
+      - Files are automatically named with format `{date}_{time}_{exp}_profile.json`
       - Saves all settings including selected wells and calibration reference
-      - Choose save location via file dialog
-    - **Import**: Click "Load Experiment Settings" to restore saved configuration
-      - Calibration file must exist for import to succeed
-      - If calibration is missing, import will fail with error message
+    - **Load**: Select from "Experiment Settings" dropdown to load saved configuration (similar to calibration dropdown)
+      - Click "Refresh" to update the list of available settings
+      - Calibration file must exist for load to succeed
+      - If calibration is missing, load will fail with error message
       - All settings including checkbox states will be restored
 
-12. **Save Configuration** (optional):
-    - Configuration is auto-saved when you close the window
-    - You can also manually save
+12. **Click "Run"** to start the experiment
 
 ### Filename Format
 
@@ -499,7 +500,7 @@ The selected profile's settings are displayed below the dropdown, showing:
    - Ensure well plate is properly positioned
    - Verify camera is focused
    - Check laser connection
-   - Confirm `experiments/` has sufficient space
+   - Confirm `outputs/` has sufficient space
    - Verify directory permissions (application will create directories automatically, but needs write permissions)
 
 2. **Configure**: Complete experiment setup (see Experiment Setup section)
@@ -529,12 +530,12 @@ The selected profile's settings are displayed below the dropdown, showing:
 ### After Experiment
 
 1. **Check Output Files**:
-   - Navigate to `experiments/`
+   - Navigate to `outputs/{experiment_name}/` (where {experiment_name} is your experiment name)
    - Verify all files were created
    - Check file sizes (should be non-zero)
 
 2. **Review CSV File**:
-   - Open the CSV file (format: `{date}_{time}_{exp}_points.csv`) in `experiments/`
+   - Open the CSV file (format: `{date}_{time}_{exp}_points.csv`) in `outputs/{experiment_name}/`
    - Verify all wells were visited
    - Check coordinates match expectations
 
@@ -612,13 +613,13 @@ For detailed documentation on specific applications:
 
 ### Files Not Saving
 
-- **Check folder permissions**: Ensure `experiments/` is writable
-  - The application automatically creates the directory if it doesn't exist
+- **Check folder permissions**: Ensure `outputs/` is writable
+  - The application automatically creates the directory structure if it doesn't exist
   - If you see "Permission denied" errors, the application will identify the issue
   - To fix permissions, run:
     ```bash
-    mkdir -p experiments
-    chmod 777 experiments
+    mkdir -p outputs
+    chmod 777 outputs
     ```
   - **Verify disk space**: Check available space with `df -h`
   - **Check experiment name**: Invalid characters in experiment name may cause filename issues
@@ -674,11 +675,11 @@ To run multiple experiments:
 1. Save different experiment configurations
 2. Load configuration before each run
 3. Use different experiment names to distinguish experiments
-4. All files are saved to `experiments/`
+4. All files are saved to `outputs/{experiment_name}/`
 
 ### Integration with Analysis Tools
 
-The CSV output (format: `{date}_{time}_{exp}_points.csv`) can be imported into:
+The CSV output (format: `{date}_{time}_{exp}_points.csv`, located in `outputs/{experiment_name}/`) can be imported into:
 - Excel/Google Sheets for basic analysis
 - Python pandas for data analysis
 - ImageJ/Fiji for image analysis workflows

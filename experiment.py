@@ -32,7 +32,9 @@ logger = get_logger(__name__)
 
 # Configuration constants
 # CSV files are now named with format: {date}_{time}_{exp}_points.csv
-DEFAULT_FOLDER: str = "experiments"
+EXPERIMENTS_FOLDER: str = "experiments"  # For exported experiment settings (profile JSON files)
+OUTPUTS_FOLDER: str = "outputs"  # Base folder for experiment outputs
+# Output folder structure: outputs/{experiment_name}/ contains recordings and CSV
 DEFAULT_RES: tuple[int, int] = (1920, 1080)
 DEFAULT_FPS: float = 30.0
 DEFAULT_EXPORT: str = "H264"
@@ -177,15 +179,19 @@ class ExperimentWindow:
         Save well sequence to CSV file.
         
         Creates CSV file with columns: xlabel, ylabel, xval, yval, zval.
-        Saves to experiment save folder with format: {date}_{time}_{exp}_points.csv
+        Saves to outputs/{experiment_name}/ with format: {date}_{time}_{exp}_points.csv
         
         Note:
             Only saves if sequence exists. Creates folder if it doesn't exist.
         """
         if not self.seq:
             return
-        folder: str = DEFAULT_FOLDER
-        success, error_msg = ensure_directory_exists(folder)
+        
+        # Get experiment name and create output folder
+        experiment_name = self.experiment_name_ent.get().strip() or "exp"
+        output_folder = os.path.join(OUTPUTS_FOLDER, experiment_name)
+        
+        success, error_msg = ensure_directory_exists(output_folder)
         if not success:
             logger.error(error_msg)
             if hasattr(self, 'status_lbl'):
@@ -193,10 +199,9 @@ class ExperimentWindow:
             return
         
         # Generate filename with date, time, and experiment name
-        experiment_name = self.experiment_name_ent.get().strip() or "exp"
         date_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         csv_filename = f"{date_time_str}_{experiment_name}_points.csv"
-        csv_path: str = os.path.join(folder, csv_filename)
+        csv_path: str = os.path.join(output_folder, csv_filename)
         
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
@@ -334,11 +339,26 @@ class ExperimentWindow:
         self.motion_info_label = tk.Label(w, text="Load config to see settings", fg="gray", font=("Arial", 9))
         self.motion_info_label.grid(row=14, column=0, columnspan=2, sticky="w", padx=5)
 
-        # Experiment settings export/import
+        # Experiment settings section (similar to calibration)
+        tk.Label(w, text="Experiment Settings:").grid(row=16, column=0, sticky="w", padx=5, pady=5)
+        self.experiment_settings_var = tk.StringVar(value="")
         exp_settings_frame = tk.Frame(w)
-        exp_settings_frame.grid(row=16, column=0, columnspan=3, padx=5, pady=5)
-        tk.Button(exp_settings_frame, text="Export Experiment Settings", command=self.export_experiment_settings).pack(side=tk.LEFT, padx=5)
-        tk.Button(exp_settings_frame, text="Load Experiment Settings", command=self.load_experiment_settings).pack(side=tk.LEFT, padx=5)
+        exp_settings_frame.grid(row=16, column=1, columnspan=2, sticky="w", padx=5, pady=5)
+        
+        # List available experiment settings
+        exp_dir = EXPERIMENTS_FOLDER
+        exp_settings = [""]
+        if os.path.exists(exp_dir):
+            exp_settings.extend([f for f in os.listdir(exp_dir) if f.endswith("_profile.json")])
+        
+        exp_settings_menu = tk.OptionMenu(exp_settings_frame, self.experiment_settings_var, *exp_settings, command=self.on_experiment_settings_select)
+        exp_settings_menu.pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(exp_settings_frame, text="Refresh", command=self.refresh_experiment_settings).pack(side=tk.LEFT, padx=5)
+        tk.Button(exp_settings_frame, text="Export", command=self.export_experiment_settings).pack(side=tk.LEFT, padx=5)
+        
+        self.experiment_settings_status_label = tk.Label(w, text="No settings loaded", fg="red", font=("Arial", 9))
+        self.experiment_settings_status_label.grid(row=16, column=3, sticky="w", padx=5)
 
         # Status & controls
         tk.Label(w, text="Status:").grid(row=17, column=0, sticky="w")
@@ -397,8 +417,8 @@ class ExperimentWindow:
 
         # Live example filename
         def upd(e=None):
-            fld    = DEFAULT_FOLDER
             exp_name = self.experiment_name_ent.get().strip() or "exp"
+            output_folder = os.path.join(OUTPUTS_FOLDER, exp_name)
             ext_map = {"H264": ".h264", "MJPEG": ".mjpeg", "JPEG": ".jpeg"}
             ext    = ext_map.get(self.export_var.get(), ".h264")
             # Use calibration labels if available, otherwise use placeholders
@@ -417,7 +437,7 @@ class ExperimentWindow:
             ts     = time.strftime("%H%M%S")
             ds     = time.strftime("%b%d").replace(" 0", " ").strip()  # Remove leading zero from day
             fn = f"{ds}_{ts}_{exp_name}_{y0}{x0}{ext}"
-            self.status_lbl.config(text=f"Example: {os.path.join(fld,fn)}")
+            self.status_lbl.config(text=f"Example: {os.path.join(output_folder, fn)}")
 
         for wgt in (self.experiment_name_ent,
                     self.res_x_ent, self.res_y_ent, self.fps_ent):
@@ -450,6 +470,143 @@ class ExperimentWindow:
             self.on_calibration_select("")
         else:
             self.calibration_var.set(current)
+    
+    def refresh_experiment_settings(self) -> None:
+        """Refresh the list of available experiment settings."""
+        if not self.window:
+            return
+        
+        exp_dir = EXPERIMENTS_FOLDER
+        exp_settings = [""]
+        if os.path.exists(exp_dir):
+            exp_settings.extend([f for f in os.listdir(exp_dir) if f.endswith("_profile.json")])
+        
+        # Update the option menu (simplified - just update the variable)
+        current = self.experiment_settings_var.get()
+        if current not in exp_settings:
+            self.experiment_settings_var.set("")
+            self.on_experiment_settings_select("")
+        else:
+            self.experiment_settings_var.set(current)
+    
+    def on_experiment_settings_select(self, filename: str) -> None:
+        """
+        Handle experiment settings selection from dropdown.
+        
+        Args:
+            filename: Selected experiment settings filename (empty string if none)
+        """
+        if not filename or filename == "":
+            # No settings selected
+            self.experiment_settings_status_label.config(text="No settings loaded", fg="red")
+            return
+        
+        try:
+            # Load experiment settings file
+            exp_path = os.path.join(EXPERIMENTS_FOLDER, filename)
+            if not os.path.exists(exp_path):
+                self.experiment_settings_status_label.config(
+                    text=f"Error: File not found: {filename}",
+                    fg="red"
+                )
+                return
+            
+            with open(exp_path, 'r') as f:
+                settings = json.load(f)
+            
+            # Validate calibration file exists
+            calib_file = settings.get("calibration_file")
+            if not calib_file:
+                self.experiment_settings_status_label.config(
+                    text="Error: No calibration file reference in settings",
+                    fg="red"
+                )
+                return
+            
+            calib_path = os.path.join("calibrations", calib_file)
+            if not os.path.exists(calib_path):
+                self.experiment_settings_status_label.config(
+                    text=f"Error: Referenced calibration file '{calib_file}' not found.",
+                    fg="red"
+                )
+                return
+            
+            # Load calibration
+            self.calibration_var.set(calib_file)
+            self.on_calibration_select(calib_file)
+            
+            # Wait a moment for calibration to load
+            self.window.update()
+            
+            if not self.loaded_calibration:
+                self.experiment_settings_status_label.config(text="Error: Failed to load calibration", fg="red")
+                return
+            
+            # Restore settings
+            selected_wells = settings.get("selected_wells", [])
+            for label, var in self.well_checkboxes.items():
+                var.set(label in selected_wells)
+            
+            # Load action phases
+            phases_data = settings.get("action_phases", [{"action": "GPIO OFF", "time": 30.0}])
+            # Clear all existing phases (remove from end to avoid index issues)
+            while len(self.action_phases) > 1:
+                self.remove_action_phase(len(self.action_phases) - 1)
+            # Update first phase with loaded data
+            if self.action_phases and phases_data:
+                self.action_phases[0]["action_var"].set(phases_data[0].get("action", "GPIO OFF"))
+                self.action_phases[0]["time_ent"].delete(0, tk.END)
+                self.action_phases[0]["time_ent"].insert(0, str(phases_data[0].get("time", 30.0)))
+            # Add remaining phases
+            for phase_dict in phases_data[1:]:
+                self.add_action_phase(phase_dict.get("action", "GPIO OFF"), phase_dict.get("time", 0.0))
+            
+            resolution = settings.get("resolution", list(DEFAULT_RES))
+            self.res_x_ent.delete(0, tk.END)
+            self.res_x_ent.insert(0, str(resolution[0]))
+            self.res_y_ent.delete(0, tk.END)
+            self.res_y_ent.insert(0, str(resolution[1]))
+            
+            self.fps_ent.delete(0, tk.END)
+            self.fps_ent.insert(0, str(settings.get("fps", 30.0)))
+            
+            self.export_var.set(settings.get("export_type", "H264"))
+            self.quality_ent.delete(0, tk.END)
+            self.quality_ent.insert(0, str(settings.get("quality", 85)))
+            
+            # Handle both old format (motion_config_file) and new format (motion_config_profile)
+            motion_profile = settings.get("motion_config_profile") or settings.get("motion_config_file", "default")
+            # If old format had .json extension, remove it
+            if motion_profile.endswith(".json"):
+                motion_profile = motion_profile[:-5]  # Remove .json
+            self.motion_config_var.set(motion_profile)
+            
+            # Handle both old format (filename_scheme) and new format (experiment_name)
+            experiment_name = settings.get("experiment_name")
+            if not experiment_name:
+                # Try to extract from old filename_scheme format if present
+                old_scheme = settings.get("filename_scheme", "exp_{y}{x}_{time}_{date}")
+                # Try to extract exp name from old scheme (default was "exp")
+                if "exp" in old_scheme:
+                    experiment_name = "exp"
+                else:
+                    experiment_name = "exp"
+            self.experiment_name_ent.delete(0, tk.END)
+            self.experiment_name_ent.insert(0, experiment_name)
+            
+            # Handle both old format (plain "snake"/"raster") and new format (with symbols)
+            pattern_setting = settings.get("pattern", "raster →↓")
+            if pattern_setting in ["snake", "raster"]:
+                # Old format - add symbols
+                pattern_setting = "snake →↙" if pattern_setting == "snake" else "raster →↓"
+            self.pattern_var.set(pattern_setting)
+            
+            self.update_run_button_state()
+            self.experiment_settings_status_label.config(text=f"Loaded: {filename}", fg="green")
+            
+        except Exception as e:
+            logger.error(f"Error loading settings: {e}")
+            self.experiment_settings_status_label.config(text=f"Error loading settings: {e}", fg="red")
     
     def on_calibration_select(self, filename: str) -> None:
         """
@@ -1084,15 +1241,15 @@ class ExperimentWindow:
         return True, ""
     
     def export_experiment_settings(self) -> None:
-        """Export current experiment settings to JSON file."""
+        """Export current experiment settings to JSON file directly to experiments/ folder."""
         if not self.loaded_calibration:
-            self.status_lbl.config(text="Error: No calibration loaded. Cannot export settings.", fg="red")
+            self.experiment_settings_status_label.config(text="Error: No calibration loaded. Cannot export settings.", fg="red")
             return
         
         # Get selected wells
         selected_wells = [label for label, var in self.well_checkboxes.items() if var.get()]
         if not selected_wells:
-            self.status_lbl.config(text="Error: No wells selected. Cannot export settings.", fg="red")
+            self.experiment_settings_status_label.config(text="Error: No wells selected. Cannot export settings.", fg="red")
             return
         
         try:
@@ -1122,133 +1279,32 @@ class ExperimentWindow:
                 "pattern": self.pattern_var.get()  # Stores format like "snake →↙" or "raster →↓"
             }
             
+            # Ensure experiments folder exists
+            success, error_msg = ensure_directory_exists(EXPERIMENTS_FOLDER)
+            if not success:
+                logger.error(error_msg)
+                self.experiment_settings_status_label.config(text=error_msg, fg="red")
+                return
+            
             # Generate filename with date, time, and experiment name
             experiment_name = self.experiment_name_ent.get().strip() or "exp"
             date_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            auto_filename = f"{date_time_str}_{experiment_name}_profile.json"
+            filename = f"{date_time_str}_{experiment_name}_profile.json"
+            filepath = os.path.join(EXPERIMENTS_FOLDER, filename)
             
-            # Ask user for save location with auto-generated filename
-            filename = filedialog.asksaveasfilename(
-                initialfile=auto_filename,
-                defaultextension=".json",
-                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-                title="Export Experiment Settings"
-            )
+            with open(filepath, 'w') as f:
+                json.dump(settings, f, indent=2)
             
-            if filename:
-                with open(filename, 'w') as f:
-                    json.dump(settings, f, indent=2)
-                self.status_lbl.config(text=f"Settings exported to {os.path.basename(filename)}", fg="green")
+            self.experiment_settings_status_label.config(text=f"Exported: {filename}", fg="green")
+            # Refresh the dropdown to include the new file
+            self.refresh_experiment_settings()
+            # Select the newly exported file
+            self.experiment_settings_var.set(filename)
                 
         except Exception as e:
             logger.error(f"Error exporting settings: {e}")
-            self.status_lbl.config(text=f"Error exporting settings: {e}", fg="red")
+            self.experiment_settings_status_label.config(text=f"Error exporting settings: {e}", fg="red")
     
-    def load_experiment_settings(self) -> None:
-        """Load experiment settings from JSON file with calibration validation."""
-        try:
-            # Ask user for file
-            filename = filedialog.askopenfilename(
-                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-                title="Load Experiment Settings"
-            )
-            
-            if not filename:
-                return
-            
-            with open(filename, 'r') as f:
-                settings = json.load(f)
-            
-            # Validate calibration file exists
-            calib_file = settings.get("calibration_file")
-            if not calib_file:
-                self.status_lbl.config(text="Error: No calibration file reference in settings", fg="red")
-                return
-            
-            calib_path = os.path.join("calibrations", calib_file)
-            if not os.path.exists(calib_path):
-                self.status_lbl.config(
-                    text=f"Error: Referenced calibration file '{calib_file}' not found. Please ensure calibration exists.",
-                    fg="red"
-                )
-                return
-            
-            # Load calibration
-            self.calibration_var.set(calib_file)
-            self.on_calibration_select(calib_file)
-            
-            # Wait a moment for calibration to load
-            self.window.update()
-            
-            if not self.loaded_calibration:
-                self.status_lbl.config(text="Error: Failed to load calibration", fg="red")
-                return
-            
-            # Restore settings
-            selected_wells = settings.get("selected_wells", [])
-            for label, var in self.well_checkboxes.items():
-                var.set(label in selected_wells)
-            
-            # Load action phases
-            phases_data = settings.get("action_phases", [{"action": "GPIO OFF", "time": 30.0}])
-            # Clear all existing phases (remove from end to avoid index issues)
-            while len(self.action_phases) > 1:
-                self.remove_action_phase(len(self.action_phases) - 1)
-            # Update first phase with loaded data
-            if self.action_phases and phases_data:
-                self.action_phases[0]["action_var"].set(phases_data[0].get("action", "GPIO OFF"))
-                self.action_phases[0]["time_ent"].delete(0, tk.END)
-                self.action_phases[0]["time_ent"].insert(0, str(phases_data[0].get("time", 30.0)))
-            # Add remaining phases
-            for phase_dict in phases_data[1:]:
-                self.add_action_phase(phase_dict.get("action", "GPIO OFF"), phase_dict.get("time", 0.0))
-            
-            resolution = settings.get("resolution", list(DEFAULT_RES))
-            self.res_x_ent.delete(0, tk.END)
-            self.res_x_ent.insert(0, str(resolution[0]))
-            self.res_y_ent.delete(0, tk.END)
-            self.res_y_ent.insert(0, str(resolution[1]))
-            
-            self.fps_ent.delete(0, tk.END)
-            self.fps_ent.insert(0, str(settings.get("fps", 30.0)))
-            
-            self.export_var.set(settings.get("export_type", "H264"))
-            self.quality_ent.delete(0, tk.END)
-            self.quality_ent.insert(0, str(settings.get("quality", 85)))
-            
-            # Handle both old format (motion_config_file) and new format (motion_config_profile)
-            motion_profile = settings.get("motion_config_profile") or settings.get("motion_config_file", "default")
-            # If old format had .json extension, remove it
-            if motion_profile.endswith(".json"):
-                motion_profile = motion_profile[:-5]  # Remove .json
-            self.motion_config_var.set(motion_profile)
-            
-            # Handle both old format (filename_scheme) and new format (experiment_name)
-            experiment_name = settings.get("experiment_name")
-            if not experiment_name:
-                # Try to extract from old filename_scheme format if present
-                old_scheme = settings.get("filename_scheme", "exp_{y}{x}_{time}_{date}")
-                # Try to extract exp name from old scheme (default was "exp")
-                if "exp" in old_scheme:
-                    experiment_name = "exp"
-                else:
-                    experiment_name = "exp"
-            self.experiment_name_ent.delete(0, tk.END)
-            self.experiment_name_ent.insert(0, experiment_name)
-            
-            # Handle both old format (plain "snake"/"raster") and new format (with symbols)
-            pattern_setting = settings.get("pattern", "raster →↓")
-            if pattern_setting in ["snake", "raster"]:
-                # Old format - add symbols
-                pattern_setting = "snake →↙" if pattern_setting == "snake" else "raster →↓"
-            self.pattern_var.set(pattern_setting)
-            
-            self.update_run_button_state()
-            self.status_lbl.config(text=f"Settings loaded from {os.path.basename(filename)}", fg="green")
-            
-        except Exception as e:
-            logger.error(f"Error loading settings: {e}")
-            self.status_lbl.config(text=f"Error loading settings: {e}", fg="red")
 
     def start(self) -> None:
         """
@@ -1298,9 +1354,12 @@ class ExperimentWindow:
             # Store phases for use in run_loop
             self.action_phases_list = phases
             
+            # Get experiment name and create output folder
+            experiment_name = self.experiment_name_ent.get().strip() or "exp"
+            output_folder = os.path.join(OUTPUTS_FOLDER, experiment_name)
+            
             # Check directory permissions before parsing other inputs
-            folder = DEFAULT_FOLDER
-            success, error_msg = ensure_directory_exists(folder)
+            success, error_msg = ensure_directory_exists(output_folder)
             if not success:
                 logger.error(error_msg)
                 self.status_lbl.config(text=error_msg, fg="red")
@@ -1308,7 +1367,6 @@ class ExperimentWindow:
             
             # Get other settings
             try:
-                experiment_name = self.experiment_name_ent.get().strip() or "exp"
                 res_x = int(self.res_x_ent.get().strip())
                 res_y = int(self.res_y_ent.get().strip())
                 fps = float(self.fps_ent.get().strip())
@@ -1490,10 +1548,10 @@ class ExperimentWindow:
                 ext_map = {"H264": ".h264", "MJPEG": ".mjpeg", "JPEG": ".jpeg"}
                 ext  = ext_map.get(export, ".jpeg")
                 fname = f"{ds}_{ts}_{experiment_name}_{y_lbl}{x_lbl}{ext}"
-                path = os.path.join(folder, fname)
+                path = os.path.join(output_folder, fname)
                 
                 # Ensure directory exists (should already be created, but double-check)
-                success, error_msg = ensure_directory_exists(os.path.dirname(path))
+                success, error_msg = ensure_directory_exists(output_folder)
                 if not success:
                     logger.error(error_msg)
                     self.status_lbl.config(text=error_msg, fg="red")
