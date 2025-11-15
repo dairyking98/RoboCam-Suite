@@ -22,7 +22,7 @@ The calibration application enables users to:
 2. **Navigation**: User navigates to well positions using movement controls
 3. **Positioning**: Fine-tune position using adjustable step sizes (0.1mm, 1.0mm, 10.0mm, or custom value)
 4. **Recording**: Record coordinates either manually or via 4-corner calibration workflow
-5. **Saving**: Save calibration profiles to `config/calibrations/` for use in experiments
+5. **Saving**: Save calibration profiles to `calibrations/` for use in experiments
 
 ## Features
 
@@ -90,7 +90,7 @@ The 4-corner calibration method accounts for slight angles and misalignment in w
 4. **Save Calibration**:
    - Enter calibration name (e.g., "well_plate_8x6")
    - Click "Save Calibration"
-   - Saved to `config/calibrations/{YYYYMMDD_HHMMSS}_{name}.json` (automatically prefixed with date and time, e.g., `20241215_143022_well_plate_8x6.json`)
+   - Saved to `calibrations/{YYYYMMDD_HHMMSS}_{name}.json` (automatically prefixed with date and time, e.g., `20241215_143022_well_plate_8x6.json`)
    - Status confirms successful save with full filename
 
 #### Understanding 4-Corner Interpolation
@@ -305,7 +305,7 @@ python calibrate.py --backend null
 
 ## Calibration File Format
 
-Saved calibrations are stored in `config/calibrations/` with filenames automatically prefixed with date and time in format `YYYYMMDD_HHMMSS_{name}.json` (e.g., `20241215_143022_well_plate_8x6.json`):
+Saved calibrations are stored in `calibrations/` with filenames automatically prefixed with date and time in format `YYYYMMDD_HHMMSS_{name}.json` (e.g., `20241215_143022_well_plate_8x6.json`):
 
 **Filename Format**: `{YYYYMMDD_HHMMSS}_{calibration_name}.json`
 
@@ -422,7 +422,7 @@ The date/time prefix allows you to:
    - **Solution**: Verify backend selection (qtgl for desktop, drm for console)
 
 5. **"Calibration save failed"**
-   - **Solution**: Check `config/calibrations/` directory exists
+   - **Solution**: Check `calibrations/` directory exists
    - **Solution**: Verify write permissions
    - **Solution**: Ensure all 4 corners are set before saving
 

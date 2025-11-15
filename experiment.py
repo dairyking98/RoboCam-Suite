@@ -31,12 +31,54 @@ from robocam.logging_config import get_logger
 logger = get_logger(__name__)
 
 # Configuration constants
-CSV_NAME: str = "experiment_points.csv"
-DEFAULT_FOLDER: str = "/output/filescheme/files"
+# CSV files are now named with format: {date}_{time}_{exp}_points.csv
+DEFAULT_FOLDER: str = "experiments"
 DEFAULT_RES: tuple[int, int] = (1920, 1080)
 DEFAULT_FPS: float = 30.0
 DEFAULT_EXPORT: str = "H264"
 DEFAULT_QUALITY: int = 85
+
+
+def ensure_directory_exists(folder_path: str) -> tuple[bool, str]:
+    """
+    Ensure a directory path exists, creating all intermediate directories if needed.
+    
+    Args:
+        folder_path: Full path to the directory to create
+        
+    Returns:
+        Tuple of (success: bool, error_message: str)
+        If success is False, error_message contains a helpful error description
+    """
+    try:
+        os.makedirs(folder_path, exist_ok=True)
+        # Verify we can actually write to the directory
+        test_file = os.path.join(folder_path, ".write_test")
+        try:
+            with open(test_file, 'w') as f:
+                f.write("test")
+            os.remove(test_file)
+        except (PermissionError, OSError):
+            return False, f"Directory '{folder_path}' exists but is not writable. Please check permissions."
+        return True, ""
+    except PermissionError:
+        # Check which level failed
+        path_parts = folder_path.strip('/').split('/')
+        checked_path = '/'
+        for part in path_parts:
+            checked_path = os.path.join(checked_path, part)
+            if not os.path.exists(checked_path):
+                error_msg = f"Permission denied: Cannot create '{checked_path}'. "
+                error_msg += f"Please create the directory structure manually or run with sudo:\n"
+                error_msg += f"  sudo mkdir -p {folder_path} && sudo chmod 777 {folder_path}"
+                return False, error_msg
+            elif not os.access(checked_path, os.W_OK):
+                error_msg = f"Permission denied: '{checked_path}' exists but is not writable. "
+                error_msg += f"Please fix permissions with: sudo chmod 777 {checked_path}"
+                return False, error_msg
+        return False, f"Permission denied: Cannot create '{folder_path}'. Please check permissions."
+    except OSError as e:
+        return False, f"Error creating directory '{folder_path}': {e}. Please check permissions."
 
 
 def format_hms(seconds: float) -> str:
@@ -135,7 +177,7 @@ class ExperimentWindow:
         Save well sequence to CSV file.
         
         Creates CSV file with columns: xlabel, ylabel, xval, yval, zval.
-        Saves to experiment save folder.
+        Saves to experiment save folder with format: {date}_{time}_{exp}_points.csv
         
         Note:
             Only saves if sequence exists. Creates folder if it doesn't exist.
@@ -143,8 +185,19 @@ class ExperimentWindow:
         if not self.seq:
             return
         folder: str = DEFAULT_FOLDER
-        os.makedirs(folder, exist_ok=True)
-        csv_path: str = os.path.join(folder, CSV_NAME)
+        success, error_msg = ensure_directory_exists(folder)
+        if not success:
+            logger.error(error_msg)
+            if hasattr(self, 'status_lbl'):
+                self.status_lbl.config(text=error_msg, fg="red")
+            return
+        
+        # Generate filename with date, time, and experiment name
+        experiment_name = self.experiment_name_ent.get().strip() or "exp"
+        date_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        csv_filename = f"{date_time_str}_{experiment_name}_points.csv"
+        csv_path: str = os.path.join(folder, csv_filename)
+        
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["xlabel", "ylabel", "xval", "yval", "zval"])
@@ -199,7 +252,7 @@ class ExperimentWindow:
         calibration_frame.grid(row=0, column=1, columnspan=2, sticky="w", padx=5, pady=5)
         
         # List available calibrations
-        calib_dir = os.path.join("config", "calibrations")
+        calib_dir = "calibrations"
         calibrations = [""]
         if os.path.exists(calib_dir):
             calibrations.extend([f for f in os.listdir(calib_dir) if f.endswith(".json")])
@@ -385,7 +438,7 @@ class ExperimentWindow:
         if not self.window:
             return
         
-        calib_dir = os.path.join("config", "calibrations")
+        calib_dir = "calibrations"
         calibrations = [""]
         if os.path.exists(calib_dir):
             calibrations.extend([f for f in os.listdir(calib_dir) if f.endswith(".json")])
@@ -422,7 +475,7 @@ class ExperimentWindow:
         
         try:
             # Load calibration file
-            calib_path = os.path.join("config", "calibrations", filename)
+            calib_path = os.path.join("calibrations", filename)
             if not os.path.exists(calib_path):
                 self.calibration_status_label.config(
                     text=f"Error: File not found: {filename}",
@@ -1069,26 +1122,23 @@ class ExperimentWindow:
                 "pattern": self.pattern_var.get()  # Stores format like "snake →↙" or "raster →↓"
             }
             
-            # Ask user for save location
+            # Generate filename with date, time, and experiment name
+            experiment_name = self.experiment_name_ent.get().strip() or "exp"
+            date_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            auto_filename = f"{date_time_str}_{experiment_name}_profile.json"
+            
+            # Ask user for save location with auto-generated filename
             filename = filedialog.asksaveasfilename(
+                initialfile=auto_filename,
                 defaultextension=".json",
                 filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
                 title="Export Experiment Settings"
             )
             
             if filename:
-                # Generate date_time prefix and add to filename
-                date_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                file_dir = os.path.dirname(filename)
-                file_base = os.path.basename(filename)
-                # Remove .json extension if present, add prefix, then add .json back
-                if file_base.endswith('.json'):
-                    file_base = file_base[:-5]  # Remove .json
-                prefixed_filename = os.path.join(file_dir, f"{date_time_str}_{file_base}.json")
-                
-                with open(prefixed_filename, 'w') as f:
+                with open(filename, 'w') as f:
                     json.dump(settings, f, indent=2)
-                self.status_lbl.config(text=f"Settings exported to {os.path.basename(prefixed_filename)}", fg="green")
+                self.status_lbl.config(text=f"Settings exported to {os.path.basename(filename)}", fg="green")
                 
         except Exception as e:
             logger.error(f"Error exporting settings: {e}")
@@ -1115,7 +1165,7 @@ class ExperimentWindow:
                 self.status_lbl.config(text="Error: No calibration file reference in settings", fg="red")
                 return
             
-            calib_path = os.path.join("config", "calibrations", calib_file)
+            calib_path = os.path.join("calibrations", calib_file)
             if not os.path.exists(calib_path):
                 self.status_lbl.config(
                     text=f"Error: Referenced calibration file '{calib_file}' not found. Please ensure calibration exists.",
@@ -1248,18 +1298,30 @@ class ExperimentWindow:
             # Store phases for use in run_loop
             self.action_phases_list = phases
             
-            # Get other settings
+            # Check directory permissions before parsing other inputs
             folder = DEFAULT_FOLDER
-            os.makedirs(folder, exist_ok=True)
-            experiment_name = self.experiment_name_ent.get().strip() or "exp"
-            res_x = int(self.res_x_ent.get().strip())
-            res_y = int(self.res_y_ent.get().strip())
-            fps = float(self.fps_ent.get().strip())
-            export = self.export_var.get()
-            quality = int(self.quality_ent.get().strip())
+            success, error_msg = ensure_directory_exists(folder)
+            if not success:
+                logger.error(error_msg)
+                self.status_lbl.config(text=error_msg, fg="red")
+                return
+            
+            # Get other settings
+            try:
+                experiment_name = self.experiment_name_ent.get().strip() or "exp"
+                res_x = int(self.res_x_ent.get().strip())
+                res_y = int(self.res_y_ent.get().strip())
+                fps = float(self.fps_ent.get().strip())
+                export = self.export_var.get()
+                quality = int(self.quality_ent.get().strip())
+            except Exception as e:
+                logger.error(f"Invalid inputs: {e}")
+                self.status_lbl.config(text=f"Error: Invalid inputs - {e}")
+                return
         except Exception as e:
-            logger.error(f"Invalid inputs: {e}")
-            self.status_lbl.config(text=f"Error: Invalid inputs - {e}")
+            # Catch any unexpected errors in the try block above
+            logger.error(f"Unexpected error: {e}")
+            self.status_lbl.config(text=f"Error: {e}")
             return
 
         # Load motion configuration
@@ -1430,7 +1492,13 @@ class ExperimentWindow:
                 fname = f"{ds}_{ts}_{experiment_name}_{y_lbl}{x_lbl}{ext}"
                 path = os.path.join(folder, fname)
                 
-                os.makedirs(os.path.dirname(path), exist_ok=True)
+                # Ensure directory exists (should already be created, but double-check)
+                success, error_msg = ensure_directory_exists(os.path.dirname(path))
+                if not success:
+                    logger.error(error_msg)
+                    self.status_lbl.config(text=error_msg, fg="red")
+                    self.running = False
+                    break
 
                 if export == "JPEG":
                     # single JPEG still

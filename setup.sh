@@ -141,7 +141,8 @@ echo ""
 
 # Create configuration directories
 echo "Creating configuration directories..."
-mkdir -p config/calibrations
+mkdir -p calibrations
+mkdir -p experiments
 mkdir -p config/templates
 mkdir -p docs
 echo "Configuration directories created."

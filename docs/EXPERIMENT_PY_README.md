@@ -31,7 +31,7 @@ The application automates the execution of well-plate experiments by:
 
 ### 1. Calibration-Based Well Selection
 
-- **Calibration Loading**: Load saved 4-corner calibrations from `config/calibrations/`
+- **Calibration Loading**: Load saved 4-corner calibrations from `calibrations/`
 - **Well Selection Window**: Separate window for selecting wells via checkboxes
   - Opens via "Select Cells" button (enabled when calibration is loaded)
   - Button is disabled when selection window is open
@@ -107,9 +107,12 @@ The application automates the execution of well-plate experiments by:
   - `{x}`: Column number (e.g., "1", "2", "3")
   - `{ext}`: File extension based on export type (`.h264`, `.mjpeg`, `.jpeg`)
   - Example: `Jan15_143022_exp_B2.h264`
-- **Save Folder**: Fixed default directory `/output/filescheme/files` (not configurable via GUI)
-- **CSV Export**: Automatic generation of `experiment_points.csv` with well coordinates in the save folder
-- **Experiment Settings Export**: Save complete experiment configuration to JSON (automatically prefixed with date and time: `{date_time}_{name}.json`)
+- **Save Folder**: Fixed default directory `experiments/` (not configurable via GUI)
+  - The application automatically creates the directory if it doesn't exist
+  - Provides detailed error messages if directory creation fails
+  - Verifies write permissions before starting experiments
+- **CSV Export**: Automatic generation of CSV file with format `{date}_{time}_{exp}_points.csv` containing well coordinates in the save folder
+- **Experiment Settings Export**: Save complete experiment configuration to JSON with format `{date}_{time}_{exp}_profile.json`
 - **Experiment Settings Import**: Load saved configurations with calibration validation
 
 ### 6. Configuration Persistence
@@ -483,7 +486,7 @@ When exporting experiment settings:
 
 ### Calibration File Format
 
-Calibration files are saved in `config/calibrations/` with filenames automatically prefixed with date and time in format `YYYYMMDD_HHMMSS_{name}.json` (e.g., `20241215_143022_well_plate_8x6.json`):
+Calibration files are saved in `calibrations/` with filenames automatically prefixed with date and time in format `YYYYMMDD_HHMMSS_{name}.json` (e.g., `20241215_143022_well_plate_8x6.json`):
 ```json
 {
   "name": "well_plate_8x6",
@@ -571,11 +574,34 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
 
 ### Common Issues
 
-1. **"At least one action phase is required"**
+1. **"Permission denied: Cannot create directory"**
+   - **Symptom**: Error message when starting experiment or saving CSV
+   - **Cause**: Insufficient permissions to create `experiments/` directory
+   - **Solution**:
+     ```bash
+     # Create directory with proper permissions
+     mkdir -p experiments
+     chmod 777 experiments
+     ```
+   - **Alternative**: Run the application with sudo (not recommended for production):
+     ```bash
+     sudo python experiment.py
+     ```
+   - The application identifies the issue and provides specific fix instructions
+
+2. **"Directory exists but is not writable"**
+   - **Symptom**: Directory exists but files cannot be saved
+   - **Cause**: Directory lacks write permissions
+   - **Solution**: Fix permissions for the directory:
+     ```bash
+     chmod 777 experiments
+     ```
+
+3. **"At least one action phase is required"**
    - Ensure at least one GPIO action phase is configured
    - The first phase cannot be deleted
 
-2. **"Phase X has invalid time"**
+4. **"Phase X has invalid time"**
    - Ensure all phase time entries contain valid numbers
    - Time values must be non-negative
    - Supports decimal values (e.g., 30.5)
@@ -597,14 +623,17 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
    - Ensure preview is disabled during recording
 
 5. **Files not saving**
-   - Check save folder permissions
+   - **Save folder permissions**: Check that `experiments/` is writable
+     - The application automatically creates the directory if it doesn't exist
+     - If creation fails, check error message for specific issue
+     - Fix with: `mkdir -p experiments && chmod 777 experiments`
    - Verify disk space availability
    - Check filename scheme is valid
 
 6. **"No calibration loaded" error**
    - Load a calibration from the dropdown before starting experiment
    - Create calibration in calibrate.py if none exist
-   - Check that calibration file exists in `config/calibrations/`
+   - Check that calibration file exists in `calibrations/`
 
 7. **"Referenced calibration file not found" (on import)**
    - Ensure the calibration file referenced in exported settings exists

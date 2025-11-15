@@ -37,8 +37,14 @@ Complete guide for using the RoboCam-Suite calibration and experiment applicatio
    # Add user to gpio group for GPIO access
    sudo usermod -a -G gpio $USER
    
+   # Create output directory for experiments
+   mkdir -p experiments
+   chmod 777 experiments
+   
    # Log out and log back in for changes to take effect
    ```
+   
+   **Note**: The application automatically creates `experiments/` if it doesn't exist, but requires write permissions. The directory is created automatically on first use if permissions allow.
 
 4. **Run Setup Script**:
    ```bash
@@ -170,7 +176,7 @@ The 4-corner calibration method accounts for slight angles and misalignment in w
 8. **Save Calibration**:
    - Enter a calibration name (e.g., "well_plate_8x6")
    - Click "Save Calibration" button
-   - Calibration is saved to `config/calibrations/{YYYYMMDD_HHMMSS}_{name}.json` (automatically prefixed with date and time, e.g., `20241215_143022_well_plate_8x6.json`)
+   - Calibration is saved to `calibrations/{YYYYMMDD_HHMMSS}_{name}.json` (automatically prefixed with date and time, e.g., `20241215_143022_well_plate_8x6.json`)
    - Status will confirm successful save with full filename
    - The date/time prefix (format: YYYYMMDD_HHMMSS) helps track when calibrations were created and allows multiple versions with the same name
 
@@ -244,7 +250,7 @@ The preview application opens two windows:
 
 1. Select "Calibration File" radio button
 2. Click "Load" button
-3. Navigate to `config/calibrations/` directory
+3. Navigate to `calibrations/` directory
 4. Select a calibration JSON file
 5. All wells from the calibration will be loaded
 
@@ -328,7 +334,7 @@ The preview tool fits into the overall workflow:
 
 2. **Load Calibration** (Required):
    - Select a calibration from the "Calibration" dropdown
-   - Calibrations are loaded from `config/calibrations/` directory
+   - Calibrations are loaded from `calibrations/` directory
    - Click "Refresh" if you just created a new calibration
    - Status will show "Loaded: {filename} (X wells)" when successful
    - **Note**: Experiment cannot start without a loaded calibration
@@ -381,7 +387,7 @@ The preview tool fits into the overall workflow:
    - **Experiment Name**: Name identifier for the experiment (default: "exp")
      - Used in generated filenames: `{date}_{time}_{experiment_name}_{y}{x}.{ext}`
      - Example: `Jan15_143022_exp_B2.h264`
-   - **Save Folder**: Files are automatically saved to `/output/filescheme/files` (not configurable via GUI)
+   - **Save Folder**: Files are automatically saved to `experiments/` (not configurable via GUI)
 
 9. **Status and Recording Indicator**:
    - **Status Display**: Shows current experiment progress, well being processed, and any errors
@@ -493,7 +499,8 @@ The selected profile's settings are displayed below the dropdown, showing:
    - Ensure well plate is properly positioned
    - Verify camera is focused
    - Check laser connection
-   - Confirm save folder has sufficient space
+   - Confirm `experiments/` has sufficient space
+   - Verify directory permissions (application will create directories automatically, but needs write permissions)
 
 2. **Configure**: Complete experiment setup (see Experiment Setup section)
 
@@ -522,12 +529,12 @@ The selected profile's settings are displayed below the dropdown, showing:
 ### After Experiment
 
 1. **Check Output Files**:
-   - Navigate to `/output/filescheme/files`
+   - Navigate to `experiments/`
    - Verify all files were created
    - Check file sizes (should be non-zero)
 
 2. **Review CSV File**:
-   - Open `experiment_points.csv` in `/output/filescheme/files`
+   - Open the CSV file (format: `{date}_{time}_{exp}_points.csv`) in `experiments/`
    - Verify all wells were visited
    - Check coordinates match expectations
 
@@ -605,10 +612,20 @@ For detailed documentation on specific applications:
 
 ### Files Not Saving
 
-- **Check folder permissions**: Ensure `/output/filescheme/files` is writable
-- **Verify disk space**: Check available space with `df -h`
-- **Check experiment name**: Invalid characters in experiment name may cause filename issues
-- **Review log file**: Look for file write errors
+- **Check folder permissions**: Ensure `experiments/` is writable
+  - The application automatically creates the directory if it doesn't exist
+  - If you see "Permission denied" errors, the application will identify the issue
+  - To fix permissions, run:
+    ```bash
+    mkdir -p experiments
+    chmod 777 experiments
+    ```
+  - **Verify disk space**: Check available space with `df -h`
+  - **Check experiment name**: Invalid characters in experiment name may cause filename issues
+  - **Review log file**: Look for file write errors
+  - **Error messages**: The application provides specific error messages identifying:
+  - Whether the directory exists but is not writable
+  - Exact commands to fix the issue
 
 ## Best Practices
 
@@ -657,11 +674,11 @@ To run multiple experiments:
 1. Save different experiment configurations
 2. Load configuration before each run
 3. Use different experiment names to distinguish experiments
-4. All files are saved to `/output/filescheme/files`
+4. All files are saved to `experiments/`
 
 ### Integration with Analysis Tools
 
-The CSV output (`experiment_points.csv`) can be imported into:
+The CSV output (format: `{date}_{time}_{exp}_points.csv`) can be imported into:
 - Excel/Google Sheets for basic analysis
 - Python pandas for data analysis
 - ImageJ/Fiji for image analysis workflows

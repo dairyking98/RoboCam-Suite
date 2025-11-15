@@ -45,7 +45,7 @@ The preview application enables users to:
 #### Loading from Calibration Files
 
 - **Source**: All wells from a saved calibration file
-- **Location**: `config/calibrations/*.json` (files are automatically prefixed with date/time in format `YYYYMMDD_HHMMSS_{name}.json`, e.g., `20241215_143022_well_plate_8x6.json`)
+- **Location**: `calibrations/*.json` (files are automatically prefixed with date/time in format `YYYYMMDD_HHMMSS_{name}.json`, e.g., `20241215_143022_well_plate_8x6.json`)
 - **Use Case**: Preview all wells after calibration to verify interpolation accuracy
 - **Process**:
   1. Select "Calibration File" radio button
@@ -56,7 +56,7 @@ The preview application enables users to:
 #### Loading from Experiment Save Files
 
 - **Source**: Only checked wells from an exported experiment settings file
-- **Location**: Any JSON file exported from experiment.py (files are automatically prefixed with date and time: `{date_time}_{name}.json`)
+- **Location**: Any JSON file exported from experiment.py (format: `{date}_{time}_{exp}_profile.json`)
 - **Use Case**: Preview only the wells that will be used in an experiment
 - **Process**:
   1. Select "Experiment Save File" radio button
@@ -229,7 +229,7 @@ python preview.py
 
 ### Calibration File Format
 
-Calibration files are loaded from `config/calibrations/*.json`:
+Calibration files are loaded from `calibrations/*.json`:
 
 ```json
 {
@@ -256,7 +256,7 @@ When loading from calibration file:
 
 ### Experiment Save File Format
 
-Experiment save files are JSON files exported from experiment.py (automatically prefixed with date and time: `{date_time}_{name}.json`):
+Experiment save files are JSON files exported from experiment.py (format: `{date}_{time}_{exp}_profile.json`):
 
 ```json
 {
@@ -280,7 +280,7 @@ Experiment save files are JSON files exported from experiment.py (automatically 
 
 When loading from experiment save file:
 1. Application reads `calibration_file` field
-2. Loads the referenced calibration from `config/calibrations/`
+2. Loads the referenced calibration from `calibrations/`
 3. Filters `interpolated_positions` to only include wells in `selected_wells` array
 4. Displays only the filtered wells in the list
 
@@ -292,7 +292,7 @@ The preview tool is designed to fit into the overall RoboCam-Suite workflow:
 
 1. **Calibrate** (`calibrate.py`):
    - Create calibration with 4-corner method
-   - Save calibration to `config/calibrations/`
+   - Save calibration to `calibrations/`
 
 2. **Preview** (`preview.py`):
    - Load calibration file

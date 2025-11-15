@@ -104,7 +104,7 @@ pip install -r requirements.txt
 
 4. Create configuration directories:
 ```bash
-mkdir -p config/calibrations
+mkdir -p calibrations
 mkdir -p config/templates
 ```
 
@@ -233,7 +233,7 @@ python experiment.py
 
 ### Configuration Files
 
-#### Calibration Files (config/calibrations/*.json)
+#### Calibration Files (calibrations/*.json)
 
 Calibration files are automatically saved with a date and time prefix in format `YYYYMMDD_HHMMSS` (e.g., `20241215_143022_well_plate_8x6.json`). They store 4-corner calibration data with interpolated well positions:
 
@@ -253,7 +253,12 @@ Calibration files are automatically saved with a date and time prefix in format 
 
 #### Experiment Settings Export
 
-Users can export experiment settings to JSON files for reuse (automatically prefixed with date and time: `{date_time}_{name}.json`):
+Users can export experiment settings to JSON files for reuse. The filename format is `{date}_{time}_{exp}_profile.json` where:
+- `{date}`: Date in YYYYMMDD format (e.g., "20241215")
+- `{time}`: Time in HHMMSS format (e.g., "143022")
+- `{exp}`: Experiment name from the "Experiment Name" field
+
+Example: `20241215_143022_exp_profile.json`
 
 ```json
 {
@@ -343,9 +348,14 @@ Example: Experiment name "exp", well B2, captured at 14:30:22 on January 15th �
 
 ## Output Files
 
-### CSV Export (experiment_points.csv)
+### CSV Export ({date}_{time}_{exp}_points.csv)
 
-The experiment generates a CSV file with well coordinates:
+The experiment generates a CSV file with well coordinates. The filename format is `{date}_{time}_{exp}_points.csv` where:
+- `{date}`: Date in YYYYMMDD format (e.g., "20241215")
+- `{time}`: Time in HHMMSS format (e.g., "143022")
+- `{exp}`: Experiment name from the "Experiment Name" field
+
+Example: `20241215_143022_exp_points.csv`
 
 ```csv
 xlabel,ylabel,xval,yval,zval
@@ -356,7 +366,13 @@ xlabel,ylabel,xval,yval,zval
 
 ### Video/Image Files
 
-Videos or images are automatically saved to `/output/filescheme/files` with the fixed filename format.
+Videos or images are automatically saved to `experiments/` with the fixed filename format.
+
+**Directory Creation**: The application automatically creates the `experiments/` directory if it doesn't exist. If you encounter permission errors, the application will identify the issue and provide specific fix instructions. To manually set up the directory:
+```bash
+mkdir -p experiments
+chmod 777 experiments
+```
 
 ## Configuration
 
@@ -526,8 +542,9 @@ RoboCam-Suite/
 │   └── stentorcam.py        # StentorCam with well plate support
 ├── config/                   # Configuration files
 │   ├── motion_config.json    # Motion configuration profiles
-│   ├── calibrations/         # Saved 4-corner calibrations
 │   └── templates/            # Experiment templates
+├── calibrations/             # Saved 4-corner calibrations
+└── experiments/              # Experiment output files
 └── docs/                     # Documentation
     ├── USER_GUIDE.md         # User guide
     ├── DEVELOPER_GUIDE.md    # Developer guide

@@ -233,14 +233,14 @@ class PreviewApp:
     def load_from_calibration(self) -> None:
         """Load all wells from a calibration file."""
         # List available calibrations
-        calib_dir = os.path.join("config", "calibrations")
+        calib_dir = "calibrations"
         if not os.path.exists(calib_dir):
-            messagebox.showerror("Error", "Calibrations directory not found: config/calibrations/")
+            messagebox.showerror("Error", "Calibrations directory not found: calibrations/")
             return
         
         calibrations = [f for f in os.listdir(calib_dir) if f.endswith(".json")]
         if not calibrations:
-            messagebox.showerror("Error", "No calibration files found in config/calibrations/")
+            messagebox.showerror("Error", "No calibration files found in calibrations/")
             return
         
         # Simple selection dialog
@@ -313,7 +313,7 @@ class PreviewApp:
                 raise ValueError("No selected_wells field in experiment settings")
             
             # Load the referenced calibration file
-            calib_path = os.path.join("config", "calibrations", calib_file)
+            calib_path = os.path.join("calibrations", calib_file)
             if not os.path.exists(calib_path):
                 raise FileNotFoundError(f"Referenced calibration file not found: {calib_file}")
             

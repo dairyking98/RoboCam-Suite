@@ -81,7 +81,7 @@ Status: **COMPLETED** ✅
 - Coordinate recording buttons for all 4 corners
 - Automatic label generation (A1, A2, ..., B1, B2, ...)
 - Interpolation using WellPlatePathGenerator with Z-axis support
-- Calibration save to config/calibrations/ directory
+- Calibration save to calibrations/ directory
 - Calibration loading in experiment.py
 - Checkbox grid for well selection
 - Mandatory calibration validation (blocks experiment start)

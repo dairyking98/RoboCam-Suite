@@ -228,7 +228,7 @@ The configuration system uses JSON files in `config/default_config.json`:
   "paths": {
     "config_dir": "config",
     "motion_config_file": "config/motion_config.json",
-    "calibration_dir": "config/calibrations",
+    "calibration_dir": "calibrations",
     "experiment_config": "experiment_config.json"
   }
 }
@@ -349,7 +349,8 @@ RoboCam-Suite/
 │   └── stentorcam.py    # Extended RoboCam
 ├── config/              # Configuration files
 │   ├── motion_config.json # Motion profiles (all profiles in one file)
-│   ├── calibrations/    # 4-corner calibration files
+├── calibrations/        # 4-corner calibration files
+├── experiments/         # Experiment output files
 │   └── templates/       # Experiment templates
 └── docs/                # Documentation
 ```

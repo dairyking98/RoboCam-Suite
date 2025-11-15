@@ -632,7 +632,7 @@ class CameraApp:
         return labels
     
     def save_calibration(self) -> None:
-        """Save calibration to JSON file in config/calibrations/ directory."""
+        """Save calibration to JSON file in calibrations/ directory."""
         # Validate all corners are set
         if (self.upper_left is None or self.lower_left is None or
             self.upper_right is None or self.lower_right is None):
@@ -664,7 +664,7 @@ class CameraApp:
         
         try:
             # Create calibrations directory if it doesn't exist
-            calib_dir = os.path.join("config", "calibrations")
+            calib_dir = "calibrations"
             os.makedirs(calib_dir, exist_ok=True)
             
             # Prepare calibration data
