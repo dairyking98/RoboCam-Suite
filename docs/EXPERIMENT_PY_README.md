@@ -100,19 +100,20 @@ The application automates the execution of well-plate experiments by:
   - Used in filename generation to identify the experiment
   - Replaces the `{exp}` placeholder in the filename format
 - **Filename Format**: Fixed format `{date}_{time}_{experiment_name}_{y}{x}.{ext}`
-  - `{date}`: Date (MMMDD format, e.g., "Jan15")
+  - `{date}`: Date (YYYYMMDD format, e.g., "20241215")
   - `{time}`: Timestamp (HHMMSS format, e.g., "143022")
   - `{experiment_name}`: Experiment name from the "Experiment Name" field
   - `{y}`: Row letter (e.g., "A", "B", "C")
   - `{x}`: Column number (e.g., "1", "2", "3")
   - `{ext}`: File extension based on export type (`.h264`, `.mjpeg`, `.jpeg`)
-  - Example: `Jan15_143022_exp_B2.h264`
-- **Save Folder**: Output files are saved to `outputs/{experiment_name}/` (not configurable via GUI)
+  - Example: `20241215_143022_exp_B2.h264`
+- **Save Folder**: Output files are saved to `outputs/YYYYMMDD_{experiment_name}/` (not configurable via GUI)
   - The application automatically creates the directory if it doesn't exist
-  - Each experiment name gets its own subfolder in `outputs/`
+  - Each experiment run gets its own subfolder with date prefix in `outputs/`
+  - Format: `outputs/YYYYMMDD_{experiment_name}/` where YYYYMMDD is the date when experiment starts
   - Provides detailed error messages if directory creation fails
   - Verifies write permissions before starting experiments
-- **CSV Export**: Automatic generation of CSV file with format `{date}_{time}_{exp}_points.csv` containing well coordinates in `outputs/{experiment_name}/`
+- **CSV Export**: Automatic generation of CSV file with format `{date}_{time}_{exp}_points.csv` containing well coordinates in `outputs/YYYYMMDD_{experiment_name}/`
 - **Experiment Settings Export**: Save complete experiment configuration to JSON with format `{date}_{time}_{exp}_profile.json` directly to `experiments/` folder (no file dialog)
 - **Experiment Settings Load**: Load settings from dropdown (similar to calibration dropdown) - selects from `experiments/` folder
 - **Experiment Settings Import**: Load saved configurations with calibration validation
@@ -569,7 +570,7 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
 
 - **Placeholders**: `{x}`, `{y}`, `{time}`, `{date}`
 - **Time Format**: `%H%M%S` (e.g., "143022")
-- **Date Format**: `%b%-d` (e.g., "Jan15")
+- **Date Format**: `%Y%m%d` (e.g., "20241215")
 - **Extension**: Based on export type (`.h264`, `.mjpeg`, `.jpeg`)
 
 ## Troubleshooting

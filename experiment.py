@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 # CSV files are now named with format: {date}_{time}_{exp}_points.csv
 EXPERIMENTS_FOLDER: str = "experiments"  # For exported experiment settings (profile JSON files)
 OUTPUTS_FOLDER: str = "outputs"  # Base folder for experiment outputs
-# Output folder structure: outputs/{experiment_name}/ contains recordings and CSV
+# Output folder structure: outputs/YYYYMMDD_{experiment_name}/ contains recordings and CSV
 DEFAULT_RES: tuple[int, int] = (1920, 1080)
 DEFAULT_FPS: float = 30.0
 DEFAULT_EXPORT: str = "H264"
@@ -179,7 +179,7 @@ class ExperimentWindow:
         Save well sequence to CSV file.
         
         Creates CSV file with columns: xlabel, ylabel, xval, yval, zval.
-        Saves to outputs/{experiment_name}/ with format: {date}_{time}_{exp}_points.csv
+        Saves to outputs/YYYYMMDD_{experiment_name}/ with format: {date}_{time}_{exp}_points.csv
         
         Note:
             Only saves if sequence exists. Creates folder if it doesn't exist.
@@ -187,9 +187,10 @@ class ExperimentWindow:
         if not self.seq:
             return
         
-        # Get experiment name and create output folder
+        # Get experiment name and create output folder with date prefix
         experiment_name = self.experiment_name_ent.get().strip() or "exp"
-        output_folder = os.path.join(OUTPUTS_FOLDER, experiment_name)
+        date_str = datetime.now().strftime("%Y%m%d")
+        output_folder = os.path.join(OUTPUTS_FOLDER, f"{date_str}_{experiment_name}")
         
         success, error_msg = ensure_directory_exists(output_folder)
         if not success:
@@ -418,7 +419,8 @@ class ExperimentWindow:
         # Live example filename
         def upd(e=None):
             exp_name = self.experiment_name_ent.get().strip() or "exp"
-            output_folder = os.path.join(OUTPUTS_FOLDER, exp_name)
+            date_str = datetime.now().strftime("%Y%m%d")
+            output_folder = os.path.join(OUTPUTS_FOLDER, f"{date_str}_{exp_name}")
             ext_map = {"H264": ".h264", "MJPEG": ".mjpeg", "JPEG": ".jpeg"}
             ext    = ext_map.get(self.export_var.get(), ".h264")
             # Use calibration labels if available, otherwise use placeholders
@@ -435,7 +437,7 @@ class ExperimentWindow:
                 x0 = "1"
                 y0 = "A"
             ts     = time.strftime("%H%M%S")
-            ds     = time.strftime("%b%d").replace(" 0", " ").strip()  # Remove leading zero from day
+            ds     = date_str  # Use YYYYMMDD format
             fn = f"{ds}_{ts}_{exp_name}_{y0}{x0}{ext}"
             self.status_lbl.config(text=f"Example: {os.path.join(output_folder, fn)}")
 
@@ -1354,9 +1356,14 @@ class ExperimentWindow:
             # Store phases for use in run_loop
             self.action_phases_list = phases
             
-            # Get experiment name and create output folder
+            # Get experiment name
             experiment_name = self.experiment_name_ent.get().strip() or "exp"
-            output_folder = os.path.join(OUTPUTS_FOLDER, experiment_name)
+            
+            # Get current date for folder and filename
+            date_str = datetime.now().strftime("%Y%m%d")
+            
+            # Create output folder with date prefix: outputs/YYYYMMDD_experiment/
+            output_folder = os.path.join(OUTPUTS_FOLDER, f"{date_str}_{experiment_name}")
             
             # Check directory permissions before parsing other inputs
             success, error_msg = ensure_directory_exists(output_folder)
@@ -1504,6 +1511,11 @@ class ExperimentWindow:
         update_timers()
 
         def run_loop():
+            # Store date_str and output_folder in closure for use in loop
+            loop_date_str = date_str
+            loop_output_folder = output_folder
+            loop_experiment_name = experiment_name
+            
             # Apply preliminary motion settings before homing
             try:
                 self.robocam.set_acceleration(self.preliminary_acceleration)
@@ -1544,14 +1556,14 @@ class ExperimentWindow:
                     break
 
                 ts   = time.strftime("%H%M%S")
-                ds   = time.strftime("%b%d").replace(" 0", " ").strip()  # Remove leading zero from day
+                ds   = loop_date_str  # Use YYYYMMDD format (set at start of experiment)
                 ext_map = {"H264": ".h264", "MJPEG": ".mjpeg", "JPEG": ".jpeg"}
                 ext  = ext_map.get(export, ".jpeg")
-                fname = f"{ds}_{ts}_{experiment_name}_{y_lbl}{x_lbl}{ext}"
-                path = os.path.join(output_folder, fname)
+                fname = f"{ds}_{ts}_{loop_experiment_name}_{y_lbl}{x_lbl}{ext}"
+                path = os.path.join(loop_output_folder, fname)
                 
                 # Ensure directory exists (should already be created, but double-check)
-                success, error_msg = ensure_directory_exists(output_folder)
+                success, error_msg = ensure_directory_exists(loop_output_folder)
                 if not success:
                     logger.error(error_msg)
                     self.status_lbl.config(text=error_msg, fg="red")

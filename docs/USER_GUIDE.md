@@ -386,10 +386,11 @@ The preview tool fits into the overall workflow:
      - `raster →↓`: Rectilinear pattern (consistent direction, default)
    - **Experiment Name**: Name identifier for the experiment (default: "exp")
      - Used in generated filenames: `{date}_{time}_{experiment_name}_{y}{x}.{ext}`
-     - Example: `Jan15_143022_exp_B2.h264`
-   - **Save Folder**: Files are automatically saved to `outputs/{experiment_name}/` (not configurable via GUI)
-     - Each experiment name gets its own subfolder
-     - Example: experiment name "exp" saves to `outputs/exp/`
+     - Example: `20241215_143022_exp_B2.h264`
+   - **Save Folder**: Files are automatically saved to `outputs/YYYYMMDD_{experiment_name}/` (not configurable via GUI)
+     - Each experiment run gets its own subfolder with date prefix
+     - Format: `outputs/YYYYMMDD_{experiment_name}/` where YYYYMMDD is the date when experiment starts
+     - Example: experiment name "exp" run on Dec 15, 2024 saves to `outputs/20241215_exp/`
 
 9. **Status and Recording Indicator**:
    - **Status Display**: Shows current experiment progress, well being processed, and any errors
@@ -419,11 +420,11 @@ The preview tool fits into the overall workflow:
 Files are automatically named using the format: `{date}_{time}_{experiment_name}_{y}{x}.{ext}`
 
 **Examples**:
-- Experiment name "exp", well B2, captured at 14:30:22 on January 15th → `Jan15_143022_exp_B2.h264`
-- Experiment name "test1", well A5, captured at 09:15:30 on December 3rd → `Dec3_091530_test1_A5.mjpeg`
+- Experiment name "exp", well B2, captured at 14:30:22 on December 15th, 2024 → `20241215_143022_exp_B2.h264`
+- Experiment name "test1", well A5, captured at 09:15:30 on December 3rd, 2024 → `20241203_091530_test1_A5.mjpeg`
 
 **Components**:
-- `{date}`: Date in MMMDD format (e.g., "Jan15", "Dec3")
+- `{date}`: Date in YYYYMMDD format (e.g., "20241215", "20241203")
 - `{time}`: Time in HHMMSS format (e.g., "143022", "091530")
 - `{experiment_name}`: Value from "Experiment Name" field (default: "exp")
 - `{y}`: Row letter (A, B, C, etc.)
@@ -530,12 +531,13 @@ The selected profile's settings are displayed below the dropdown, showing:
 ### After Experiment
 
 1. **Check Output Files**:
-   - Navigate to `outputs/{experiment_name}/` (where {experiment_name} is your experiment name)
+   - Navigate to `outputs/YYYYMMDD_{experiment_name}/` (where YYYYMMDD is the date and {experiment_name} is your experiment name)
+   - Example: `outputs/20241215_exp/` for experiment "exp" run on Dec 15, 2024
    - Verify all files were created
    - Check file sizes (should be non-zero)
 
 2. **Review CSV File**:
-   - Open the CSV file (format: `{date}_{time}_{exp}_points.csv`) in `outputs/{experiment_name}/`
+   - Open the CSV file (format: `{date}_{time}_{exp}_points.csv`) in `outputs/YYYYMMDD_{experiment_name}/`
    - Verify all wells were visited
    - Check coordinates match expectations
 
@@ -675,11 +677,11 @@ To run multiple experiments:
 1. Save different experiment configurations
 2. Load configuration before each run
 3. Use different experiment names to distinguish experiments
-4. All files are saved to `outputs/{experiment_name}/`
+4. All files are saved to `outputs/YYYYMMDD_{experiment_name}/` (where YYYYMMDD is the date when experiment runs)
 
 ### Integration with Analysis Tools
 
-The CSV output (format: `{date}_{time}_{exp}_points.csv`, located in `outputs/{experiment_name}/`) can be imported into:
+The CSV output (format: `{date}_{time}_{exp}_points.csv`, located in `outputs/YYYYMMDD_{experiment_name}/`) can be imported into:
 - Excel/Google Sheets for basic analysis
 - Python pandas for data analysis
 - ImageJ/Fiji for image analysis workflows

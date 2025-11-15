@@ -338,25 +338,25 @@ Available profiles in `config/motion_config.json`:
 Files are automatically named using a fixed format: `{date}_{time}_{experiment_name}_{y}{x}.{ext}`
 
 The format includes:
-- `{date}`: Date in MMMDD format (e.g., "Jan15", "Dec3")
+- `{date}`: Date in YYYYMMDD format (e.g., "20241215", "20240103")
 - `{time}`: Timestamp in HHMMSS format (e.g., "143022", "091530")
 - `{experiment_name}`: Experiment name from "Experiment Name" field (default: "exp")
 - `{y}`: Row letter (e.g., "A", "B", "C")
 - `{x}`: Column number (e.g., "1", "2", "3")
 - `{ext}`: File extension based on export type (`.h264`, `.mjpeg`, `.jpeg`)
 
-Example: Experiment name "exp", well B2, captured at 14:30:22 on January 15th → `Jan15_143022_exp_B2.h264`
+Example: Experiment name "exp", well B2, captured at 14:30:22 on December 15th, 2024 → `20241215_143022_exp_B2.h264`
 
 ## Output Files
 
 ### CSV Export ({date}_{time}_{exp}_points.csv)
 
-The experiment generates a CSV file with well coordinates in `outputs/{experiment_name}/`. The filename format is `{date}_{time}_{exp}_points.csv` where:
+The experiment generates a CSV file with well coordinates in `outputs/YYYYMMDD_{experiment_name}/`. The filename format is `{date}_{time}_{exp}_points.csv` where:
 - `{date}`: Date in YYYYMMDD format (e.g., "20241215")
 - `{time}`: Time in HHMMSS format (e.g., "143022")
 - `{exp}`: Experiment name from the "Experiment Name" field
 
-Example: `outputs/exp/20241215_143022_exp_points.csv`
+Example: `outputs/20241215_exp/20241215_143022_exp_points.csv`
 
 ```csv
 xlabel,ylabel,xval,yval,zval
@@ -367,9 +367,11 @@ xlabel,ylabel,xval,yval,zval
 
 ### Video/Image Files
 
-Videos or images are automatically saved to `outputs/{experiment_name}/` with the fixed filename format, where `{experiment_name}` is the value from the "Experiment Name" field.
+Videos or images are automatically saved to `outputs/YYYYMMDD_{experiment_name}/` with the fixed filename format, where:
+- `YYYYMMDD` is the date when the experiment is run (e.g., "20241215")
+- `{experiment_name}` is the value from the "Experiment Name" field
 
-**Directory Creation**: The application automatically creates the `outputs/{experiment_name}/` directory if it doesn't exist. If you encounter permission errors, the application will identify the issue and provide specific fix instructions. To manually set up the directory:
+**Directory Creation**: The application automatically creates the `outputs/YYYYMMDD_{experiment_name}/` directory if it doesn't exist. If you encounter permission errors, the application will identify the issue and provide specific fix instructions. To manually set up the directory:
 ```bash
 mkdir -p outputs
 chmod 777 outputs
@@ -550,8 +552,8 @@ RoboCam-Suite/
 │   └── templates/            # Experiment templates
 ├── calibrations/             # Saved 4-corner calibrations
 ├── experiments/              # Exported experiment settings (profile JSON files)
-└── outputs/                  # Experiment output files (organized by experiment name)
-    └── {experiment_name}/    # Video recordings and CSV files for each experiment
+└── outputs/                  # Experiment output files (organized by date and experiment name)
+    └── YYYYMMDD_{experiment_name}/    # Video recordings and CSV files for each experiment run
 └── docs/                     # Documentation
     ├── USER_GUIDE.md         # User guide
     ├── DEVELOPER_GUIDE.md    # Developer guide
