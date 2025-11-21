@@ -83,6 +83,10 @@ The application automates the execution of well-plate experiments by:
   - **MJPEG**: Motion JPEG video with quality control
   - **JPEG**: Single still image capture
 - **Quality Control**: JPEG quality setting (1-100, default: 85)
+- **Pre-Recording Delay**: Configurable delay before video recording starts (default: 0.5 seconds)
+  - Allows vibrations from printer movement to settle before recording begins
+  - Configurable via `hardware.camera.pre_recording_delay` in `config/default_config.json`
+  - Only applies to video recording modes (H264, MJPEG), not JPEG still capture
 
 ### 4. Motion Configuration
 
@@ -212,12 +216,16 @@ The application uses separate camera configurations for different phases:
    - Frame rate control via `FrameRate` parameter
    - Optimized buffer settings (`buffer_count=2`) for maximum FPS
    - Preview disabled during recording to maximize performance
+   - Pre-recording delay applied before starting video capture (configurable via `hardware.camera.pre_recording_delay`)
 
 ### Timing Sequence Logic
 
 For each well (video modes only):
 
 ```python
+move_to_well_position()
+wait(1 second)  # Movement settling time
+wait(pre_recording_delay)  # Vibration settling time (configurable, default: 0.5s)
 start_recording()
 for action, phase_time in action_phases:
     state = 1 if action == "GPIO ON" else 0
@@ -225,6 +233,8 @@ for action, phase_time in action_phases:
     wait(phase_time seconds)
 stop_recording()
 ```
+
+**Note**: The pre-recording delay is applied after movement to the well position to allow vibrations from the printer movement to settle before video recording begins. This ensures the first frames of the recording are not affected by mechanical vibrations.
 
 The system iterates through all configured action phases in order, switching the GPIO state and waiting for the specified duration for each phase. This allows for fully customizable sequences beyond the traditional OFF-ON-OFF pattern.
 
@@ -624,6 +634,11 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
    - Lower FPS setting
    - Check SD card write speed
    - Ensure preview is disabled during recording
+
+5. **First frames of video are blurry or affected by vibration**
+   - Increase `pre_recording_delay` in `config/default_config.json`
+   - Default is 0.5 seconds; try 1.0 or 1.5 seconds for heavier setups
+   - The delay allows vibrations from printer movement to settle before recording
 
 5. **Files not saving**
    - **Save folder permissions**: Check that `outputs/` is writable

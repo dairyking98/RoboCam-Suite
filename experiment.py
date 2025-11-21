@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Optional, Dict, List, Tuple, Any
 from picamera2 import Picamera2
 from picamera2.encoders import H264Encoder, JpegEncoder
+from picamera2.outputs import FileOutput
 from robocam.robocam_ccc import RoboCam
 from robocam.laser import Laser
 from robocam.config import get_config
@@ -140,10 +141,11 @@ class ExperimentWindow:
         self.parent: tk.Tk = parent
         self.picam2: Picamera2 = picam2
         self.robocam: RoboCam = robocam
-        # Load config for laser GPIO pin
+        # Load config for laser GPIO pin and camera settings
         config = get_config()
         laser_pin = config.get("hardware.laser.gpio_pin", 21)
         self.laser: Laser = Laser(laser_pin, config)
+        self.pre_recording_delay = config.get("hardware.camera.pre_recording_delay", 0.5)
         self.window: Optional[tk.Toplevel] = None
         self.thread: Optional[threading.Thread] = None
         self.running: bool = False
@@ -1577,7 +1579,11 @@ class ExperimentWindow:
                     self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: JPEG captured")
                 else:
                     # video (H264 or MJPEG)
-                    self.picam2.start_recording(self.encoder, path)
+                    # Wait for vibrations to settle before recording
+                    time.sleep(self.pre_recording_delay)
+                    # Use FileOutput for proper continuous video recording
+                    output = FileOutput(path)
+                    self.picam2.start_recording(self.encoder, output)
                     self.recording = True
                     self.start_recording_flash()
 

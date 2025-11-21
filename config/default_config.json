@@ -17,7 +17,8 @@
     "camera": {
       "preview_resolution": [800, 600],
       "default_fps": 30.0,
-      "preview_backend": "auto"
+      "preview_backend": "auto",
+      "pre_recording_delay": 0.5
     }
   },
   "paths": {

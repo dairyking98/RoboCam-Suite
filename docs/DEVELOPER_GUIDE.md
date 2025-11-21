@@ -222,7 +222,8 @@ The configuration system uses JSON files in `config/default_config.json`:
     "camera": {
       "preview_resolution": [800, 600],
       "default_fps": 30.0,
-      "preview_backend": "auto"
+      "preview_backend": "auto",
+      "pre_recording_delay": 0.5
     }
   },
   "paths": {
@@ -245,6 +246,9 @@ The configuration system uses JSON files in `config/default_config.json`:
   - `preview_resolution`: Preview resolution [width, height] (default: [800, 600])
   - `default_fps`: Default frame rate for preview (default: 30.0)
   - `preview_backend`: Preview backend selection (default: "auto")
+  - `pre_recording_delay`: Delay in seconds before starting video recording (default: 0.5)
+    - Allows vibrations from printer movement to settle before recording begins
+    - Only applies to video recording modes (H264, MJPEG), not JPEG still capture
 
 ### Adding New Configuration
 
