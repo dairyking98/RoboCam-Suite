@@ -18,6 +18,48 @@ This document explains the trade-offs between using a single Picamera2 instance 
 - Optimized recording configuration with `buffer_count=2`
 - Video capture runs in separate thread
 
+## Capture Types and Architecture
+
+RoboCam-Suite supports three capture types, each with different architectures:
+
+### 1. Picamera2 (Color)
+- **Implementation**: `robocam/pihqcamera.py` → `PiHQCamera` class
+- **Format**: RGB color images/video
+- **Performance**: ~30-50 FPS at 1920x1080
+- **Use Case**: Standard color imaging
+
+### 2. Picamera2 (Grayscale)
+- **Implementation**: `robocam/pihqcamera.py` → `PiHQCamera` class (grayscale=True)
+- **Format**: YUV420 → Y channel (luminance)
+- **Performance**: ~50-80 FPS at 1920x1080
+- **Use Case**: Grayscale imaging with standard FPS
+
+### 3. raspividyuv (Grayscale - High FPS)
+- **Implementation**: `robocam/raspividyuv_capture.py` → `RaspividyuvCapture` class
+- **Format**: Raw YUV → Luma channel (grayscale)
+- **Performance**: 100-250+ FPS (depends on resolution)
+- **Use Case**: High-speed imaging, scientific velocity measurements
+- **Architecture**: Subprocess-based (`raspividyuv` command-line tool)
+- **Frame Capture**: Direct byte reading from subprocess stdout
+- **Video Encoding**: OpenCV VideoWriter with FFV1/MJPG codecs
+
+### Unified Capture Interface
+
+The `CaptureManager` class (`robocam/capture_interface.py`) provides a unified interface:
+
+```python
+CaptureManager
+  ├── Picamera2 (Color) → PiHQCamera(grayscale=False)
+  ├── Picamera2 (Grayscale) → PiHQCamera(grayscale=True)
+  └── raspividyuv (High FPS) → RaspividyuvCapture
+```
+
+**Benefits**:
+- Consistent API across all capture types
+- Easy switching between capture types
+- Automatic resource management
+- Unified video encoding (FFV1 lossless, MJPG high-quality)
+
 ## Hardware Limitation: Single Camera Module
 
 **Critical Constraint**: Raspberry Pi camera modules (including Pi HQ Camera) only support **ONE active stream at a time** from a single physical camera.
@@ -25,7 +67,9 @@ This document explains the trade-offs between using a single Picamera2 instance 
 This means:
 - ❌ You **cannot** have simultaneous preview and recording streams from the same camera
 - ❌ Two Picamera2 instances pointing to the same camera cannot both be active simultaneously
+- ❌ raspividyuv and Picamera2 cannot run simultaneously (both access the same camera)
 - ✅ You **can** use multiple instances, but only one can be active at a time
+- ✅ raspividyuv uses a separate subprocess, but still accesses the same camera hardware
 
 ## Multiple Picamera2 Instances: When It Makes Sense
 

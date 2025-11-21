@@ -11,6 +11,7 @@ from picamera2 import Picamera2
 from picamera2.encoders import H264Encoder
 from picamera2.outputs import FileOutput
 import time
+import numpy as np
 from typing import Optional, Tuple
 
 
@@ -29,7 +30,8 @@ class PiHQCamera:
     
     def __init__(self, resolution: Tuple[int, int] = (1920, 1080), 
                  exposure: int = 0, gain: int = 0, 
-                 red_gain: int = 0, blue_gain: int = 0) -> None:
+                 red_gain: int = 0, blue_gain: int = 0,
+                 grayscale: bool = False) -> None:
         """
         Initialize camera with specified settings.
         
@@ -39,6 +41,7 @@ class PiHQCamera:
             gain: Analogue gain (currently not applied - see note)
             red_gain: Red color gain (currently not applied - see note)
             blue_gain: Blue color gain (currently not applied - see note)
+            grayscale: If True, capture in grayscale mode (YUV420 format)
             
         Note:
             Exposure and gain controls are commented out as they may not work
@@ -46,6 +49,7 @@ class PiHQCamera:
             set_gain() methods after initialization if needed.
         """
         self.preset_resolution: Tuple[int, int] = resolution
+        self.grayscale: bool = grayscale
         self.picam2 = Picamera2()
         self.config = self.picam2.create_still_configuration(main={"size": resolution})
         self.picam2.configure(self.config)
@@ -103,34 +107,70 @@ class PiHQCamera:
             
         Note:
             Stops camera, reconfigures for still capture, captures image, then restarts.
-            Debug print statements ("a", "b", "c", "d") should be removed in production.
         """
         self.picam2.stop()
-        self.config = self.picam2.create_still_configuration(main={"size": self.preset_resolution})
-        print("a")
+        if self.grayscale:
+            # Use YUV420 format for grayscale
+            self.config = self.picam2.create_still_configuration(
+                main={"size": self.preset_resolution, "format": "YUV420"}
+            )
+        else:
+            self.config = self.picam2.create_still_configuration(main={"size": self.preset_resolution})
         self.picam2.configure(self.config)
-        print("b")
         if file_path is None:
             file_path = f"{time.strftime('%Y%m%d_%H%M%S')}.png"
-        print("c")
         self.picam2.start()
-        # self.picam2.switch_mode_and_capture_file(self.config, file_path)
         self.picam2.capture_file(file_path)
-        print("d")
+    
+    def capture_grayscale_frame(self) -> Optional[np.ndarray]:
+        """
+        Capture a single grayscale frame as numpy array.
+        
+        Returns:
+            Grayscale frame as numpy array (height, width), or None if error
+        """
+        try:
+            if not self.grayscale:
+                # Convert color to grayscale if not already in grayscale mode
+                array = self.picam2.capture_array()
+                if array.ndim == 3:
+                    import cv2
+                    return cv2.cvtColor(array, cv2.COLOR_RGB2GRAY)
+                return array
+            
+            # Capture YUV420 frame and extract Y (luminance) channel
+            array = self.picam2.capture_array("main")
+            if array.ndim == 3:
+                # YUV420: Y channel is first channel
+                return array[:, :, 0]
+            return array
+        except Exception:
+            return None
 
-    def start_recording_video(self, video_path: Optional[str] = None) -> None:
+    def start_recording_video(self, video_path: Optional[str] = None, fps: Optional[float] = None) -> None:
         """
         Start recording video.
         
         Args:
             video_path: Path to save video. If None, generates timestamped filename.
+            fps: Target frames per second (optional)
             
         Note:
             Stops camera, reconfigures for video capture, then starts recording.
-            Uses H264 encoding.
+            Uses H264 encoding. For grayscale, uses YUV420 format.
         """
         self.picam2.stop()
-        config = self.picam2.create_video_configuration(main={"size": self.preset_resolution})
+        if self.grayscale:
+            # Use YUV420 format for grayscale video
+            config = self.picam2.create_video_configuration(
+                main={"size": self.preset_resolution, "format": "YUV420"}
+            )
+        else:
+            config = self.picam2.create_video_configuration(main={"size": self.preset_resolution})
+        
+        if fps is not None:
+            config["controls"]["FrameRate"] = fps
+        
         self.picam2.configure(config)
         if video_path is None:
             video_path = f"{time.strftime('%Y%m%d_%H%M%S')}.h264"

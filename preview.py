@@ -14,11 +14,13 @@ from tkinter import ttk
 import os
 import json
 import re
+from datetime import datetime
 from typing import Optional, List, Tuple, Dict, Any
 from picamera2 import Picamera2
 from robocam.robocam_ccc import RoboCam
 from robocam.camera_preview import start_best_preview, FPSTracker, has_desktop_session
 from robocam.config import get_config
+from robocam.capture_interface import CaptureManager
 
 # Preview resolution for camera display (will be loaded from config)
 default_preview_resolution: tuple[int, int] = (800, 600)
@@ -169,6 +171,19 @@ class PreviewApp:
             print(f"RoboCam initialization error: {e}")
             self.robocam = None
 
+        # Initialize capture manager (only if not in camera simulation mode)
+        self.capture_manager: Optional[CaptureManager] = None
+        if not self._simulate_cam:
+            try:
+                # Use preview resolution for capture
+                self.capture_manager = CaptureManager(
+                    capture_type="Picamera2 (Color)",
+                    resolution=preview_resolution,
+                    fps=default_fps
+                )
+            except Exception as e:
+                print(f"Warning: Failed to initialize capture manager: {e}")
+
         # Start updating position and FPS display
         self.update_status()
 
@@ -283,6 +298,9 @@ class PreviewApp:
         tk.Label(self.root, text="Status:").grid(row=11, column=0, sticky="e", padx=5, pady=5)
         self.status_label = tk.Label(self.root, text="Ready", fg="green", font=("Arial", 9))
         self.status_label.grid(row=11, column=1, columnspan=2, sticky="w", padx=5)
+        
+        # Capture Settings Section
+        self.create_capture_section()
         
         # Configure grid weights for resizing
         self.root.grid_rowconfigure(6, weight=1)
@@ -906,6 +924,129 @@ class PreviewApp:
             self.homed = False
             print(f"Homing error: {e}")
 
+    def create_capture_section(self) -> None:
+        """
+        Create capture settings GUI section.
+        
+        Adds:
+        - Capture type dropdown
+        - Capture mode dropdown (Image/Video)
+        - Quick capture button
+        - Capture status label
+        """
+        # Separator
+        tk.Label(self.root, text="─" * 50, fg="gray").grid(
+            row=12, column=0, columnspan=4, padx=5, pady=10
+        )
+        
+        # Capture Settings LabelFrame
+        capture_frame = tk.LabelFrame(self.root, text="Capture Settings", padx=5, pady=5)
+        capture_frame.grid(row=13, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        capture_frame.grid_columnconfigure(1, weight=1)
+        capture_frame.grid_columnconfigure(3, weight=1)
+        
+        row = 0
+        # Capture type dropdown
+        tk.Label(capture_frame, text="Capture Type:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
+        self.capture_type_var = tk.StringVar(value="Picamera2 (Color)")
+        capture_type_menu = tk.OptionMenu(
+            capture_frame, 
+            self.capture_type_var,
+            *CaptureManager.CAPTURE_TYPES,
+            command=self.on_capture_type_change
+        )
+        capture_type_menu.grid(row=row, column=1, sticky="w", padx=2, pady=2)
+        
+        # Capture mode dropdown
+        tk.Label(capture_frame, text="Mode:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
+        self.capture_mode_var = tk.StringVar(value="Image")
+        capture_mode_menu = tk.OptionMenu(capture_frame, self.capture_mode_var, "Image", "Video")
+        capture_mode_menu.grid(row=row, column=3, sticky="w", padx=2, pady=2)
+        
+        row += 1
+        # Quick capture button
+        self.quick_capture_btn = tk.Button(
+            capture_frame,
+            text="Quick Capture",
+            command=self.quick_capture,
+            width=15,
+            bg="#2196F3",
+            fg="white"
+        )
+        self.quick_capture_btn.grid(row=row, column=0, columnspan=2, padx=2, pady=5, sticky="w")
+        
+        # Capture status label
+        self.capture_status_label = tk.Label(
+            capture_frame,
+            text="Ready",
+            fg="gray",
+            font=("Arial", 9)
+        )
+        self.capture_status_label.grid(row=row, column=2, columnspan=2, sticky="w", padx=2, pady=5)
+    
+    def on_capture_type_change(self, capture_type: str) -> None:
+        """Handle capture type dropdown change."""
+        if self.capture_manager is None:
+            return
+        
+        try:
+            success = self.capture_manager.set_capture_type(capture_type)
+            if success:
+                self.capture_status_label.config(text=f"Switched to {capture_type}", fg="green")
+            else:
+                self.capture_status_label.config(text="Failed to switch capture type", fg="red")
+        except Exception as e:
+            self.capture_status_label.config(text=f"Error: {e}", fg="red")
+            print(f"Error changing capture type: {e}")
+    
+    def quick_capture(self) -> None:
+        """Handle quick capture button click."""
+        if self.capture_manager is None:
+            self.capture_status_label.config(text="Capture not available (simulation mode)", fg="orange")
+            return
+        
+        mode = self.capture_mode_var.get()
+        
+        try:
+            if mode == "Image":
+                # Capture single image
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_dir = "outputs"
+                os.makedirs(output_dir, exist_ok=True)
+                output_path = os.path.join(output_dir, f"capture_{timestamp}.png")
+                
+                success = self.capture_manager.capture_image(output_path)
+                if success:
+                    self.capture_status_label.config(text=f"Saved: {os.path.basename(output_path)}", fg="green")
+                else:
+                    self.capture_status_label.config(text="Capture failed", fg="red")
+            else:
+                # Video mode - toggle recording
+                if self.capture_manager.is_recording():
+                    # Stop recording
+                    output_path = self.capture_manager.stop_video_recording(codec="FFV1")
+                    if output_path:
+                        self.capture_status_label.config(text=f"Saved: {os.path.basename(output_path)}", fg="green")
+                        self.quick_capture_btn.config(text="Quick Capture", bg="#2196F3")
+                    else:
+                        self.capture_status_label.config(text="Recording failed", fg="red")
+                else:
+                    # Start recording
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    output_dir = "outputs"
+                    os.makedirs(output_dir, exist_ok=True)
+                    output_path = os.path.join(output_dir, f"video_{timestamp}.avi")
+                    
+                    success = self.capture_manager.start_video_recording(output_path, codec="FFV1")
+                    if success:
+                        self.capture_status_label.config(text="Recording...", fg="red")
+                        self.quick_capture_btn.config(text="Stop Recording", bg="red")
+                    else:
+                        self.capture_status_label.config(text="Failed to start recording", fg="red")
+        except Exception as e:
+            self.capture_status_label.config(text=f"Error: {e}", fg="red")
+            print(f"Quick capture error: {e}")
+
     def update_status(self) -> None:
         """Update position and FPS display."""
         if self.running:
@@ -937,6 +1078,11 @@ class PreviewApp:
     def on_close(self) -> None:
         """Handle window close event."""
         self.running = False
+        if self.capture_manager is not None:
+            try:
+                self.capture_manager.cleanup()
+            except Exception as e:
+                print(f"Error cleaning up capture manager: {e}")
         try:
             if self.picam2:
                 self.picam2.stop()

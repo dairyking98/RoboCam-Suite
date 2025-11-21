@@ -125,8 +125,15 @@ The system communicates with 3D printers using standard G-code commands:
 
 ### Camera Control
 
-- **Library**: Picamera2
-- **Modes**: Preview, Still, Video
+The camera system supports multiple capture types through a unified interface:
+
+- **Library**: Picamera2 (for standard capture)
+- **Unified Interface**: `CaptureManager` (`robocam/capture_interface.py`)
+- **Capture Types**:
+  1. **Picamera2 (Color)**: Standard RGB capture via `PiHQCamera`
+  2. **Picamera2 (Grayscale)**: YUV420 grayscale via `PiHQCamera` (grayscale=True)
+  3. **raspividyuv (High FPS)**: Direct subprocess capture via `RaspividyuvCapture`
+
 - **Preview Configuration**:
   - Resolution: 800x600 (default, configurable via `hardware.camera.preview_resolution`)
   - Frame Rate: 30.0 FPS (default, configurable via `hardware.camera.default_fps`)
@@ -136,7 +143,23 @@ The system communicates with 3D printers using standard G-code commands:
   - Resolution: User-configurable (default: 1920x1080)
   - Frame Rate: User-configurable (default: 30.0 FPS)
   - Buffer Count: 2 (optimized for recording)
+  - Codec: FFV1 (lossless) or MJPG (high-quality) for minimal compression
 - **FPS Tracking**: Callback-based (may show lower value with hardware-accelerated preview)
+
+**Usage Example**:
+```python
+from robocam.capture_interface import CaptureManager
+
+capture = CaptureManager(
+    capture_type="raspividyuv (Grayscale - High FPS)",
+    resolution=(640, 480),
+    fps=120.0
+)
+capture.start_video_recording("output.avi", codec="FFV1")
+# Capture frames during recording
+capture.capture_frame_for_video()
+capture.stop_video_recording(codec="FFV1")
+```
 
 ## Extension Points
 

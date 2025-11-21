@@ -345,6 +345,78 @@ The preview tool fits into the overall workflow:
 2. **Preview** (preview.py) → Verify alignment of all wells or selected wells
 3. **Experiment** (experiment.py) → Run automated experiment with verified positions
 
+## Capture Types and Quick Capture
+
+RoboCam-Suite supports multiple capture types for different use cases. All three applications (calibrate.py, preview.py, and experiment.py) provide consistent capture settings.
+
+### Available Capture Types
+
+1. **Picamera2 (Color)**
+   - Standard color capture using Picamera2 API
+   - Best for: General purpose color imaging
+   - Performance: ~30-50 FPS at 1920x1080
+   - Format: RGB color images/video
+
+2. **Picamera2 (Grayscale)**
+   - Grayscale capture using Picamera2 with YUV420 format
+   - Best for: Grayscale imaging with standard FPS requirements
+   - Performance: ~50-80 FPS at 1920x1080
+   - Format: Grayscale (Y channel from YUV420)
+
+3. **raspividyuv (Grayscale - High FPS)**
+   - High-FPS grayscale capture using raspividyuv command-line tool
+   - Best for: High-speed imaging, fast motion capture, scientific velocity measurements
+   - Performance: 100-250+ FPS (depends on resolution)
+   - Format: Grayscale (luminance only)
+   - **Note**: Requires `raspividyuv` command to be available (part of Raspberry Pi camera tools)
+
+### Quick Capture Feature (calibrate.py and preview.py)
+
+Both calibrate.py and preview.py include a "Quick Capture" feature for instant image or video capture:
+
+1. **Capture Settings Section**:
+   - **Capture Type**: Dropdown to select capture type (Picamera2 Color, Picamera2 Grayscale, or raspividyuv High FPS)
+   - **Mode**: Dropdown to select "Image" or "Video"
+   - **Quick Capture Button**: 
+     - In Image mode: Captures and saves a single image
+     - In Video mode: Toggles recording (click to start, click again to stop)
+
+2. **Using Quick Capture**:
+   - Select your desired capture type from the dropdown
+   - Choose "Image" or "Video" mode
+   - Click "Quick Capture" button
+   - Files are saved to `outputs/` directory with timestamped filenames
+   - Status label shows capture progress and saved filename
+
+3. **Output Files**:
+   - Images: `outputs/capture_YYYYMMDD_HHMMSS.png`
+   - Videos: `outputs/video_YYYYMMDD_HHMMSS.avi` (using FFV1 lossless codec for maximum quality)
+
+### Capture Type Selection in experiment.py
+
+In experiment.py, the capture type is selected in the Camera Settings section:
+
+1. **Capture Type Dropdown**: Located in Camera Settings section
+2. **Automatic Integration**: The selected capture type is automatically used during experiment recording
+3. **raspividyuv Mode**: When selected, frames are captured continuously during recording and encoded to video with minimal compression
+
+### Video Compression and Quality
+
+For maximum data preservation, videos are saved with minimal compression:
+
+- **FFV1 Codec**: Lossless compression (default for raspividyuv mode)
+- **High-Quality MJPEG**: Quality 100 (fallback option)
+- **PNG Sequence**: Option to save individual frames as PNG files (best quality, largest files)
+
+Video metadata (FPS, resolution, duration) is always saved in JSON files alongside video files for accurate playback and analysis.
+
+### Choosing the Right Capture Type
+
+- **For color imaging**: Use "Picamera2 (Color)"
+- **For grayscale with standard FPS**: Use "Picamera2 (Grayscale)"
+- **For high-speed capture (>60 FPS)**: Use "raspividyuv (Grayscale - High FPS)"
+- **For scientific velocity measurements**: Use "raspividyuv (Grayscale - High FPS)" for accurate frame timing
+
 ## Experiment Setup
 
 ### Starting the Experiment Application

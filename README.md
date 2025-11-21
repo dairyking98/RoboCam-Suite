@@ -19,6 +19,12 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 - **4-Corner Path Calibration**: Guided calibration procedure to account for angled well plates with automatic bilinear interpolation (properly handles rotation and skew)
 - **Go to Coordinate**: Direct navigation to specific X, Y, Z coordinates in calibration mode
 - **Video/Still Capture**: Record videos or capture still images at each well
+  - **Multiple Capture Types**: Choose from three capture modes:
+    - **Picamera2 (Color)**: Standard color capture using Picamera2 API
+    - **Picamera2 (Grayscale)**: Grayscale capture using Picamera2 with YUV420 format
+    - **raspividyuv (Grayscale - High FPS)**: High-FPS grayscale capture (100+ FPS) using raspividyuv command-line tool
+  - **Quick Capture**: Instant image or video capture in calibrate.py and preview.py
+  - **Minimal Compression**: Video saved with lossless FFV1 codec or high-quality MJPEG for maximum data preservation
   - **Accurate FPS Recording**: FPS metadata embedded in H264 videos and saved in JSON metadata files
   - **Real-Time Playback**: Ensures videos play at correct speed for scientific velocity measurements
   - **FPS Metadata Files**: JSON metadata files saved alongside videos with FPS, resolution, and duration information

@@ -28,6 +28,7 @@ from robocam.robocam_ccc import RoboCam
 from robocam.laser import Laser
 from robocam.config import get_config
 from robocam.logging_config import get_logger
+from robocam.capture_interface import CaptureManager
 
 logger = get_logger(__name__)
 
@@ -446,6 +447,11 @@ class ExperimentWindow:
         self.quality_ent = tk.Entry(camera_frame, width=12)
         self.quality_ent.grid(row=row, column=1, sticky="w", padx=2, pady=2)
         self.quality_ent.insert(0, str(DEFAULT_QUALITY))
+        
+        tk.Label(camera_frame, text="Capture Type:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
+        self.capture_type_var = tk.StringVar(value="Picamera2 (Color)")
+        capture_type_menu = tk.OptionMenu(camera_frame, self.capture_type_var, *CaptureManager.CAPTURE_TYPES)
+        capture_type_menu.grid(row=row, column=3, sticky="w", padx=2, pady=2)
 
         # === SECTION 4: MOTION SETTINGS ===
         motion_frame = tk.LabelFrame(container, text="Motion Settings", padx=5, pady=5)
@@ -1668,31 +1674,56 @@ class ExperimentWindow:
             logger.error(f"Error loading motion config: {e}, using defaults")
             self.motion_config = None
 
-        # Create separate configurations for preview and recording
-        # Preview: Lower resolution for GUI display (if needed)
-        # Recording: Full resolution optimized for capture FPS
-        if self.picam2 is None:
-            logger.warning("Camera simulation mode: Skipping camera configuration")
-            return
+        # Get capture type
+        capture_type = self.capture_type_var.get()
         
-        preview_config = self.picam2.create_preview_configuration(
-            main={'size': (640, 480)},  # Lower resolution for preview
-            buffer_count=2
-        )
-        
-        # Recording configuration optimized for maximum FPS
-        video_config = self.picam2.create_video_configuration(
-            main={'size': (res_x, res_y)},
-            controls={'FrameRate': fps},
-            buffer_count=2  # Optimize buffer for recording
-        )
-        
-        # Configure for recording (preview not needed during experiment)
-        self.picam2.stop()
-        self.picam2.configure(video_config)
-        self.picam2.start()
-        
-        logger.info(f"Camera configured for recording: {res_x}x{res_y} @ {fps} FPS")
+        # Initialize capture manager if using raspividyuv or if user wants unified interface
+        self.capture_manager: Optional[CaptureManager] = None
+        if "raspividyuv" in capture_type:
+            # Use capture manager for raspividyuv
+            try:
+                self.capture_manager = CaptureManager(
+                    capture_type=capture_type,
+                    resolution=(res_x, res_y),
+                    fps=fps
+                )
+                logger.info(f"Initialized {capture_type} capture manager: {res_x}x{res_y} @ {fps} FPS")
+            except Exception as e:
+                logger.error(f"Failed to initialize capture manager: {e}")
+                self.status_lbl.config(text=f"Error: Failed to initialize {capture_type}", fg="red")
+                return
+        else:
+            # Use Picamera2 directly for Picamera2 modes
+            if self.picam2 is None:
+                logger.warning("Camera simulation mode: Skipping camera configuration")
+                return
+            
+            preview_config = self.picam2.create_preview_configuration(
+                main={'size': (640, 480)},  # Lower resolution for preview
+                buffer_count=2
+            )
+            
+            # Recording configuration optimized for maximum FPS
+            grayscale = "Grayscale" in capture_type
+            if grayscale:
+                video_config = self.picam2.create_video_configuration(
+                    main={'size': (res_x, res_y), 'format': 'YUV420'},
+                    controls={'FrameRate': fps},
+                    buffer_count=2
+                )
+            else:
+                video_config = self.picam2.create_video_configuration(
+                    main={'size': (res_x, res_y)},
+                    controls={'FrameRate': fps},
+                    buffer_count=2  # Optimize buffer for recording
+                )
+            
+            # Configure for recording (preview not needed during experiment)
+            self.picam2.stop()
+            self.picam2.configure(video_config)
+            self.picam2.start()
+            
+            logger.info(f"Camera configured for recording: {res_x}x{res_y} @ {fps} FPS ({capture_type})")
 
         # select encoder for video modes
         if export == "MJPEG":
@@ -1856,40 +1887,95 @@ class ExperimentWindow:
                     # Log recording start with FPS information
                     logger.info(f"Starting video recording: {fname} @ {fps} FPS, expected duration: {total_duration}s")
                     
-                    # Use FileOutput for proper continuous video recording
-                    output = FileOutput(path)
                     recording_start_time = time.time()
-                    if self.picam2 is not None:
-                        self.picam2.start_recording(self.encoder, output)
-                    else:
-                        logger.info(f"[CAMERA SIMULATION] Would start recording video to: {output.fileoutput}")
-                    self.recording = True
-                    self.start_recording_flash()
-
-                    # Execute all action phases
-                    for phase_idx, (action, phase_time) in enumerate(self.action_phases_list, 1):
-                        if not self.running:
-                            break
-                        
-                        # Determine GPIO state
-                        state = 1 if action == "GPIO ON" else 0
-                        self.laser.switch(state)
-                        self.laser_on = (state == 1)
-                        
-                        # Wait for phase duration
-                        phase_start = time.time()
-                        action_name = "ON" if action == "GPIO ON" else "OFF"
-                        self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
-                        while time.time() - phase_start < phase_time and self.running:
-                            time.sleep(0.05 if not self.paused else 0.1)
-
-                    try:
-                        if self.picam2 is not None:
-                            self.picam2.stop_recording()
+                    
+                    # Check if using raspividyuv capture manager
+                    if self.capture_manager is not None and "raspividyuv" in self.capture_manager.get_capture_type():
+                        # Use raspividyuv capture manager
+                        # Determine codec based on export type
+                        if export == "MJPEG":
+                            codec = "MJPG"
+                        elif export == "H264":
+                            codec = "FFV1"  # Use lossless for H264-like quality
                         else:
-                            logger.info("[CAMERA SIMULATION] Would stop recording")
-                    except:
-                        pass
+                            codec = "FFV1"
+                        
+                        # Start recording with capture manager
+                        success = self.capture_manager.start_video_recording(path, codec=codec)
+                        if not success:
+                            logger.error("Failed to start raspividyuv recording")
+                            self.status_lbl.config(text="Recording failed", fg="red")
+                            continue
+                        
+                        self.recording = True
+                        self.start_recording_flash()
+                        
+                        # Execute all action phases while capturing frames
+                        for phase_idx, (action, phase_time) in enumerate(self.action_phases_list, 1):
+                            if not self.running:
+                                break
+                            
+                            # Determine GPIO state
+                            state = 1 if action == "GPIO ON" else 0
+                            self.laser.switch(state)
+                            self.laser_on = (state == 1)
+                            
+                            # Wait for phase duration and capture frames continuously
+                            phase_start = time.time()
+                            action_name = "ON" if action == "GPIO ON" else "OFF"
+                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
+                            
+                            # Capture frames during phase
+                            frame_interval = 1.0 / fps  # Time between frames
+                            last_frame_time = time.time()
+                            while time.time() - phase_start < phase_time and self.running:
+                                current_time = time.time()
+                                if current_time - last_frame_time >= frame_interval:
+                                    self.capture_manager.capture_frame_for_video()
+                                    last_frame_time = current_time
+                                time.sleep(0.01)  # Small sleep to avoid busy waiting
+                        
+                        # Stop recording and encode to video
+                        output_path = self.capture_manager.stop_video_recording(codec=codec)
+                        if output_path is None:
+                            logger.error("Failed to save raspividyuv video")
+                            self.recording = False
+                            self.stop_recording_flash()
+                            continue
+                    else:
+                        # Use Picamera2 encoder-based recording
+                        output = FileOutput(path)
+                        if self.picam2 is not None:
+                            self.picam2.start_recording(self.encoder, output)
+                        else:
+                            logger.info(f"[CAMERA SIMULATION] Would start recording video to: {output.fileoutput}")
+                        self.recording = True
+                        self.start_recording_flash()
+
+                        # Execute all action phases
+                        for phase_idx, (action, phase_time) in enumerate(self.action_phases_list, 1):
+                            if not self.running:
+                                break
+                            
+                            # Determine GPIO state
+                            state = 1 if action == "GPIO ON" else 0
+                            self.laser.switch(state)
+                            self.laser_on = (state == 1)
+                            
+                            # Wait for phase duration
+                            phase_start = time.time()
+                            action_name = "ON" if action == "GPIO ON" else "OFF"
+                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
+                            while time.time() - phase_start < phase_time and self.running:
+                                time.sleep(0.05 if not self.paused else 0.1)
+
+                        try:
+                            if self.picam2 is not None:
+                                self.picam2.stop_recording()
+                            else:
+                                logger.info("[CAMERA SIMULATION] Would stop recording")
+                        except:
+                            pass
                     
                     # Calculate actual recording duration and verify FPS
                     recording_end_time = time.time()
@@ -1908,8 +1994,10 @@ class ExperimentWindow:
                     # Save metadata file with FPS and recording information
                     well_label = f"{y_lbl}{x_lbl}"
                     timestamp_str = f"{ds}_{ts}"
+                    # Use output_path if raspividyuv was used, otherwise use path
+                    video_path_for_metadata = output_path if (self.capture_manager is not None and "raspividyuv" in self.capture_manager.get_capture_type()) else path
                     save_video_metadata(
-                        video_path=path,
+                        video_path=video_path_for_metadata,
                         target_fps=fps,
                         resolution=(res_x, res_y),
                         duration_seconds=expected_duration,
@@ -1985,11 +2073,22 @@ class ExperimentWindow:
             self.laser_on = False
         if self.recording:
             try:
-                self.picam2.stop_recording()
+                if self.capture_manager is not None and "raspividyuv" in self.capture_manager.get_capture_type():
+                    # Stop raspividyuv recording
+                    self.capture_manager.stop_video_recording(codec="FFV1")
+                elif self.picam2 is not None:
+                    self.picam2.stop_recording()
             except Exception:
                 pass
             self.recording = False
             self.stop_recording_flash()
+        
+        # Cleanup capture manager
+        if hasattr(self, 'capture_manager') and self.capture_manager is not None:
+            try:
+                self.capture_manager.cleanup()
+            except Exception as e:
+                logger.warning(f"Error cleaning up capture manager: {e}")
 
 if __name__ == "__main__":
     """
