@@ -3,10 +3,7 @@
 
 # Camera and Imaging
 picamera2>=0.3.12
-
-# Note: opencv-python is no longer required for calibrate.py
-# Native Picamera2 preview is now used for better performance
-# opencv-python>=4.5.0  # Optional, not required
+opencv-python>=4.5.0  # Required for capture interface video encoding (FFV1, MJPG codecs)
 
 # Serial Communication
 pyserial>=3.5
