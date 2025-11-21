@@ -130,6 +130,39 @@ class CameraApp:
 
         # UI Elements
         self.create_widgets()
+        
+        # Calculate and set proper initial window size
+        self.root.update_idletasks()
+        
+        # Get required size
+        req_width = self.root.winfo_reqwidth()
+        req_height = self.root.winfo_reqheight()
+        
+        # Get current window size
+        try:
+            current_width = self.root.winfo_width()
+            current_height = self.root.winfo_height()
+            # If window is too small (less than 10x10, it's not yet displayed properly)
+            if current_width < 10 or current_height < 10:
+                current_width = req_width
+                current_height = req_height
+        except:
+            current_width = req_width
+            current_height = req_height
+        
+        # Set minimum size (ensure window is never too small)
+        min_width = max(req_width, 500)
+        min_height = max(req_height, 400)
+        self.root.minsize(min_width, min_height)
+        
+        # Only resize if current window is smaller than required
+        if current_width < min_width or current_height < min_height:
+            new_width = max(current_width, min_width)
+            new_height = max(current_height, min_height)
+            self.root.geometry(f"{new_width}x{new_height}")
+        
+        # Allow user to resize window manually
+        self.root.resizable(True, True)
 
         self.running: bool = True
         # Load config for baudrate (config already loaded above for camera settings)

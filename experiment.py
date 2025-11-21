@@ -348,9 +348,26 @@ class ExperimentWindow:
         # GPIO Action Phases section
         tk.Label(w, text="GPIO Action Phases:").grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 0))
         
-        # Frame to contain phase rows
-        self.action_phases_frame = tk.Frame(w)
-        self.action_phases_frame.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="ew")
+        # Create scrollable frame for action phases
+        phases_container = tk.Frame(w)
+        phases_container.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="nsew")
+        
+        # Canvas and scrollbar for scrollable action phases
+        self.phases_canvas = tk.Canvas(phases_container, height=100)  # Fixed height, scrollable
+        phases_scrollbar = tk.Scrollbar(phases_container, orient="vertical", command=self.phases_canvas.yview)
+        self.action_phases_frame = tk.Frame(self.phases_canvas)
+        
+        def update_scroll_region(event=None):
+            """Update scroll region when frame size changes."""
+            self.phases_canvas.configure(scrollregion=self.phases_canvas.bbox("all"))
+        
+        self.action_phases_frame.bind("<Configure>", update_scroll_region)
+        
+        self.phases_canvas.create_window((0, 0), window=self.action_phases_frame, anchor="nw")
+        self.phases_canvas.configure(yscrollcommand=phases_scrollbar.set)
+        
+        self.phases_canvas.pack(side="left", fill="both", expand=True)
+        phases_scrollbar.pack(side="right", fill="y")
         
         # Initialize with default phase (GPIO OFF, 30 seconds)
         self.action_phases = []
@@ -453,8 +470,42 @@ class ExperimentWindow:
         tk.Label(w, text="Remaining:").grid(row=21, column=0, sticky="e")
         self.remaining_lbl = tk.Label(w, text="00:00:00"); self.remaining_lbl.grid(row=21, column=1)
         
-        # Prevent window resizing when entry fields expand
-        w.resizable(False, False)
+        # Configure grid weights for proper resizing
+        w.grid_columnconfigure(1, weight=1)
+        w.grid_rowconfigure(3, weight=0)  # Action phases row - fixed height with scrollbar
+        
+        # Calculate required window size and set minimum size
+        w.update_idletasks()
+        
+        # Get required size
+        req_width = w.winfo_reqwidth()
+        req_height = w.winfo_reqheight()
+        
+        # Get current window size (if window already exists)
+        try:
+            current_width = w.winfo_width()
+            current_height = w.winfo_height()
+            # If window is too small (less than 1x1, it's not yet displayed)
+            if current_width < 10 or current_height < 10:
+                current_width = req_width
+                current_height = req_height
+        except:
+            current_width = req_width
+            current_height = req_height
+        
+        # Set minimum size (ensure window is never too small)
+        min_width = max(req_width, 500)
+        min_height = max(req_height, 400)
+        w.minsize(min_width, min_height)
+        
+        # Only resize if current window is smaller than required
+        if current_width < min_width or current_height < min_height:
+            new_width = max(current_width, min_width)
+            new_height = max(current_height, min_height)
+            w.geometry(f"{new_width}x{new_height}")
+        
+        # Allow user to resize window manually
+        w.resizable(True, True)
         
         # Load and display motion config on selection change
         def update_motion_info(*args):
@@ -1038,24 +1089,50 @@ class ExperimentWindow:
         required_width = max(int(required_width), min_width)
         required_height = max(int(required_height), min_height)
         
+        # Get current window size (if window already exists and was resized by user)
+        try:
+            current_width = self.checkbox_window.winfo_width()
+            current_height = self.checkbox_window.winfo_height()
+            # If window is too small (less than 10x10, it's not yet displayed properly)
+            if current_width < 10 or current_height < 10:
+                current_width = required_width
+                current_height = required_height
+        except:
+            current_width = required_width
+            current_height = required_height
+        
+        # Set minimum size
+        self.checkbox_window.minsize(min_width, min_height)
+        
+        # Only resize if current window is smaller than required
+        if current_width < required_width or current_height < required_height:
+            # Use required size
+            final_width = required_width
+            final_height = required_height
+        else:
+            # Preserve user-resized size if it's larger than required
+            final_width = current_width
+            final_height = current_height
+        
         # Set window size
-        self.checkbox_window.geometry(f"{required_width}x{required_height}")
+        self.checkbox_window.geometry(f"{final_width}x{final_height}")
         
         # Update canvas scroll region after widgets are created and window is sized
         self.checkbox_window.update_idletasks()
         canvas.configure(scrollregion=canvas.bbox("all"))
         
-        # Center the window on screen if possible
+        # Center the window on screen if it was just created (not resized by user)
         try:
             self.checkbox_window.update_idletasks()
             screen_width = self.checkbox_window.winfo_screenwidth()
             screen_height = self.checkbox_window.winfo_screenheight()
             window_width = self.checkbox_window.winfo_width()
             window_height = self.checkbox_window.winfo_height()
-            # Center on screen
-            x = max(0, (screen_width - window_width) // 2)
-            y = max(0, (screen_height - window_height) // 2)
-            self.checkbox_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
+            # Only center if we just resized (i.e., window was smaller than required)
+            if current_width < required_width or current_height < required_height:
+                x = max(0, (screen_width - window_width) // 2)
+                y = max(0, (screen_height - window_height) // 2)
+                self.checkbox_window.geometry(f"{window_width}x{window_height}+{x}+{y}")
         except:
             pass  # If positioning fails, just use default position
     
@@ -1237,6 +1314,11 @@ class ExperimentWindow:
         
         # Update phase numbers for all phases
         self._update_phase_numbers()
+        
+        # Update scroll region after adding phase
+        if hasattr(self, 'phases_canvas'):
+            self.window.update_idletasks()
+            self.phases_canvas.configure(scrollregion=self.phases_canvas.bbox("all"))
     
     def remove_action_phase(self, index: int) -> None:
         """
@@ -1259,6 +1341,11 @@ class ExperimentWindow:
         
         # Update phase numbers
         self._update_phase_numbers()
+        
+        # Update scroll region after removing phase
+        if hasattr(self, 'phases_canvas'):
+            self.window.update_idletasks()
+            self.phases_canvas.configure(scrollregion=self.phases_canvas.bbox("all"))
     
     def _update_phase_numbers(self) -> None:
         """Update phase number labels and delete button states."""

@@ -149,6 +149,15 @@ The application automates the execution of well-plate experiments by:
 - **Experiment Settings Import**: Load saved configurations with automatic calibration validation
 - **No Auto-Save**: Settings are not automatically saved - use export/import for persistence
 
+### 7. GUI Window Behavior
+
+- **Smart Resizing**: The window automatically resizes only when content would be cut off
+- **Consistent Size**: Window size is maintained when adjusting parameters (resolution, FPS, etc.)
+- **User Resizing**: Users can manually resize the window as needed
+- **Minimum Size**: Window has a minimum size to ensure all essential controls are visible
+- **Scrollable Content**: Action phases section uses a scrollbar when many phases are added
+- **Well Selection Window**: Separate window for well selection automatically sizes to fit content, but preserves user-resized dimensions if larger
+
 ### 7. Real-Time Monitoring
 
 - **Status Display**: Current well, movement status, and capture progress

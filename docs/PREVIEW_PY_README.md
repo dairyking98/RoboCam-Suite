@@ -57,8 +57,8 @@ The preview application enables users to:
 - **Use Case**: Preview all wells after calibration to verify interpolation accuracy
 - **Process**:
   1. Select "Calibration File" radio button
-  2. Click "Load" button
-  3. Select calibration JSON file
+  2. Select a calibration JSON file from the dropdown menu (automatically populated with available files)
+  3. Click "Load" button
   4. All wells from calibration are loaded into the list
 
 #### Loading from Experiment Save Files
@@ -68,24 +68,48 @@ The preview application enables users to:
 - **Use Case**: Preview only the wells that will be used in an experiment
 - **Process**:
   1. Select "Experiment Save File" radio button
-  2. Click "Load" button
-  3. Select experiment settings JSON file
+  2. Select an experiment settings JSON file from the dropdown menu (automatically populated with available files)
+  3. Click "Load" button
   4. Application loads referenced calibration file
   5. Filters to only selected wells from experiment
   6. Displays filtered wells in the list
 
-### 3. Sequential Navigation
+### 3. Dual View Modes
 
-- **Well List**: Scrollable listbox showing all loaded wells with labels (A1, A2, etc.)
+The preview application offers two ways to view and navigate wells:
+
+#### Well List View (Default)
+
+- **Scrollable Listbox**: Shows all loaded wells with labels (A1, A2, etc.) in a vertical list
 - **Selection**: Click on any well in the list to select it
+- **Simple Navigation**: Easy to scroll through and select wells sequentially
+
+#### Graphical Grid View
+
+- **Visual Grid Display**: Shows all wells in an x×y grid layout matching the well plate structure
+- **Clickable Wells**: Each well is displayed as a labeled button that can be clicked to navigate
+- **Grid Dimensions**: Automatically determined from calibration file (`x_quantity` × `y_quantity`) or parsed from well labels
+- **Experiment Mode**: When loaded from an experiment file, irrelevant wells are grayed out
+  - **Enabled Wells**: Wells selected in the experiment are shown in blue and are clickable
+  - **Grayed Out Wells**: Wells not selected in the experiment are shown in gray and disabled
+- **Automatic Window Sizing**: Window automatically resizes to fit the grid (no manual resizing needed)
+- **Scrollable**: Both horizontal and vertical scrolling available for large grids
+- **Current Well Highlighting**: Currently selected well is highlighted in blue
+
+**View Switching**: Use the "View:" dropdown next to "Well List:" to switch between "list" and "graphical" views at any time.
+
+### 4. Sequential Navigation
+
 - **Navigation Controls**:
   - **Previous**: Move to previous well in sequence (wraps to last if at first)
   - **Next**: Move to next well in sequence (wraps to first if at last)
-  - **Go to Selected**: Move to the currently selected well in the list
+  - **Go to Selected**: Move to the currently selected well (works in both views)
+- **Graphical Navigation**: Click directly on any well button in graphical view to navigate to it
 - **Automatic Movement**: When navigating, printer automatically moves to well position
 - **Position Updates**: Current position and well label are displayed in real-time
+- **View Synchronization**: Current well is highlighted in both list and graphical views
 
-### 4. Homing Integration
+### 5. Homing Integration
 
 - **Home Button**: Returns printer to origin (0, 0, 0) position
 - **Optional**: Homing is not required - navigation works from current position
@@ -94,7 +118,7 @@ The preview application enables users to:
 - **Automatic Updates**: Position display updates after homing completes
 - **Error Handling**: Clear error messages if homing fails
 
-### 5. Status and Position Display
+### 6. Status and Position Display
 
 - **Status Display**: Shows current operation status
   - "Ready" when idle
@@ -154,8 +178,8 @@ python preview.py --simulate_3d --simulate_cam  # Simulate both
 
 2. **Load Wells**:
    - Choose source type: "Calibration File" or "Experiment Save File"
+   - Select a file from the dropdown menu (automatically updates based on source type)
    - Click "Load" button
-   - Select the appropriate file
    - Status will show number of wells loaded
 
 3. **Home Printer** (Optional):
@@ -163,11 +187,12 @@ python preview.py --simulate_3d --simulate_cam  # Simulate both
    - Navigation works from current position - homing is not required
 
 4. **Navigate Through Wells**:
-   - Click on a well in the list to select it
-   - Click "Go to Selected" to move to that well
+   - **List View**: Click on a well in the list to select it, then click "Go to Selected"
+   - **Graphical View**: Click directly on any well button to navigate to it
    - Or use "Next" to move sequentially forward
    - Or use "Previous" to move sequentially backward
    - Use camera preview to verify alignment
+   - Switch between views using the "View:" dropdown at any time
 
 5. **Verify Alignment**:
    - Check that camera is centered over each well
@@ -181,9 +206,10 @@ python preview.py --simulate_3d --simulate_cam  # Simulate both
 python preview.py
 
 # In GUI:
-# 1. Select "Calibration File"
-# 2. Click "Load" → Select "20240115_143022_well_plate_8x6.json" (files are prefixed with date_time)
-# 3. Status shows: "Loaded 48 wells from 20240115_143022_well_plate_8x6.json"
+# 1. Select "Calibration File" radio button
+# 2. Select "20240115_143022_well_plate_8x6.json" from the dropdown menu
+# 3. Click "Load" button
+# 4. Status shows: "Loaded 48 wells from 20240115_143022_well_plate_8x6.json"
 # 4. (Optional) Click "Home Printer" to start from origin
 # 5. Click "Next" repeatedly to go through all wells
 # 6. Verify alignment at each position
@@ -196,11 +222,12 @@ python preview.py
 python preview.py
 
 # In GUI:
-# 1. Select "Experiment Save File"
-# 2. Click "Load" → Select "20240115_143022_my_experiment.json" (files prefixed with date_time)
-# 3. Application loads referenced calibration
-# 4. Filters to only selected wells (e.g., A1, A2, B1, B3)
-# 5. Status shows: "Loaded 4 selected wells from 20240115_143022_my_experiment.json"
+# 1. Select "Experiment Save File" radio button
+# 2. Select "20240115_143022_my_experiment.json" from the dropdown menu
+# 3. Click "Load" button
+# 4. Application loads referenced calibration
+# 5. Filters to only selected wells (e.g., A1, A2, B1, B3)
+# 6. Status shows: "Loaded 4 selected wells from 20240115_143022_my_experiment.json"
 # 6. (Optional) Click "Home Printer" to start from origin
 # 7. Navigate through only the selected wells
 # 8. Verify alignment before running experiment
@@ -216,11 +243,11 @@ python preview.py
 │ (qtgl backend)                              │
 ├─────────────────────────────────────────────┤
 │ Load Wells From:                            │
-│ ○ Calibration File  ○ Experiment Save File  │
-│ [Load]                                      │
+│ ○ Calibration File  ○ Experiment Save File │
+│ File: [dropdown ▼] [Load]                 │
 │ Status: Loaded 48 wells from file.json     │
 ├─────────────────────────────────────────────┤
-│ Well List:                                  │
+│ Well List: View: [list ▼]                  │
 │ ┌─────────────────────────────────────┐   │
 │ │ A1                                   │   │
 │ │ A2                                   │   │
@@ -228,6 +255,16 @@ python preview.py
 │ │ ...                                  │   │
 │ │ F8                                   │   │
 │ └─────────────────────────────────────┘   │
+│                                             │
+│ OR (Graphical View):                       │
+│ ┌─────────────────────────────────────┐   │
+│ │ A1  A2  A3  A4  A5  A6  A7  A8      │   │
+│ │ B1  B2  B3  B4  B5  B6  B7  B8      │   │
+│ │ C1  C2  C3  C4  C5  C6  C7  C8      │   │
+│ │ ...                                 │   │
+│ │ F1  F2  F3  F4  F5  F6  F7  F8      │   │
+│ └─────────────────────────────────────┘   │
+│ (Click any well to navigate)               │
 ├─────────────────────────────────────────────┤
 │ [Home Printer] [Previous] [Next] [Go to Selected] │
 ├─────────────────────────────────────────────┤
@@ -409,9 +446,12 @@ The preview tool is designed to fit into the overall RoboCam-Suite workflow:
 1. **Homing is Optional**: Navigation works from current position, just like calibrate.py
 2. **Verify After Calibration**: Use preview to check interpolation accuracy after creating calibration
 3. **Preview Before Experiments**: Check alignment of selected wells before running long experiments
-4. **Use Sequential Navigation**: The Next/Previous buttons make it easy to go through all wells
-5. **Check Critical Wells**: Focus verification on wells that are critical for your experiment
-6. **Save Time**: Preview selected wells from experiment files to only check what you'll use
+4. **Use Graphical View for Large Grids**: The graphical view makes it easy to see the full well plate layout and navigate to specific wells
+5. **Use List View for Sequential Navigation**: The list view is great for going through wells sequentially
+6. **Switch Views as Needed**: Use the view dropdown to switch between list and graphical views based on your task
+7. **Check Critical Wells**: Focus verification on wells that are critical for your experiment
+8. **Save Time**: Preview selected wells from experiment files to only check what you'll use
+9. **Experiment Mode Visualization**: When loading from experiment files, use graphical view to see which wells are selected (enabled) vs. not selected (grayed out)
 
 ## Related Documentation
 
@@ -432,13 +472,14 @@ After creating a new calibration in calibrate.py:
 # Or: python preview.py
 
 # Load calibration
-# Select "Calibration File" → Load → Select "20241215_143022_new_plate.json" (files prefixed with date/time in format YYYYMMDD_HHMMSS)
+# Select "Calibration File" radio button → Select "20241215_143022_new_plate.json" from dropdown → Click "Load"
 
 # Home printer
 # Click "Home Printer"
 
 # Navigate through all wells
-# Click "Next" repeatedly to go through all 48 wells
+# Option 1: Use list view - Click "Next" repeatedly to go through all 48 wells
+# Option 2: Switch to graphical view - See full grid layout, click any well to navigate
 # Verify each well is correctly aligned
 # Note any that need adjustment
 ```
@@ -453,13 +494,15 @@ Before running an experiment:
 # Or: python preview.py
 
 # Load experiment settings
-# Select "Experiment Save File" → Load → Select "20240115_143022_experiment_1.json" (files prefixed with date_time)
+# Select "Experiment Save File" radio button → Select "20240115_143022_experiment_1.json" from dropdown → Click "Load"
 
 # Home printer
 # Click "Home Printer"
 
 # Navigate through selected wells only
-# Use "Next" to go through the 12 selected wells
+# Option 1: Use list view - Click "Next" to go through the 12 selected wells
+# Option 2: Switch to graphical view - See which wells are selected (enabled) vs. not selected (grayed out)
+# Click on selected wells directly to navigate
 # Verify alignment before running experiment
 ```
 
@@ -473,14 +516,14 @@ Quick check of a few wells:
 # Or: python preview.py
 
 # Load calibration
-# Select "Calibration File" → Load → Select calibration
+# Select "Calibration File" radio button → Select calibration file from dropdown → Click "Load"
 
 # Home printer
 # Click "Home Printer"
 
 # Jump to specific wells
-# Click on "A1" in list → "Go to Selected"
-# Click on "F8" in list → "Go to Selected"
+# Option 1: List view - Click on "A1" in list → "Go to Selected", then "F8" → "Go to Selected"
+# Option 2: Graphical view - Click directly on "A1" button, then "F8" button
 # Check alignment at corners
 ```
 
@@ -488,8 +531,13 @@ Quick check of a few wells:
 
 `preview.py` is an essential tool for verifying well positions before running experiments. It provides:
 
-- **Easy Loading**: Load from calibration files or experiment save files
+- **Easy Loading**: Load from calibration files or experiment save files via dropdown menu (no file dialog needed)
+- **Dual View Modes**: Choose between list view or graphical grid view
+- **Visual Grid Display**: See well plate layout at a glance with clickable well buttons
+- **Experiment Mode**: Graphical view shows selected wells (enabled) vs. non-selected wells (grayed out)
 - **Sequential Navigation**: Simple Next/Previous buttons for going through wells
+- **Direct Navigation**: Click wells directly in graphical view to navigate
+- **Automatic Window Sizing**: Window automatically resizes to fit the grid
 - **Visual Verification**: High-performance camera preview for alignment checking
 - **Time Saving**: Preview only selected wells from experiment configurations
 - **Error Prevention**: Catch alignment issues before running long experiments

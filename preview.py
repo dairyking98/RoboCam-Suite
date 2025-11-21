@@ -9,7 +9,8 @@ Author: RoboCam-Suite
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import messagebox
+from tkinter import ttk
 import os
 import json
 import re
@@ -142,6 +143,7 @@ class PreviewApp:
         self.all_wells_set: set = set()  # Set of all well labels in the grid (for experiment mode, from calibration)
         self.x_quantity: Optional[int] = None  # Grid width from calibration
         self.y_quantity: Optional[int] = None  # Grid height from calibration
+        self.preferred_window_size: Optional[Tuple[int, int]] = None  # Store preferred window size
         
         # Load config for baudrate
         baudrate = config.get("hardware.printer.baudrate", 115200)
@@ -191,12 +193,22 @@ class PreviewApp:
         
         self.source_type = tk.StringVar(value="calibration")
         tk.Radiobutton(source_frame, text="Calibration File", variable=self.source_type, 
-                      value="calibration").pack(side=tk.LEFT, padx=5)
+                      value="calibration", command=self.on_source_type_change).pack(side=tk.LEFT, padx=5)
         tk.Radiobutton(source_frame, text="Experiment Save File", variable=self.source_type,
-                      value="experiment").pack(side=tk.LEFT, padx=5)
+                      value="experiment", command=self.on_source_type_change).pack(side=tk.LEFT, padx=5)
+        
+        # File selection dropdown
+        tk.Label(source_frame, text="File:").pack(side=tk.LEFT, padx=(10, 5))
+        self.selected_file = tk.StringVar(value="")
+        self.file_dropdown = ttk.Combobox(source_frame, textvariable=self.selected_file, 
+                                          state="readonly", width=30)
+        self.file_dropdown.pack(side=tk.LEFT, padx=5)
         
         tk.Button(source_frame, text="Load", command=self.load_wells,
                  bg="#2196F3", fg="white", width=10).pack(side=tk.LEFT, padx=10)
+        
+        # Initialize dropdown with calibration files
+        self.update_file_dropdown()
         
         self.source_status_label = tk.Label(self.root, text="No wells loaded", fg="gray", font=("Arial", 9))
         self.source_status_label.grid(row=3, column=0, columnspan=4, sticky="w", padx=5, pady=2)
@@ -276,13 +288,111 @@ class PreviewApp:
         self.root.grid_rowconfigure(6, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
     
+    def on_source_type_change(self) -> None:
+        """Handle radio button change - update file dropdown options."""
+        self.update_file_dropdown()
+    
+    def update_file_dropdown(self) -> None:
+        """Update file dropdown based on selected source type."""
+        source_type = self.source_type.get()
+        
+        if source_type == "calibration":
+            # Load calibration files
+            calib_dir = "calibrations"
+            if os.path.exists(calib_dir):
+                files = sorted([f for f in os.listdir(calib_dir) if f.endswith(".json")])
+                self.file_dropdown['values'] = files
+                if files:
+                    self.selected_file.set(files[0])
+                else:
+                    self.selected_file.set("")
+            else:
+                self.file_dropdown['values'] = []
+                self.selected_file.set("")
+        else:
+            # Load experiment files
+            exp_dir = "experiments"
+            if os.path.exists(exp_dir):
+                files = sorted([f for f in os.listdir(exp_dir) if f.endswith(".json")])
+                self.file_dropdown['values'] = files
+                if files:
+                    self.selected_file.set(files[0])
+                else:
+                    self.selected_file.set("")
+            else:
+                self.file_dropdown['values'] = []
+                self.selected_file.set("")
+    
+    def adjust_window_size_for_graphical(self, grid_width: int, grid_height: int) -> None:
+        """Adjust window size to fit graphical well grid - only resize if necessary."""
+        # Calculate button size (width=6 chars, height=2 lines, plus padding)
+        button_width_px = 60  # Approximate width for 6-char button
+        button_height_px = 40  # Approximate height for 2-line button
+        padding = 5
+        scrollbar_width = 20
+        
+        # Calculate required canvas size for full grid
+        required_width = grid_width * (button_width_px + 2 * padding) + scrollbar_width + 40  # Extra for margins
+        required_height = grid_height * (button_height_px + 2 * padding) + scrollbar_width + 40
+        
+        # Get current window size
+        try:
+            current_width = self.root.winfo_width()
+            current_height = self.root.winfo_height()
+            # If window is too small (less than 10x10, it's not yet displayed properly)
+            if current_width < 10 or current_height < 10:
+                current_width = self.root.winfo_reqwidth()
+                current_height = self.root.winfo_reqheight()
+        except:
+            try:
+                current_width = self.root.winfo_reqwidth()
+                current_height = self.root.winfo_reqheight()
+            except:
+                current_width = 600
+                current_height = 500
+        
+        # Get minimum required size (account for other UI elements)
+        # Estimate: ~300px for other UI elements (labels, buttons, etc.)
+        ui_overhead_width = 50  # Padding and margins
+        ui_overhead_height = 350  # Space for source selection, navigation buttons, status labels
+        
+        min_width = max(required_width + ui_overhead_width, 600)  # At least 600px wide
+        min_height = max(required_height + ui_overhead_height, 500)  # At least 500px tall
+        
+        # Set minimum window size
+        self.root.minsize(min_width, min_height)
+        
+        # Only resize if current window is smaller than required
+        if current_width < min_width or current_height < min_height:
+            new_width = max(current_width if current_width > 1 else min_width, min_width)
+            new_height = max(current_height if current_height > 1 else min_height, min_height)
+            self.root.geometry(f"{new_width}x{new_height}")
+            # Store the new size as preferred
+            self.preferred_window_size = (new_width, new_height)
+        else:
+            # Window is already large enough, preserve current size
+            if self.preferred_window_size is None:
+                self.preferred_window_size = (current_width, current_height)
+    
     def on_view_change(self, view_type: str) -> None:
-        """Handle view type change between list and graphical."""
+        """Handle view type change between list and graphical - maintain window size if possible."""
+        # Store current window size before changing view
+        try:
+            current_width = self.root.winfo_width()
+            current_height = self.root.winfo_height()
+            if current_width > 10 and current_height > 10:
+                self.preferred_window_size = (current_width, current_height)
+        except:
+            pass
+        
         # Clear current display
         for widget in self.well_display_frame.winfo_children():
             widget.destroy()
         
         if view_type == "list":
+            # Set minimum window size for list view
+            self.root.minsize(400, 400)
+            
             # Show listbox
             listbox_frame = tk.Frame(self.well_display_frame)
             listbox_frame.pack(fill=tk.BOTH, expand=True)
@@ -301,6 +411,20 @@ class PreviewApp:
                 self.well_listbox.delete(0, tk.END)
                 for _, label in self.wells:
                     self.well_listbox.insert(tk.END, label)
+            
+            # Restore preferred window size if it was set and is larger than minimum
+            if self.preferred_window_size:
+                pref_width, pref_height = self.preferred_window_size
+                if pref_width >= 400 and pref_height >= 400:
+                    # Only restore if it's larger than minimum - don't force resize
+                    try:
+                        current_w = self.root.winfo_width()
+                        current_h = self.root.winfo_height()
+                        # Only restore if current size is at minimum (user hasn't manually resized)
+                        if current_w <= 450 and current_h <= 450:
+                            self.root.geometry(f"{pref_width}x{pref_height}")
+                    except:
+                        pass
         else:
             # Show graphical view
             self.create_graphical_view()
@@ -365,16 +489,17 @@ class PreviewApp:
         # Determine grid dimensions
         width, height = self.determine_grid_dimensions()
         
-        # Create scrollable canvas
+        # Create scrollable canvas with both horizontal and vertical scrolling
         canvas_frame = tk.Frame(self.well_display_frame)
         canvas_frame.pack(fill=tk.BOTH, expand=True)
         
         self.graphical_canvas = tk.Canvas(canvas_frame, bg="white")
-        self.graphical_scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=self.graphical_canvas.yview)
+        self.graphical_v_scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=self.graphical_canvas.yview)
+        self.graphical_h_scrollbar = tk.Scrollbar(canvas_frame, orient="horizontal", command=self.graphical_canvas.xview)
         scrollable_frame = tk.Frame(self.graphical_canvas)
         
         self.graphical_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        self.graphical_canvas.configure(yscrollcommand=self.graphical_scrollbar.set)
+        self.graphical_canvas.configure(yscrollcommand=self.graphical_v_scrollbar.set, xscrollcommand=self.graphical_h_scrollbar.set)
         
         # Bind mouse wheel for scrolling
         def on_mousewheel(event):
@@ -382,12 +507,19 @@ class PreviewApp:
         
         self.graphical_canvas.bind_all("<MouseWheel>", on_mousewheel)
         
-        self.graphical_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.graphical_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        # Grid layout for canvas and scrollbars
+        self.graphical_canvas.grid(row=0, column=0, sticky="nsew")
+        self.graphical_v_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.graphical_h_scrollbar.grid(row=1, column=0, sticky="ew")
+        canvas_frame.grid_rowconfigure(0, weight=1)
+        canvas_frame.grid_columnconfigure(0, weight=1)
         
         # Update canvas scroll region when frame size changes
         def configure_scroll_region(event):
-            self.graphical_canvas.configure(scrollregion=self.graphical_canvas.bbox("all"))
+            # Update scroll region to include all content
+            bbox = self.graphical_canvas.bbox("all")
+            if bbox:
+                self.graphical_canvas.configure(scrollregion=bbox)
         
         scrollable_frame.bind("<Configure>", configure_scroll_region)
         
@@ -441,6 +573,13 @@ class PreviewApp:
             scrollable_frame.grid_rowconfigure(row, weight=1)
         for col in range(width):
             scrollable_frame.grid_columnconfigure(col, weight=1)
+        
+        # Update scroll region after all buttons are created
+        self.root.update_idletasks()
+        self.graphical_canvas.configure(scrollregion=self.graphical_canvas.bbox("all"))
+        
+        # Calculate required size and adjust window
+        self.adjust_window_size_for_graphical(width, height)
     
     def go_to_well_by_label(self, label: str) -> None:
         """Navigate to well by label."""
@@ -463,6 +602,12 @@ class PreviewApp:
 
     def load_from_calibration(self) -> None:
         """Load all wells from a calibration file."""
+        # Get selected file from dropdown
+        selected = self.selected_file.get()
+        if not selected:
+            messagebox.showerror("Error", "Please select a calibration file from the dropdown.")
+            return
+        
         # List available calibrations
         calib_dir = "calibrations"
         if not os.path.exists(calib_dir):
@@ -474,15 +619,11 @@ class PreviewApp:
             messagebox.showerror("Error", "No calibration files found in calibrations/")
             return
         
-        # Simple selection dialog
-        # For now, use file dialog - could be improved with dropdown
-        filename = filedialog.askopenfilename(
-            initialdir=calib_dir,
-            title="Select Calibration File",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
-        )
+        # Build full path
+        filename = os.path.join(calib_dir, selected)
         
-        if not filename:
+        if not os.path.exists(filename):
+            messagebox.showerror("Error", f"Selected file not found: {selected}")
             return
         
         try:
@@ -531,12 +672,28 @@ class PreviewApp:
 
     def load_from_experiment(self) -> None:
         """Load checked wells from an experiment save file."""
-        filename = filedialog.askopenfilename(
-            title="Select Experiment Save File",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
-        )
+        # Get selected file from dropdown
+        selected = self.selected_file.get()
+        if not selected:
+            messagebox.showerror("Error", "Please select an experiment file from the dropdown.")
+            return
         
-        if not filename:
+        # List available experiment files
+        exp_dir = "experiments"
+        if not os.path.exists(exp_dir):
+            messagebox.showerror("Error", "Experiments directory not found: experiments/")
+            return
+        
+        experiment_files = [f for f in os.listdir(exp_dir) if f.endswith(".json")]
+        if not experiment_files:
+            messagebox.showerror("Error", "No experiment files found in experiments/")
+            return
+        
+        # Build full path
+        filename = os.path.join(exp_dir, selected)
+        
+        if not os.path.exists(filename):
+            messagebox.showerror("Error", f"Selected file not found: {selected}")
             return
         
         try:

@@ -93,6 +93,7 @@ The calibration application opens two windows:
      - **Go Button**: Move to specified coordinates
      - Only axes with values entered will move (blank entries are ignored)
    - **Home Button**: Returns printer to home position (0, 0, 0)
+   - **Window Behavior**: Window automatically sizes to fit all content and maintains size when adjusting parameters
 
 #### Preview Backend Options
 
@@ -252,14 +253,19 @@ The preview application opens two windows:
    - Same preview system as calibrate.py
 
 2. **Controls Window**:
-   - **Source Selection**: Choose to load from "Calibration File" or "Experiment Save File"
-   - **Load Button**: Opens file dialog to select source file
-   - **Well List**: Scrollable listbox showing all loaded wells
+   - **Source Selection**: Choose to load from "Calibration File" or "Experiment Save File" (radio buttons)
+   - **File Dropdown**: Select file from dropdown menu (automatically populated based on source type)
+   - **Load Button**: Loads the selected file
+   - **Well Display**: Two view modes available via dropdown:
+     - **Well List View**: Scrollable listbox showing all loaded wells (default)
+     - **Graphical View**: Visual grid of wells arranged in x×y layout, clickable buttons
+       - When loaded from experiment: irrelevant wells are grayed out
+       - Window automatically resizes to fit the grid
    - **Navigation Controls**:
-     - **Home Printer**: Home the printer (required before navigation)
+     - **Home Printer**: Home the printer (optional - navigation works from current position)
      - **Previous**: Move to previous well in sequence
      - **Next**: Move to next well in sequence
-     - **Go to Selected**: Move to the currently selected well in the list
+     - **Go to Selected**: Move to the currently selected well
    - **Status Display**: Shows current well, position, and operation status
    - **Position Display**: Current X, Y, Z coordinates
    - **FPS Display**: Real-time preview frames per second
@@ -269,16 +275,15 @@ The preview application opens two windows:
 #### From Calibration File
 
 1. Select "Calibration File" radio button
-2. Click "Load" button
-3. Navigate to `calibrations/` directory
-4. Select a calibration JSON file
-5. All wells from the calibration will be loaded
+2. Select a calibration JSON file from the dropdown menu (automatically shows files from `calibrations/` directory)
+3. Click "Load" button
+4. All wells from the calibration will be loaded
 
 #### From Experiment Save File
 
 1. Select "Experiment Save File" radio button
-2. Click "Load" button
-3. Select an exported experiment settings JSON file
+2. Select an exported experiment settings JSON file from the dropdown menu (automatically shows files from `experiments/` directory)
+3. Click "Load" button
 4. The application will:
    - Load the referenced calibration file
    - Filter to only the wells that were checked in the experiment
@@ -287,8 +292,9 @@ The preview application opens two windows:
 ### Preview Workflow
 
 1. **Load Wells**:
-   - Choose source type (calibration or experiment file)
-   - Click "Load" and select the file
+   - Choose source type (calibration or experiment file) using radio buttons
+   - Select a file from the dropdown menu (automatically updates based on source type)
+   - Click "Load" button
    - Status will show number of wells loaded
 
 2. **Home Printer** (Optional):
@@ -322,6 +328,7 @@ The preview application opens two windows:
 - **Check critical wells**: Focus on wells that are critical for your experiment
 - **Verify before experiment**: Use preview to catch alignment issues before running a long experiment
 - **Compare with calibration**: If preview shows misalignment, the calibration may need adjustment
+- **Window Behavior**: Window maintains size when switching between list and graphical views (if both fit). Window automatically resizes only if content would be cut off. You can manually resize the window as needed.
 
 ### When to Use Preview
 
@@ -352,7 +359,11 @@ The preview tool fits into the overall workflow:
 ### Configuring an Experiment
 
 1. **Open Experiment Window**:
-   - Click "Open Experiment" button in the main window
+   - The experiment window opens automatically when starting experiment.py
+   - Window automatically sizes to fit all content
+   - Window maintains size when adjusting parameters (resolution, FPS, etc.)
+   - You can manually resize the window as needed
+   - Action phases section scrolls if many phases are added
 
 2. **Load Calibration** (Required):
    - Select a calibration from the "Calibration" dropdown

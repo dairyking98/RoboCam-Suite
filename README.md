@@ -205,7 +205,7 @@ python experiment.py --simulate_3d --simulate_cam  # Simulate both
 
 2. Two windows will open:
    - **Camera Preview Window**: Native hardware-accelerated preview (high performance)
-   - **Controls Window**: Well list, navigation controls, and status display
+   - **Controls Window**: Well display, navigation controls, and status display
 
 3. Load wells:
    - Select source type: "Calibration File" or "Experiment Save File"
@@ -213,14 +213,22 @@ python experiment.py --simulate_3d --simulate_cam  # Simulate both
    - For calibration files: All wells are loaded
    - For experiment save files: Only checked wells from the experiment are loaded
 
-4. Home the printer (optional):
+4. Choose view mode (optional):
+   - Use "View:" dropdown to switch between "list" and "graphical" views
+   - **List View**: Scrollable list of wells (default)
+   - **Graphical View**: Visual grid of wells arranged in x×y layout
+     - Click any well button to navigate directly
+     - When loaded from experiment: irrelevant wells are grayed out
+     - Window automatically resizes to fit the grid
+
+5. Home the printer (optional):
    - Click "Home Printer" button if you want to start from origin
    - Navigation works from current position - homing is not required
 
-5. Navigate through wells:
-   - Click on a well in the list to select it
-   - Use "Previous" and "Next" buttons for sequential navigation
-   - Click "Go to Selected" to move to the selected well
+6. Navigate through wells:
+   - **List View**: Click on a well in the list to select it, then click "Go to Selected"
+   - **Graphical View**: Click directly on any well button to navigate to it
+   - Use "Previous" and "Next" buttons for sequential navigation (works in both views)
    - Use camera preview to verify alignment at each position
 
 6. Verify alignment before running experiments
