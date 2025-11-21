@@ -322,11 +322,11 @@ class ExperimentWindow:
                 self.parent.quit()
         w.protocol("WM_DELETE_WINDOW", on_close)
 
-        # Calibration loading section
-        tk.Label(w, text="Calibration:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        # Calibration loading section - compact layout
+        tk.Label(w, text="Calibration:").grid(row=0, column=0, sticky="w", padx=5, pady=3)
         self.calibration_var = tk.StringVar(value="")
         calibration_frame = tk.Frame(w)
-        calibration_frame.grid(row=0, column=1, columnspan=2, sticky="w", padx=5, pady=5)
+        calibration_frame.grid(row=0, column=1, columnspan=2, sticky="ew", padx=5, pady=3)
         
         # List available calibrations
         calib_dir = "calibrations"
@@ -335,26 +335,27 @@ class ExperimentWindow:
             calibrations.extend([f for f in os.listdir(calib_dir) if f.endswith(".json")])
         
         calibration_menu = tk.OptionMenu(calibration_frame, self.calibration_var, *calibrations, command=self.on_calibration_select)
-        calibration_menu.pack(side=tk.LEFT, padx=5)
+        calibration_menu.pack(side=tk.LEFT, padx=2)
         
-        tk.Button(calibration_frame, text="Refresh", command=self.refresh_calibrations).pack(side=tk.LEFT, padx=5)
+        tk.Button(calibration_frame, text="Refresh", command=self.refresh_calibrations).pack(side=tk.LEFT, padx=2)
         
-        self.calibration_status_label = tk.Label(w, text="No calibration loaded", fg="red", font=("Arial", 9))
-        self.calibration_status_label.grid(row=0, column=3, sticky="w", padx=5)
+        # Select Cells button (shown when calibration loaded) - on same row
+        self.select_cells_btn = tk.Button(calibration_frame, text="Select Cells", command=self.open_checkbox_window, state="disabled")
+        self.select_cells_btn.pack(side=tk.LEFT, padx=2)
         
-        # Select Cells button (shown when calibration loaded)
-        self.select_cells_btn = tk.Button(w, text="Select Cells", command=self.open_checkbox_window, state="disabled")
-        self.select_cells_btn.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+        # Status label with wrapping to prevent resizing
+        self.calibration_status_label = tk.Label(w, text="No calibration loaded", fg="red", font=("Arial", 9), wraplength=300, justify="left")
+        self.calibration_status_label.grid(row=0, column=3, sticky="w", padx=5, pady=3)
 
-        # GPIO Action Phases section
-        tk.Label(w, text="GPIO Action Phases:").grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=(5, 0))
+        # GPIO Action Phases section - compact
+        tk.Label(w, text="GPIO Action Phases:").grid(row=1, column=0, columnspan=2, sticky="w", padx=5, pady=(3, 0))
         
         # Create scrollable frame for action phases
         phases_container = tk.Frame(w)
-        phases_container.grid(row=3, column=0, columnspan=3, padx=5, pady=5, sticky="nsew")
+        phases_container.grid(row=2, column=0, columnspan=4, padx=5, pady=3, sticky="ew")
         
         # Canvas and scrollbar for scrollable action phases
-        self.phases_canvas = tk.Canvas(phases_container, height=100)  # Fixed height, scrollable
+        self.phases_canvas = tk.Canvas(phases_container, height=80)  # Reduced height, scrollable
         phases_scrollbar = tk.Scrollbar(phases_container, orient="vertical", command=self.phases_canvas.yview)
         self.action_phases_frame = tk.Frame(self.phases_canvas)
         
@@ -374,41 +375,51 @@ class ExperimentWindow:
         self.action_phases = []
         self.add_action_phase("GPIO OFF", 30.0)
         
-        # Add Action button
-        tk.Button(w, text="Add Action", command=self.add_action_phase).grid(row=4, column=0, padx=5, pady=5, sticky="w")
+        # Add Action button - on same row as label
+        tk.Button(w, text="Add Action", command=self.add_action_phase).grid(row=1, column=2, padx=5, pady=3, sticky="w")
 
-        # Pattern, experiment name
-        tk.Label(w, text="Pattern:").grid(row=5, column=0)
+        # Camera settings - compact 2-column layout
+        row = 3
+        tk.Label(w, text="Pattern:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
         self.pattern_var = tk.StringVar(value="raster →↓")
-        tk.OptionMenu(w, self.pattern_var, "snake →↙", "raster →↓").grid(row=5, column=1)
+        tk.OptionMenu(w, self.pattern_var, "snake →↙", "raster →↓").grid(row=row, column=1, sticky="w", padx=5, pady=3)
 
-        tk.Label(w, text="Experiment Name:").grid(row=6, column=0)
-        self.experiment_name_ent = tk.Entry(w, width=40)
+        tk.Label(w, text="Experiment Name:").grid(row=row, column=2, sticky="w", padx=5, pady=3)
+        self.experiment_name_ent = tk.Entry(w, width=20)
         self.experiment_name_ent.insert(0, "exp")
-        self.experiment_name_ent.grid(row=6, column=1, columnspan=2, pady=5, sticky="ew")
+        self.experiment_name_ent.grid(row=row, column=3, sticky="ew", padx=5, pady=3)
 
-        # Resolution, FPS, export, quality, feedrate
-        tk.Label(w, text="Resolution X:").grid(row=7, column=0)
-        self.res_x_ent = tk.Entry(w); self.res_x_ent.grid(row=7, column=1)
+        row += 1
+        # Resolution X and Y on same row
+        tk.Label(w, text="Resolution X:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        self.res_x_ent = tk.Entry(w, width=12)
+        self.res_x_ent.grid(row=row, column=1, sticky="w", padx=5, pady=3)
         self.res_x_ent.insert(0, str(DEFAULT_RES[0]))
 
-        tk.Label(w, text="Resolution Y:").grid(row=8, column=0)
-        self.res_y_ent = tk.Entry(w); self.res_y_ent.grid(row=8, column=1)
+        tk.Label(w, text="Resolution Y:").grid(row=row, column=2, sticky="w", padx=5, pady=3)
+        self.res_y_ent = tk.Entry(w, width=12)
+        self.res_y_ent.grid(row=row, column=3, sticky="w", padx=5, pady=3)
         self.res_y_ent.insert(0, str(DEFAULT_RES[1]))
 
-        tk.Label(w, text="FPS:").grid(row=9, column=0)
-        self.fps_ent = tk.Entry(w); self.fps_ent.grid(row=9, column=1)
+        row += 1
+        # FPS and Export Type on same row
+        tk.Label(w, text="FPS:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        self.fps_ent = tk.Entry(w, width=12)
+        self.fps_ent.grid(row=row, column=1, sticky="w", padx=5, pady=3)
         self.fps_ent.insert(0, str(DEFAULT_FPS))
 
-        tk.Label(w, text="Export Type:").grid(row=10, column=0)
+        tk.Label(w, text="Export Type:").grid(row=row, column=2, sticky="w", padx=5, pady=3)
         self.export_var = tk.StringVar(value=DEFAULT_EXPORT)
-        tk.OptionMenu(w, self.export_var, "H264", "MJPEG", "JPEG").grid(row=10, column=1)
+        tk.OptionMenu(w, self.export_var, "H264", "MJPEG", "JPEG").grid(row=row, column=3, sticky="w", padx=5, pady=3)
 
-        tk.Label(w, text="JPEG Quality:").grid(row=11, column=0)
-        self.quality_ent = tk.Entry(w); self.quality_ent.grid(row=11, column=1)
+        row += 1
+        # JPEG Quality and Motion Profile on same row
+        tk.Label(w, text="JPEG Quality:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        self.quality_ent = tk.Entry(w, width=12)
+        self.quality_ent.grid(row=row, column=1, sticky="w", padx=5, pady=3)
         self.quality_ent.insert(0, str(DEFAULT_QUALITY))
 
-        tk.Label(w, text="Motion Profile:").grid(row=12, column=0)
+        tk.Label(w, text="Motion Profile:").grid(row=row, column=2, sticky="w", padx=5, pady=3)
         self.motion_config_var = tk.StringVar(value="default")
         # Load profiles from motion_config.json
         motion_config_path = os.path.join("config", "motion_config.json")
@@ -421,18 +432,20 @@ class ExperimentWindow:
             except Exception as e:
                 logger.warning(f"Error loading motion config: {e}")
         motion_config_menu = tk.OptionMenu(w, self.motion_config_var, *profiles)
-        motion_config_menu.grid(row=12, column=1, padx=5, pady=5)
+        motion_config_menu.grid(row=row, column=3, sticky="w", padx=5, pady=3)
         
-        # Motion settings display
-        tk.Label(w, text="Motion Settings:").grid(row=13, column=0, sticky="w", padx=5, pady=5)
-        self.motion_info_label = tk.Label(w, text="Load config to see settings", fg="gray", font=("Arial", 9))
-        self.motion_info_label.grid(row=14, column=0, columnspan=2, sticky="w", padx=5)
+        row += 1
+        # Motion settings display - compact
+        tk.Label(w, text="Motion Settings:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        self.motion_info_label = tk.Label(w, text="Load config to see settings", fg="gray", font=("Arial", 9), wraplength=400, justify="left")
+        self.motion_info_label.grid(row=row, column=1, columnspan=3, sticky="w", padx=5, pady=3)
 
-        # Experiment settings section (similar to calibration)
-        tk.Label(w, text="Experiment Settings:").grid(row=16, column=0, sticky="w", padx=5, pady=5)
+        row += 1
+        # Experiment settings section - compact
+        tk.Label(w, text="Experiment Settings:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
         self.experiment_settings_var = tk.StringVar(value="")
         exp_settings_frame = tk.Frame(w)
-        exp_settings_frame.grid(row=16, column=1, columnspan=2, sticky="w", padx=5, pady=5)
+        exp_settings_frame.grid(row=row, column=1, columnspan=2, sticky="ew", padx=5, pady=3)
         
         # List available experiment settings
         exp_dir = EXPERIMENTS_FOLDER
@@ -441,39 +454,50 @@ class ExperimentWindow:
             exp_settings.extend([f for f in os.listdir(exp_dir) if f.endswith("_profile.json")])
         
         exp_settings_menu = tk.OptionMenu(exp_settings_frame, self.experiment_settings_var, *exp_settings, command=self.on_experiment_settings_select)
-        exp_settings_menu.pack(side=tk.LEFT, padx=5)
+        exp_settings_menu.pack(side=tk.LEFT, padx=2)
         
-        tk.Button(exp_settings_frame, text="Refresh", command=self.refresh_experiment_settings).pack(side=tk.LEFT, padx=5)
-        tk.Button(exp_settings_frame, text="Export", command=self.export_experiment_settings).pack(side=tk.LEFT, padx=5)
+        tk.Button(exp_settings_frame, text="Refresh", command=self.refresh_experiment_settings).pack(side=tk.LEFT, padx=2)
+        tk.Button(exp_settings_frame, text="Export", command=self.export_experiment_settings).pack(side=tk.LEFT, padx=2)
         
-        self.experiment_settings_status_label = tk.Label(w, text="No settings loaded", fg="red", font=("Arial", 9))
-        self.experiment_settings_status_label.grid(row=16, column=3, sticky="w", padx=5)
+        self.experiment_settings_status_label = tk.Label(w, text="No settings loaded", fg="red", font=("Arial", 9), wraplength=300, justify="left")
+        self.experiment_settings_status_label.grid(row=row, column=3, sticky="w", padx=5, pady=3)
 
-        # Status & controls
-        tk.Label(w, text="Status:").grid(row=17, column=0, sticky="w")
-        self.status_lbl = tk.Label(w, text="Idle")
-        self.status_lbl.grid(row=17, column=1, columnspan=2, sticky="w")
+        row += 1
+        # Status & controls - compact
+        tk.Label(w, text="Status:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        self.status_lbl = tk.Label(w, text="Idle", wraplength=400, justify="left")
+        self.status_lbl.grid(row=row, column=1, columnspan=2, sticky="w", padx=5, pady=3)
 
         # Recording indicator button (flashing when recording)
         self.recording_btn = tk.Button(w, text="● REC", bg="gray", state="disabled", relief="flat", width=8)
-        self.recording_btn.grid(row=17, column=3, padx=5, pady=5)
+        self.recording_btn.grid(row=row, column=3, padx=5, pady=3)
 
+        row += 1
+        # Control buttons
         self.run_btn = tk.Button(w, text="Run", command=self.start)
-        self.run_btn.grid(row=18, column=0, padx=5, pady=5)
-        tk.Button(w, text="Pause", command=self.pause).grid(row=18, column=1, padx=5, pady=5)
-        tk.Button(w, text="Stop",  command=self.stop).grid(row=18, column=2, padx=5, pady=5)
+        self.run_btn.grid(row=row, column=0, padx=5, pady=3)
+        tk.Button(w, text="Pause", command=self.pause).grid(row=row, column=1, padx=5, pady=3)
+        tk.Button(w, text="Stop",  command=self.stop).grid(row=row, column=2, padx=5, pady=3)
 
-        # Timers
-        tk.Label(w, text="Duration:").grid(row=19, column=0, sticky="e")
-        self.duration_lbl = tk.Label(w, text="00:00:00"); self.duration_lbl.grid(row=19, column=1)
-        tk.Label(w, text="Elapsed:").grid(row=20, column=0, sticky="e")
-        self.elapsed_lbl = tk.Label(w, text="00:00:00");   self.elapsed_lbl.grid(row=20, column=1)
-        tk.Label(w, text="Remaining:").grid(row=21, column=0, sticky="e")
-        self.remaining_lbl = tk.Label(w, text="00:00:00"); self.remaining_lbl.grid(row=21, column=1)
+        row += 1
+        # Timers - compact 2-column layout
+        tk.Label(w, text="Duration:").grid(row=row, column=0, sticky="e", padx=5, pady=2)
+        self.duration_lbl = tk.Label(w, text="00:00:00")
+        self.duration_lbl.grid(row=row, column=1, sticky="w", padx=5, pady=2)
         
-        # Configure grid weights for proper resizing
+        tk.Label(w, text="Elapsed:").grid(row=row, column=2, sticky="e", padx=5, pady=2)
+        self.elapsed_lbl = tk.Label(w, text="00:00:00")
+        self.elapsed_lbl.grid(row=row, column=3, sticky="w", padx=5, pady=2)
+        
+        row += 1
+        tk.Label(w, text="Remaining:").grid(row=row, column=0, sticky="e", padx=5, pady=2)
+        self.remaining_lbl = tk.Label(w, text="00:00:00")
+        self.remaining_lbl.grid(row=row, column=1, sticky="w", padx=5, pady=2)
+        
+        # Configure grid weights for proper resizing - use all columns
         w.grid_columnconfigure(1, weight=1)
-        w.grid_rowconfigure(3, weight=0)  # Action phases row - fixed height with scrollbar
+        w.grid_columnconfigure(3, weight=1)
+        w.grid_rowconfigure(2, weight=0)  # Action phases row - fixed height with scrollbar
         
         # Calculate required window size and set minimum size (only once on initial creation)
         w.update_idletasks()
@@ -599,7 +623,12 @@ class ExperimentWindow:
             ts     = time.strftime("%H%M%S")
             ds     = date_str  # Use YYYYMMDD format
             fn = f"{ds}_{ts}_{exp_name}_{y0}{x0}{ext}"
-            self.status_lbl.config(text=f"Example: {os.path.join(output_folder, fn)}")
+            # Truncate long paths to prevent window resizing
+            full_path = f"Example: {os.path.join(output_folder, fn)}"
+            if len(full_path) > 60:
+                # Show just the filename if path is too long
+                full_path = f"Example: .../{fn}"
+            self.status_lbl.config(text=full_path)
             
             # Restore window size if it was locked (prevent resizing from status label text changes)
             if stored_size and self.window and self.window_size_locked:
@@ -835,10 +864,15 @@ class ExperimentWindow:
             if not all(field in self.loaded_calibration for field in required_fields):
                 raise ValueError("Invalid calibration file format")
             
-            # Update status
+            # Update status - truncate long filenames to prevent resizing
             num_wells = len(self.loaded_calibration.get("interpolated_positions", []))
+            status_text = f"Loaded: {filename} ({num_wells} wells)"
+            if len(status_text) > 50:
+                # Truncate filename if too long
+                name_part = filename[:30] + "..." if len(filename) > 30 else filename
+                status_text = f"Loaded: {name_part} ({num_wells} wells)"
             self.calibration_status_label.config(
-                text=f"Loaded: {filename} ({num_wells} wells)",
+                text=status_text,
                 fg="green"
             )
             
