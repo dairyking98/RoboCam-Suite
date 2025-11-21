@@ -12,6 +12,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import os
 import json
+import urllib.request
+import tempfile
 from typing import Optional, List, Tuple, Dict, Any
 from picamera2 import Picamera2
 from robocam.robocam_ccc import RoboCam
@@ -77,40 +79,52 @@ class PreviewApp:
             preview_resolution = default_preview_resolution
 
         # Picamera2 setup
-        self.picam2: Picamera2 = Picamera2()
-        self.picam2_config = self.picam2.create_preview_configuration(
-            main={"size": preview_resolution},
-            controls={"FrameRate": default_fps},
-            buffer_count=2
-        )
-        self.picam2.configure(self.picam2_config)
+        self.picam2: Optional[Picamera2] = None
+        self.preview_backend: str = "null"
+        self.simulation_image_window: Optional[tk.Toplevel] = None
+        self.fps_tracker: Optional[FPSTracker] = None
         
-        # Set up FPS tracking
-        self.fps_tracker: FPSTracker = FPSTracker()
-        
-        def frame_callback(request):
-            """Callback fired for each camera frame."""
-            self.fps_tracker.update()
-        
-        self.picam2.post_callback = frame_callback
-        
-        # Start native preview (creates separate window)
-        try:
-            self.preview_backend: str = start_best_preview(self.picam2, backend=preview_backend)
-            self.picam2.start()
-            print(f"Camera preview started using {self.preview_backend} backend")
-        except Exception as exc:
-            hint = []
-            if preview_backend == "auto":
-                if has_desktop_session():
-                    hint.append("Try: --backend qtgl (desktop session detected)")
-                else:
-                    hint.append("Try: --backend drm (no desktop session detected)")
-            hint.append("Diagnostic: libcamera-hello -t 0")
-            msg = f"Camera/preview start failed: {exc}"
-            if hint:
-                msg += " | " + " | ".join(hint)
-            raise RuntimeError(msg) from exc
+        if self._simulate:
+            # In simulation mode, show default image instead of camera
+            self._setup_simulation_preview()
+            # Initialize fps_tracker to None (not used in simulation)
+            self.fps_tracker = None
+        else:
+            # Normal camera setup
+            self.picam2 = Picamera2()
+            self.picam2_config = self.picam2.create_preview_configuration(
+                main={"size": preview_resolution},
+                controls={"FrameRate": default_fps},
+                buffer_count=2
+            )
+            self.picam2.configure(self.picam2_config)
+            
+            # Set up FPS tracking
+            self.fps_tracker: FPSTracker = FPSTracker()
+            
+            def frame_callback(request):
+                """Callback fired for each camera frame."""
+                self.fps_tracker.update()
+            
+            self.picam2.post_callback = frame_callback
+            
+            # Start native preview (creates separate window)
+            try:
+                self.preview_backend: str = start_best_preview(self.picam2, backend=preview_backend)
+                self.picam2.start()
+                print(f"Camera preview started using {self.preview_backend} backend")
+            except Exception as exc:
+                hint = []
+                if preview_backend == "auto":
+                    if has_desktop_session():
+                        hint.append("Try: --backend qtgl (desktop session detected)")
+                    else:
+                        hint.append("Try: --backend drm (no desktop session detected)")
+                hint.append("Diagnostic: libcamera-hello -t 0")
+                msg = f"Camera/preview start failed: {exc}"
+                if hint:
+                    msg += " | " + " | ".join(hint)
+                raise RuntimeError(msg) from exc
 
         # UI Elements
         self.create_widgets()
@@ -128,7 +142,9 @@ class PreviewApp:
             self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate=self._simulate)
         except Exception as e:
             error_msg = str(e)
-            if "not connected" in error_msg.lower() or "serial port" in error_msg.lower():
+            if self._simulate:
+                user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
+            elif "not connected" in error_msg.lower() or "serial port" in error_msg.lower():
                 user_msg = "Printer connection failed. Check USB cable and try again."
             else:
                 user_msg = f"Initialization error: {error_msg}"
@@ -139,11 +155,82 @@ class PreviewApp:
 
         # Start updating position and FPS display
         self.update_status()
+    
+    def _setup_simulation_preview(self) -> None:
+        """Set up default image preview for simulation mode."""
+        try:
+            # Create a separate window for the simulation image
+            self.simulation_image_window = tk.Toplevel(self.root)
+            self.simulation_image_window.title("Simulation Preview [SIMULATION MODE]")
+            
+            # Download the default image
+            image_url = "https://i.kym-cdn.com/photos/images/newsfeed/000/270/485/b1f.gif"
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.gif')
+            temp_file.close()
+            
+            try:
+                urllib.request.urlretrieve(image_url, temp_file.name)
+                
+                # Load and display the image
+                try:
+                    from PIL import Image, ImageTk
+                    img = Image.open(temp_file.name)
+                    
+                    # Resize to match preview resolution if needed
+                    preview_res = (800, 600)  # Default preview resolution
+                    img = img.resize(preview_res, Image.Resampling.LANCZOS)
+                    
+                    photo = ImageTk.PhotoImage(img)
+                    
+                    # Create label to display image
+                    img_label = tk.Label(self.simulation_image_window, image=photo)
+                    img_label.image = photo  # Keep a reference
+                    img_label.pack()
+                    
+                    # Add text label
+                    text_label = tk.Label(
+                        self.simulation_image_window,
+                        text="SIMULATION MODE\nCamera preview simulated",
+                        font=("Arial", 14, "bold"),
+                        fg="orange"
+                    )
+                    text_label.pack()
+                    
+                    print("Simulation preview image loaded successfully")
+                except ImportError:
+                    # PIL not available, show text only
+                    raise Exception("PIL/Pillow not installed. Install with: pip install Pillow")
+            except Exception as e:
+                print(f"Failed to load simulation image: {e}")
+                # Fallback: show text only
+                fallback_label = tk.Label(
+                    self.simulation_image_window,
+                    text="SIMULATION MODE\nCamera preview not available\n(Default image failed to load)\n\nInstall Pillow for image preview:\npip install Pillow",
+                    font=("Arial", 12, "bold"),
+                    fg="orange",
+                    width=50,
+                    height=10,
+                    justify=tk.LEFT
+                )
+                fallback_label.pack()
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(temp_file.name)
+                except:
+                    pass
+                    
+        except Exception as e:
+            print(f"Failed to create simulation preview window: {e}")
+            self.simulation_image_window = None
 
     def create_widgets(self) -> None:
         """Create and layout GUI widgets."""
         # Info label about preview window
-        info_text = f"Camera preview running in separate window ({self.preview_backend} backend)"
+        if self._simulate:
+            info_text = "Simulation preview running in separate window (default image)"
+        else:
+            info_text = f"Camera preview running in separate window ({self.preview_backend} backend)"
         tk.Label(self.root, text=info_text, font=("Arial", 9), fg="gray").grid(
             row=0, column=0, columnspan=4, padx=10, pady=5
         )
@@ -414,7 +501,9 @@ class PreviewApp:
             
         except Exception as e:
             error_msg = str(e)
-            if "not connected" in error_msg.lower():
+            if self._simulate:
+                user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
+            elif "not connected" in error_msg.lower():
                 user_msg = "Printer not connected. Check USB cable."
             elif "timeout" in error_msg.lower():
                 user_msg = "Movement timed out. Check printer connection."
@@ -467,7 +556,9 @@ class PreviewApp:
             self.status_label.config(text="Homed successfully", fg="green")
         except Exception as e:
             error_msg = str(e)
-            if "not connected" in error_msg.lower():
+            if self._simulate:
+                user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
+            elif "not connected" in error_msg.lower():
                 user_msg = "Printer not connected. Check USB cable."
             elif "timeout" in error_msg.lower():
                 user_msg = "Homing timed out. Check printer connection."
@@ -482,8 +573,14 @@ class PreviewApp:
         if self.running:
             self.update_position()
             
-            fps = self.fps_tracker.get_fps()
-            self.fps_label.config(text=f"{fps:.1f}")
+            if self._simulate:
+                # In simulation mode, show "SIM" instead of FPS
+                self.fps_label.config(text="SIM")
+            elif self.picam2:
+                fps = self.fps_tracker.get_fps()
+                self.fps_label.config(text=f"{fps:.1f}")
+            else:
+                self.fps_label.config(text="N/A")
             
             self.root.after(200, self.update_status)
     
@@ -503,7 +600,13 @@ class PreviewApp:
         """Handle window close event."""
         self.running = False
         try:
-            self.picam2.stop()
+            if self.picam2:
+                self.picam2.stop()
+        except Exception:
+            pass
+        try:
+            if self.simulation_image_window:
+                self.simulation_image_window.destroy()
         except Exception:
             pass
         self.root.destroy()

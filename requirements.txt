@@ -3,6 +3,7 @@
 
 # Camera and Imaging
 picamera2>=0.3.12
+Pillow>=9.0.0  # For image handling in simulation mode
 
 # Note: opencv-python is no longer required for calibrate.py
 # Native Picamera2 preview is now used for better performance

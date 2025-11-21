@@ -125,7 +125,9 @@ class CameraApp:
             self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate=self._simulate)
         except Exception as e:
             error_msg = str(e)
-            if "not connected" in error_msg.lower() or "serial port" in error_msg.lower():
+            if self._simulate:
+                user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
+            elif "not connected" in error_msg.lower() or "serial port" in error_msg.lower():
                 user_msg = "Printer connection failed. Check USB cable and try again."
             else:
                 user_msg = f"Initialization error: {error_msg}"
@@ -310,7 +312,9 @@ class CameraApp:
         except Exception as e:
             error_msg = str(e)
             # Make error messages more user-friendly
-            if "not connected" in error_msg.lower():
+            if self._simulate:
+                user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
+            elif "not connected" in error_msg.lower():
                 user_msg = "Printer not connected. Check USB cable."
             elif "timeout" in error_msg.lower():
                 user_msg = "Movement timed out. Check printer connection."
@@ -336,7 +340,9 @@ class CameraApp:
             self.status_label.config(text="Homed successfully", fg="green")
         except Exception as e:
             error_msg = str(e)
-            if "not connected" in error_msg.lower():
+            if self._simulate:
+                user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
+            elif "not connected" in error_msg.lower():
                 user_msg = "Printer not connected. Check USB cable."
             elif "timeout" in error_msg.lower():
                 user_msg = "Homing timed out. Check printer connection."
@@ -381,7 +387,9 @@ class CameraApp:
             self.status_label.config(text="Invalid coordinate value", fg="red")
         except Exception as e:
             error_msg = str(e)
-            if "not connected" in error_msg.lower():
+            if self._simulate:
+                user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
+            elif "not connected" in error_msg.lower():
                 user_msg = "Printer not connected. Check USB cable."
             elif "timeout" in error_msg.lower():
                 user_msg = "Movement timed out. Check printer connection."
