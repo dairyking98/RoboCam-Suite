@@ -99,6 +99,54 @@ def format_hms(seconds: float) -> str:
     s = int(seconds % 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
+
+def save_video_metadata(
+    video_path: str,
+    fps: float,
+    resolution: Tuple[int, int],
+    duration_seconds: float,
+    format_type: str,
+    well_label: str,
+    timestamp: str
+) -> None:
+    """
+    Save FPS and recording metadata to a JSON file alongside the video.
+    
+    This metadata is critical for accurate playback timing, especially for
+    scientific velocity measurements. MJPEG files don't support native FPS
+    metadata, so this JSON file is essential for proper playback.
+    
+    Args:
+        video_path: Path to the video file
+        fps: Frames per second used for recording
+        resolution: Video resolution as (width, height)
+        duration_seconds: Expected recording duration in seconds
+        format_type: Video format ("H264" or "MJPEG")
+        well_label: Well identifier (e.g., "A1")
+        timestamp: Recording timestamp string
+    """
+    try:
+        # Create metadata filename by replacing video extension with _metadata.json
+        base_path = os.path.splitext(video_path)[0]
+        metadata_path = f"{base_path}_metadata.json"
+        
+        metadata = {
+            "fps": fps,
+            "resolution": list(resolution),
+            "duration_seconds": duration_seconds,
+            "format": format_type,
+            "timestamp": timestamp,
+            "well_label": well_label,
+            "video_file": os.path.basename(video_path)
+        }
+        
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        logger.info(f"Saved video metadata: {metadata_path} (FPS: {fps}, Duration: {duration_seconds}s)")
+    except Exception as e:
+        logger.error(f"Failed to save video metadata for {video_path}: {e}")
+
 class ExperimentWindow:
     """
     Experiment automation window for configuring and running well-plate experiments.
@@ -1442,9 +1490,17 @@ class ExperimentWindow:
 
         # select encoder for video modes
         if export == "MJPEG":
+            # Note: JpegEncoder produces raw concatenated JPEG frames without proper
+            # MJPEG stream headers. Many players will show only the first frame.
+            # MJPEG files do not support native FPS metadata in the file itself.
+            # For reliable playback, use H264 instead, or play MJPEG files in VLC with:
+            # vlc --demux=mjpeg --mjpeg-fps=<fps> <file>
+            # FPS metadata will be saved in a separate JSON file for accurate playback.
             self.encoder = JpegEncoder(q=quality)
         elif export == "H264":
-            self.encoder = H264Encoder(bitrate=50_000_000)
+            # Pass fps parameter to ensure FPS metadata is written to the H264 stream
+            # This ensures accurate playback duration for scientific measurements
+            self.encoder = H264Encoder(bitrate=50_000_000, fps=fps)
         else:
             self.encoder = None  # JPEG still mode
 
@@ -1559,7 +1615,7 @@ class ExperimentWindow:
 
                 ts   = time.strftime("%H%M%S")
                 ds   = loop_date_str  # Use YYYYMMDD format (set at start of experiment)
-                ext_map = {"H264": ".h264", "MJPEG": ".mjpeg", "JPEG": ".jpeg"}
+                ext_map = {"H264": ".h264", "MJPEG": ".avi", "JPEG": ".jpeg"}
                 ext  = ext_map.get(export, ".jpeg")
                 fname = f"{ds}_{ts}_{loop_experiment_name}_{y_lbl}{x_lbl}{ext}"
                 path = os.path.join(loop_output_folder, fname)
@@ -1579,10 +1635,18 @@ class ExperimentWindow:
                     self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: JPEG captured")
                 else:
                     # video (H264 or MJPEG)
+                    # Calculate total expected duration from all phases
+                    total_duration = sum(time for _, time in self.action_phases_list)
+                    
                     # Wait for vibrations to settle before recording
                     time.sleep(self.pre_recording_delay)
+                    
+                    # Log recording start with FPS information
+                    logger.info(f"Starting video recording: {fname} @ {fps} FPS, expected duration: {total_duration}s")
+                    
                     # Use FileOutput for proper continuous video recording
                     output = FileOutput(path)
+                    recording_start_time = time.time()
                     self.picam2.start_recording(self.encoder, output)
                     self.recording = True
                     self.start_recording_flash()
@@ -1600,7 +1664,7 @@ class ExperimentWindow:
                         # Wait for phase duration
                         phase_start = time.time()
                         action_name = "ON" if action == "GPIO ON" else "OFF"
-                        self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(phases)})")
+                        self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
                         while time.time() - phase_start < phase_time and self.running:
                             time.sleep(0.05 if not self.paused else 0.1)
 
@@ -1608,6 +1672,34 @@ class ExperimentWindow:
                         self.picam2.stop_recording()
                     except:
                         pass
+                    
+                    # Calculate actual recording duration and verify FPS
+                    recording_end_time = time.time()
+                    actual_duration = recording_end_time - recording_start_time
+                    expected_duration = total_duration
+                    duration_diff = abs(actual_duration - expected_duration)
+                    
+                    # Log actual vs expected duration
+                    logger.info(f"Recording completed: {fname} - Actual duration: {actual_duration:.2f}s, Expected: {expected_duration:.2f}s, Difference: {duration_diff:.2f}s")
+                    
+                    # Warn if duration differs significantly (more than 5% or 1 second)
+                    if duration_diff > max(0.05 * expected_duration, 1.0):
+                        logger.warning(f"Recording duration mismatch for {fname}: Expected {expected_duration:.2f}s, got {actual_duration:.2f}s. "
+                                     f"This may indicate FPS issues. Configured FPS: {fps}")
+                    
+                    # Save metadata file with FPS and recording information
+                    well_label = f"{y_lbl}{x_lbl}"
+                    timestamp_str = f"{ds}_{ts}"
+                    save_video_metadata(
+                        video_path=path,
+                        fps=fps,
+                        resolution=(res_x, res_y),
+                        duration_seconds=expected_duration,
+                        format_type=export,
+                        well_label=well_label,
+                        timestamp=timestamp_str
+                    )
+                    
                     self.recording = False
                     self.stop_recording_flash()
                     self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Done")
