@@ -322,55 +322,14 @@ class ExperimentWindow:
                 self.parent.quit()
         w.protocol("WM_DELETE_WINDOW", on_close)
 
-        # Set initial window size - prevent automatic resizing but allow manual resize
-        FIXED_WIDTH = 700
-        FIXED_HEIGHT = 600
-        w.geometry(f"{FIXED_WIDTH}x{FIXED_HEIGHT}")
-        w.minsize(600, 500)  # Minimum size to ensure usability
+        # Set initial window width - height will be calculated after content is created
+        INITIAL_WIDTH = 700
+        w.geometry(f"{INITIAL_WIDTH}x400")  # Temporary height, will be updated
+        w.minsize(600, 400)  # Minimum size to ensure usability
         w.resizable(True, True)  # Allow user to resize manually
-        
-        # Store initial size - this prevents automatic resizing
-        self.initial_window_size = (FIXED_WIDTH, FIXED_HEIGHT)
-        self.window_size_locked = True
-        
-        # Track user manual resizing
-        def on_window_configure(event):
-            """Update stored window size when user manually resizes."""
-            if event.widget == w and self.window_size_locked:
-                try:
-                    new_w = w.winfo_width()
-                    new_h = w.winfo_height()
-                    if new_w > 10 and new_h > 10:  # Valid size
-                        self.initial_window_size = (new_w, new_h)
-                except:
-                    pass
-        
-        w.bind("<Configure>", on_window_configure)
 
-        # Create main scrollable container
-        main_canvas = tk.Canvas(w, highlightthickness=0)
-        main_scrollbar = tk.Scrollbar(w, orient="vertical", command=main_canvas.yview)
-        scrollable_frame = tk.Frame(main_canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all"))
-        )
-        
-        main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        main_canvas.configure(yscrollcommand=main_scrollbar.set)
-        
-        # Pack canvas and scrollbar
-        main_canvas.pack(side="left", fill="both", expand=True)
-        main_scrollbar.pack(side="right", fill="y")
-        
-        # Bind mouse wheel to canvas
-        def on_mousewheel(event):
-            main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        main_canvas.bind_all("<MouseWheel>", on_mousewheel)
-        
-        # Use scrollable_frame as the main container
-        container = scrollable_frame
+        # Use window directly as container (no scrolling needed - window will size to fit)
+        container = w
 
         # === SECTION 1: CALIBRATION ===
         calib_frame = tk.LabelFrame(container, text="Calibration", padx=5, pady=5)
@@ -380,7 +339,7 @@ class ExperimentWindow:
         tk.Label(calib_frame, text="File:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
         self.calibration_var = tk.StringVar(value="")
         calibration_frame = tk.Frame(calib_frame)
-        calibration_frame.grid(row=0, column=1, columnspan=2, sticky="ew", padx=2, pady=2)
+        calibration_frame.grid(row=0, column=1, columnspan=3, sticky="ew", padx=2, pady=2)
         
         calib_dir = "calibrations"
         calibrations = [""]
@@ -394,9 +353,9 @@ class ExperimentWindow:
         self.select_cells_btn = tk.Button(calibration_frame, text="Select Cells", command=self.open_checkbox_window, state="disabled")
         self.select_cells_btn.pack(side=tk.LEFT, padx=2)
         
+        # Status label below the selection row
         self.calibration_status_label = tk.Label(calib_frame, text="No calibration loaded", fg="red", font=("Arial", 9), anchor="w")
-        self.calibration_status_label.grid(row=0, column=3, sticky="ew", padx=2, pady=2)
-        calib_frame.grid_columnconfigure(3, weight=1)
+        self.calibration_status_label.grid(row=1, column=0, columnspan=4, sticky="ew", padx=2, pady=2)
 
         # === SECTION 2: GPIO ACTION PHASES ===
         phases_frame = tk.LabelFrame(container, text="GPIO Action Phases", padx=5, pady=5)
@@ -552,10 +511,52 @@ class ExperimentWindow:
         
         # Configure container columns
         container.grid_columnconfigure(0, weight=1)
+        container.grid_columnconfigure(1, weight=1)
+        container.grid_columnconfigure(3, weight=1)
         
-        # Update canvas scroll region
-        container.update_idletasks()
-        main_canvas.configure(scrollregion=main_canvas.bbox("all"))
+        # Calculate required window height based on content
+        w.update_idletasks()
+        
+        # Get the required height of the content
+        content_height = container.winfo_reqheight()
+        
+        # Add small padding for window chrome (title bar, borders) - typically ~40px
+        window_chrome_height = 40
+        
+        # Calculate total required height
+        required_height = content_height + window_chrome_height
+        
+        # Ensure minimum height
+        required_height = max(required_height, 500)
+        
+        # Get current window width
+        try:
+            current_width = w.winfo_width()
+            if current_width < 10:
+                current_width = INITIAL_WIDTH
+        except:
+            current_width = INITIAL_WIDTH
+        
+        # Set window size to fit content vertically (no scrolling needed)
+        w.geometry(f"{current_width}x{required_height}")
+        
+        # Store the size and lock it - prevent future automatic resizing
+        self.initial_window_size = (current_width, required_height)
+        self.window_size_locked = True
+        
+        # Track user manual resizing
+        def on_window_configure(event):
+            """Update stored window size when user manually resizes."""
+            if event.widget == w and self.window_size_locked:
+                try:
+                    new_w = w.winfo_width()
+                    new_h = w.winfo_height()
+                    if new_w > 10 and new_h > 10:  # Valid size
+                        self.initial_window_size = (new_w, new_h)
+                except:
+                    pass
+        
+        w.bind("<Configure>", on_window_configure)
         
         # Load and display motion config on selection change
         def update_motion_info(*args):
