@@ -226,6 +226,7 @@ class ExperimentWindow:
         self.label_to_row_col: Dict[str, Tuple[int, int]] = {}
         self.checkbox_window: Optional[tk.Toplevel] = None
         self.select_cells_btn: Optional[tk.Button] = None
+        self.window_size_locked: bool = False  # Flag to prevent automatic resizing after initial setup
 
 
     def save_csv(self) -> None:
@@ -474,7 +475,7 @@ class ExperimentWindow:
         w.grid_columnconfigure(1, weight=1)
         w.grid_rowconfigure(3, weight=0)  # Action phases row - fixed height with scrollbar
         
-        # Calculate required window size and set minimum size
+        # Calculate required window size and set minimum size (only once on initial creation)
         w.update_idletasks()
         
         # Get required size
@@ -485,7 +486,7 @@ class ExperimentWindow:
         try:
             current_width = w.winfo_width()
             current_height = w.winfo_height()
-            # If window is too small (less than 1x1, it's not yet displayed)
+            # If window is too small (less than 10x10, it's not yet displayed properly)
             if current_width < 10 or current_height < 10:
                 current_width = req_width
                 current_height = req_height
@@ -498,18 +499,44 @@ class ExperimentWindow:
         min_height = max(req_height, 400)
         w.minsize(min_width, min_height)
         
-        # Only resize if current window is smaller than required
+        # Only resize if current window is smaller than required (initial setup only)
         if current_width < min_width or current_height < min_height:
             new_width = max(current_width, min_width)
             new_height = max(current_height, min_height)
             w.geometry(f"{new_width}x{new_height}")
         
+        # Store the initial size and lock it - prevent future automatic resizing
+        self.initial_window_size = (w.winfo_width(), w.winfo_height())
+        self.window_size_locked = True
+        
         # Allow user to resize window manually
         w.resizable(True, True)
+        
+        # Bind to window resize events to update stored size (user manual resize)
+        def on_window_configure(event):
+            """Update stored window size when user manually resizes."""
+            if event.widget == w and self.window_size_locked:
+                try:
+                    new_w = w.winfo_width()
+                    new_h = w.winfo_height()
+                    if new_w > 10 and new_h > 10:  # Valid size
+                        self.initial_window_size = (new_w, new_h)
+                except:
+                    pass
+        
+        w.bind("<Configure>", on_window_configure)
         
         # Load and display motion config on selection change
         def update_motion_info(*args):
             """Update motion settings display when profile changes."""
+            # Store current window size to prevent resizing
+            stored_size = None
+            if self.window and self.window_size_locked:
+                try:
+                    stored_size = self.initial_window_size
+                except AttributeError:
+                    pass
+            
             try:
                 profile_name = self.motion_config_var.get()
                 config_path = os.path.join("config", "motion_config.json")
@@ -530,6 +557,10 @@ class ExperimentWindow:
                     self.motion_info_label.config(text="Config file not found", fg="red")
             except Exception as e:
                 self.motion_info_label.config(text=f"Error loading config: {e}", fg="red")
+            
+            # Restore window size if it was locked (prevent resizing from label text changes)
+            if stored_size and self.window and self.window_size_locked:
+                self.window.after_idle(lambda: self.window.geometry(f"{stored_size[0]}x{stored_size[1]}"))
         
         self.motion_config_var.trace("w", update_motion_info)
         update_motion_info()  # Initial load
@@ -539,6 +570,14 @@ class ExperimentWindow:
 
         # Live example filename
         def upd(e=None):
+            # Store current window size to prevent resizing
+            stored_size = None
+            if self.window and self.window_size_locked:
+                try:
+                    stored_size = self.initial_window_size
+                except AttributeError:
+                    pass
+            
             exp_name = self.experiment_name_ent.get().strip() or "exp"
             date_str = datetime.now().strftime("%Y%m%d")
             output_folder = os.path.join(OUTPUTS_FOLDER, f"{date_str}_{exp_name}")
@@ -561,6 +600,10 @@ class ExperimentWindow:
             ds     = date_str  # Use YYYYMMDD format
             fn = f"{ds}_{ts}_{exp_name}_{y0}{x0}{ext}"
             self.status_lbl.config(text=f"Example: {os.path.join(output_folder, fn)}")
+            
+            # Restore window size if it was locked (prevent resizing from status label text changes)
+            if stored_size and self.window and self.window_size_locked:
+                self.window.after_idle(lambda: self.window.geometry(f"{stored_size[0]}x{stored_size[1]}"))
 
         for wgt in (self.experiment_name_ent,
                     self.res_x_ent, self.res_y_ent, self.fps_ent):
@@ -738,6 +781,15 @@ class ExperimentWindow:
         Args:
             filename: Selected calibration filename (empty string if none)
         """
+        # Store current window size before any updates to prevent resizing
+        if self.window and self.window_size_locked:
+            try:
+                stored_size = self.initial_window_size
+            except AttributeError:
+                stored_size = None
+        else:
+            stored_size = None
+        
         if not filename or filename == "":
             # No calibration selected
             self.loaded_calibration = None
@@ -751,6 +803,10 @@ class ExperimentWindow:
                 self.checkbox_window.destroy()
                 self.checkbox_window = None
             self.update_run_button_state()
+            
+            # Restore window size if it was locked
+            if stored_size and self.window and self.window_size_locked:
+                self.window.geometry(f"{stored_size[0]}x{stored_size[1]}")
             return
         
         try:
@@ -764,6 +820,9 @@ class ExperimentWindow:
                 self.loaded_calibration = None
                 self.calibration_file = None
                 self.update_run_button_state()
+                # Restore window size if it was locked
+                if stored_size and self.window and self.window_size_locked:
+                    self.window.after_idle(lambda: self.window.geometry(f"{stored_size[0]}x{stored_size[1]}"))
                 return
             
             with open(calib_path, 'r') as f:
@@ -792,6 +851,10 @@ class ExperimentWindow:
             
             self.update_run_button_state()
             
+            # Restore window size if it was locked (prevent resizing from label text changes)
+            if stored_size and self.window and self.window_size_locked:
+                self.window.after_idle(lambda: self.window.geometry(f"{stored_size[0]}x{stored_size[1]}"))
+            
         except Exception as e:
             logger.error(f"Error loading calibration: {e}")
             self.calibration_status_label.config(
@@ -804,6 +867,9 @@ class ExperimentWindow:
             if self.select_cells_btn:
                 self.select_cells_btn.config(state="disabled")
             self.update_run_button_state()
+            # Restore window size if it was locked
+            if stored_size and self.window and self.window_size_locked:
+                self.window.after_idle(lambda: self.window.geometry(f"{stored_size[0]}x{stored_size[1]}"))
     
     def initialize_checkboxes(self) -> None:
         """Initialize checkbox variables for all wells (all checked by default)."""
