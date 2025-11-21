@@ -12,6 +12,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import os
 import json
+import re
 from typing import Optional, List, Tuple, Dict, Any
 from picamera2 import Picamera2
 from robocam.robocam_ccc import RoboCam
@@ -136,6 +137,11 @@ class PreviewApp:
         self.homed: bool = False  # Track homing status, but not required for movement
         self.wells: List[Tuple[Tuple[float, float, float], str]] = []  # (position, label)
         self.current_index: int = -1
+        self.source_loaded_from: Optional[str] = None  # "calibration" or "experiment"
+        self.selected_wells_set: set = set()  # Set of well labels that are selected (for experiment mode)
+        self.all_wells_set: set = set()  # Set of all well labels in the grid (for experiment mode, from calibration)
+        self.x_quantity: Optional[int] = None  # Grid width from calibration
+        self.y_quantity: Optional[int] = None  # Grid height from calibration
         
         # Load config for baudrate
         baudrate = config.get("hardware.printer.baudrate", 115200)
@@ -200,14 +206,25 @@ class PreviewApp:
             row=4, column=0, columnspan=4, padx=5, pady=10
         )
 
-        # Well list section
-        tk.Label(self.root, text="Well List:", font=("Arial", 10, "bold")).grid(
-            row=5, column=0, columnspan=4, sticky="w", padx=5, pady=5
-        )
+        # Well list section with view selector
+        well_section_frame = tk.Frame(self.root)
+        well_section_frame.grid(row=5, column=0, columnspan=4, sticky="w", padx=5, pady=5)
+        
+        tk.Label(well_section_frame, text="Well List:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
+        
+        # View type dropdown
+        tk.Label(well_section_frame, text="View:").pack(side=tk.LEFT, padx=(20, 5))
+        self.view_type = tk.StringVar(value="list")
+        view_menu = tk.OptionMenu(well_section_frame, self.view_type, "list", "graphical", command=self.on_view_change)
+        view_menu.pack(side=tk.LEFT, padx=5)
+        
+        # Container for well display (listbox or graphical)
+        self.well_display_frame = tk.Frame(self.root)
+        self.well_display_frame.grid(row=6, column=0, columnspan=4, padx=5, pady=5, sticky="nsew")
         
         # Scrollable listbox
-        listbox_frame = tk.Frame(self.root)
-        listbox_frame.grid(row=6, column=0, columnspan=4, padx=5, pady=5, sticky="nsew")
+        listbox_frame = tk.Frame(self.well_display_frame)
+        listbox_frame.pack(fill=tk.BOTH, expand=True)
         
         scrollbar = tk.Scrollbar(listbox_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -217,6 +234,12 @@ class PreviewApp:
         scrollbar.config(command=self.well_listbox.yview)
         
         self.well_listbox.bind("<<ListboxSelect>>", self.on_well_select)
+        
+        # Graphical view frame (initially hidden)
+        self.graphical_frame = tk.Frame(self.well_display_frame)
+        self.graphical_canvas = None
+        self.graphical_scrollbar = None
+        self.well_buttons: Dict[str, tk.Button] = {}  # Map label to button
         
         # Navigation buttons
         nav_frame = tk.Frame(self.root)
@@ -252,6 +275,182 @@ class PreviewApp:
         # Configure grid weights for resizing
         self.root.grid_rowconfigure(6, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
+    
+    def on_view_change(self, view_type: str) -> None:
+        """Handle view type change between list and graphical."""
+        # Clear current display
+        for widget in self.well_display_frame.winfo_children():
+            widget.destroy()
+        
+        if view_type == "list":
+            # Show listbox
+            listbox_frame = tk.Frame(self.well_display_frame)
+            listbox_frame.pack(fill=tk.BOTH, expand=True)
+            
+            scrollbar = tk.Scrollbar(listbox_frame)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            self.well_listbox = tk.Listbox(listbox_frame, height=10, yscrollcommand=scrollbar.set)
+            self.well_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.config(command=self.well_listbox.yview)
+            
+            self.well_listbox.bind("<<ListboxSelect>>", self.on_well_select)
+            
+            # Repopulate listbox if wells are loaded
+            if self.wells:
+                self.well_listbox.delete(0, tk.END)
+                for _, label in self.wells:
+                    self.well_listbox.insert(tk.END, label)
+        else:
+            # Show graphical view
+            self.create_graphical_view()
+    
+    def parse_label_to_grid_pos(self, label: str) -> Optional[Tuple[int, int]]:
+        """
+        Parse well label (e.g., 'A1', 'B2') to grid position (row, col).
+        Returns (row, col) where row is 0-based and col is 0-based.
+        """
+        match = re.match(r'^([A-Z]+)(\d+)$', label)
+        if not match:
+            return None
+        
+        row_str = match.group(1)
+        col_str = match.group(2)
+        
+        # Convert row letter(s) to row index
+        row = 0
+        for i, char in enumerate(reversed(row_str)):
+            row += (ord(char) - ord('A') + 1) * (26 ** i)
+        row -= 1  # Make 0-based
+        
+        # Convert column number to 0-based index
+        col = int(col_str) - 1
+        
+        return (row, col)
+    
+    def determine_grid_dimensions(self) -> Tuple[int, int]:
+        """
+        Determine grid dimensions from well labels.
+        Returns (width, height) as (x_quantity, y_quantity).
+        """
+        if self.x_quantity is not None and self.y_quantity is not None:
+            return (self.x_quantity, self.y_quantity)
+        
+        # Parse from labels - use all_wells_set if available (for experiment mode)
+        # otherwise use self.wells (for calibration mode)
+        labels_to_parse = list(self.all_wells_set) if self.all_wells_set else [label for _, label in self.wells]
+        
+        max_row = -1
+        max_col = -1
+        
+        for label in labels_to_parse:
+            pos = self.parse_label_to_grid_pos(label)
+            if pos:
+                row, col = pos
+                max_row = max(max_row, row)
+                max_col = max(max_col, col)
+        
+        # Dimensions are max + 1 (0-based to 1-based)
+        width = max_col + 1 if max_col >= 0 else 1
+        height = max_row + 1 if max_row >= 0 else 1
+        
+        return (width, height)
+    
+    def create_graphical_view(self) -> None:
+        """Create graphical grid view of wells."""
+        if not self.wells:
+            tk.Label(self.well_display_frame, text="No wells loaded", fg="gray").pack(pady=20)
+            return
+        
+        # Determine grid dimensions
+        width, height = self.determine_grid_dimensions()
+        
+        # Create scrollable canvas
+        canvas_frame = tk.Frame(self.well_display_frame)
+        canvas_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.graphical_canvas = tk.Canvas(canvas_frame, bg="white")
+        self.graphical_scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=self.graphical_canvas.yview)
+        scrollable_frame = tk.Frame(self.graphical_canvas)
+        
+        self.graphical_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        self.graphical_canvas.configure(yscrollcommand=self.graphical_scrollbar.set)
+        
+        # Bind mouse wheel for scrolling
+        def on_mousewheel(event):
+            self.graphical_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        
+        self.graphical_canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        self.graphical_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.graphical_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Update canvas scroll region when frame size changes
+        def configure_scroll_region(event):
+            self.graphical_canvas.configure(scrollregion=self.graphical_canvas.bbox("all"))
+        
+        scrollable_frame.bind("<Configure>", configure_scroll_region)
+        
+        # Create mapping of label to (row, col) for all possible wells in grid
+        all_wells_map: Dict[str, Tuple[int, int]] = {}
+        for row in range(height):
+            row_letter = chr(ord('A') + row) if row < 26 else f"A{chr(ord('A') + row - 26)}"
+            for col in range(width):
+                label = f"{row_letter}{col + 1}"
+                all_wells_map[label] = (row, col)
+        
+        # Create buttons for all wells in grid
+        self.well_buttons = {}
+        button_size = 50
+        padding = 5
+        
+        for label, (row, col) in all_wells_map.items():
+            # Check if this well is in the full grid
+            well_in_grid = label in self.all_wells_set if self.all_wells_set else True
+            
+            # Determine if well should be enabled and grayed out
+            # For experiment: enable only if in selected_wells_set, gray out if not
+            # For calibration: enable all wells in grid
+            if self.source_loaded_from == "experiment":
+                is_enabled = label in self.selected_wells_set
+                is_grayed = not is_enabled
+            else:
+                # Calibration: all wells are enabled
+                is_enabled = well_in_grid
+                is_grayed = False
+            
+            # Create button
+            btn = tk.Button(
+                scrollable_frame,
+                text=label,
+                width=6,
+                height=2,
+                font=("Arial", 8),
+                state=tk.NORMAL if is_enabled else tk.DISABLED,
+                bg="#E3F2FD" if not is_grayed else "#E0E0E0",
+                fg="#000000" if not is_grayed else "#808080",
+                relief=tk.RAISED if is_enabled else tk.FLAT,
+                command=lambda l=label: self.go_to_well_by_label(l) if is_enabled else None
+            )
+            
+            btn.grid(row=row, column=col, padx=padding, pady=padding, sticky="nsew")
+            self.well_buttons[label] = btn
+        
+        # Configure grid weights for equal spacing
+        for row in range(height):
+            scrollable_frame.grid_rowconfigure(row, weight=1)
+        for col in range(width):
+            scrollable_frame.grid_columnconfigure(col, weight=1)
+    
+    def go_to_well_by_label(self, label: str) -> None:
+        """Navigate to well by label."""
+        # Find index of well with this label
+        for idx, (_, well_label) in enumerate(self.wells):
+            if well_label == label:
+                self.go_to_well(idx)
+                return
+        
+        self.status_label.config(text=f"Well {label} not found", fg="orange")
 
     def load_wells(self) -> None:
         """Load wells from calibration file or experiment save file."""
@@ -305,10 +504,20 @@ class PreviewApp:
             self.wells = [(tuple(pos), label) for pos, label in zip(positions, labels)]
             self.current_index = -1
             
-            # Update listbox
-            self.well_listbox.delete(0, tk.END)
-            for label in labels:
-                self.well_listbox.insert(tk.END, label)
+            # Store source type and grid dimensions
+            self.source_loaded_from = "calibration"
+            self.x_quantity = calib_data.get("x_quantity")
+            self.y_quantity = calib_data.get("y_quantity")
+            self.selected_wells_set = set(labels)  # All wells are selected for calibration
+            self.all_wells_set = set(labels)  # All wells in the grid
+            
+            # Update display based on current view
+            if self.view_type.get() == "list":
+                self.well_listbox.delete(0, tk.END)
+                for label in labels:
+                    self.well_listbox.insert(tk.END, label)
+            else:
+                self.create_graphical_view()
             
             self.source_status_label.config(
                 text=f"Loaded {len(self.wells)} wells from {os.path.basename(filename)}",
@@ -379,10 +588,20 @@ class PreviewApp:
             
             self.current_index = -1
             
-            # Update listbox
-            self.well_listbox.delete(0, tk.END)
-            for _, label in self.wells:
-                self.well_listbox.insert(tk.END, label)
+            # Store source type and grid dimensions
+            self.source_loaded_from = "experiment"
+            self.x_quantity = calib_data.get("x_quantity")
+            self.y_quantity = calib_data.get("y_quantity")
+            self.selected_wells_set = set(selected_wells)  # Only selected wells
+            self.all_wells_set = set(labels)  # All wells in the grid (from calibration)
+            
+            # Update display based on current view
+            if self.view_type.get() == "list":
+                self.well_listbox.delete(0, tk.END)
+                for _, label in self.wells:
+                    self.well_listbox.insert(tk.END, label)
+            else:
+                self.create_graphical_view()
             
             self.source_status_label.config(
                 text=f"Loaded {len(self.wells)} selected wells from {os.path.basename(filename)}",
@@ -434,10 +653,32 @@ class PreviewApp:
             self.current_well_label.config(text=label)
             self.status_label.config(text=f"At {label}", fg="green")
             
-            # Update listbox selection
-            self.well_listbox.selection_clear(0, tk.END)
-            self.well_listbox.selection_set(index)
-            self.well_listbox.see(index)
+            # Update listbox selection (if in list view)
+            if self.view_type.get() == "list":
+                self.well_listbox.selection_clear(0, tk.END)
+                self.well_listbox.selection_set(index)
+                self.well_listbox.see(index)
+            
+            # Update graphical view highlighting (if in graphical view)
+            if self.view_type.get() == "graphical":
+                # Reset all button styles to default
+                for label, btn in self.well_buttons.items():
+                    if btn.cget("state") == tk.NORMAL:
+                        # Determine if this well should be grayed
+                        is_grayed = (self.source_loaded_from == "experiment" and 
+                                    label not in self.selected_wells_set)
+                        btn.config(
+                            relief=tk.RAISED,
+                            bg="#E3F2FD" if not is_grayed else "#E0E0E0",
+                            fg="#000000" if not is_grayed else "#808080"
+                        )
+                    else:
+                        btn.config(relief=tk.FLAT)
+                
+                # Highlight current well
+                _, current_label = self.wells[index]
+                if current_label in self.well_buttons:
+                    self.well_buttons[current_label].config(relief=tk.SUNKEN, bg="#2196F3", fg="white")
             
         except Exception as e:
             error_msg = str(e)
