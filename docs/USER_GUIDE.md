@@ -239,7 +239,7 @@ source venv/bin/activate
 python preview.py
 # Or: python preview.py --backend auto
 # Or: python preview.py --simulate_3d  # Run without 3D printer (for testing)
-# Or: python preview.py --simulate_cam  # Run without camera (shows placeholder image)
+# Or: python preview.py --simulate_cam  # Run without camera (no preview window)
 ```
 
 ### Preview Interface

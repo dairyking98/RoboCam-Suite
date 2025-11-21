@@ -25,7 +25,7 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 - **Laser Control**: GPIO-controlled laser with configurable timing sequences (OFF-ON-OFF)
 - **Simulation Modes**: Test workflows without hardware using `--simulate_3d` and `--simulate_cam` flags
   - `--simulate_3d`: Simulates 3D printer (movements update position tracking, but no actual hardware movement)
-  - `--simulate_cam`: Simulates camera (uses placeholder image or skips capture operations)
+  - `--simulate_cam`: Simulates camera (skips camera initialization and capture operations)
   - Perfect for testing experiment configurations and calibration procedures
 - **Configurable Experiments**: JSON-based configuration for experiment parameters
 - **Motion Configuration**: Separate feedrate and acceleration settings for preliminary and between-wells movements
@@ -141,7 +141,7 @@ python preview.py
 python preview.py --backend auto
 # Or with simulation modes (no hardware required):
 python preview.py --simulate_3d  # Simulate 3D printer only
-python preview.py --simulate_cam  # Simulate camera only (shows placeholder image)
+python preview.py --simulate_cam  # Simulate camera only (no preview window)
 python preview.py --simulate_3d --simulate_cam  # Simulate both
 ```
 
@@ -189,7 +189,7 @@ python experiment.py --simulate_3d --simulate_cam  # Simulate both
 
 **Simulation Modes**: 
 - `--simulate_3d`: Run without 3D printer hardware. Movements are simulated (position tracking updates without actual hardware movement).
-- `--simulate_cam`: Run without camera hardware. Uses placeholder image instead of live camera feed.
+- `--simulate_cam`: Run without camera hardware. Skips camera initialization (no preview window).
 - Window title shows "[3D PRINTER SIM]" and/or "[CAMERA SIM]" when active.
 
 ### Preview Alignment Check (preview.py)
@@ -200,7 +200,7 @@ python experiment.py --simulate_3d --simulate_cam  # Simulate both
    python preview.py
    # Or: python preview.py --backend auto
    # Or: python preview.py --simulate_3d  # Test without 3D printer
-   # Or: python preview.py --simulate_cam  # Test without camera (shows placeholder image)
+   # Or: python preview.py --simulate_cam  # Test without camera (no preview window)
    ```
 
 2. Two windows will open:
@@ -229,7 +229,7 @@ python experiment.py --simulate_3d --simulate_cam  # Simulate both
 
 **Simulation Modes**: 
 - `--simulate_3d`: Run without 3D printer hardware. Movements are simulated (position tracking updates without actual hardware movement).
-- `--simulate_cam`: Run without camera hardware. Uses placeholder image instead of live camera feed.
+- `--simulate_cam`: Run without camera hardware. Skips camera initialization (no preview window).
 - Window title shows "[3D PRINTER SIM]" and/or "[CAMERA SIM]" when active.
 
 ### Experiment Setup (experiment.py)
