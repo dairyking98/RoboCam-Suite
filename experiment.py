@@ -102,12 +102,14 @@ def format_hms(seconds: float) -> str:
 
 def save_video_metadata(
     video_path: str,
-    fps: float,
+    target_fps: float,
     resolution: Tuple[int, int],
     duration_seconds: float,
     format_type: str,
     well_label: str,
-    timestamp: str
+    timestamp: str,
+    actual_fps: Optional[float] = None,
+    actual_duration: Optional[float] = None
 ) -> None:
     """
     Save FPS and recording metadata to a JSON file alongside the video.
@@ -118,22 +120,40 @@ def save_video_metadata(
     
     Args:
         video_path: Path to the video file
-        fps: Frames per second used for recording
+        target_fps: Target frames per second for recording
         resolution: Video resolution as (width, height)
         duration_seconds: Expected recording duration in seconds
         format_type: Video format ("H264" or "MJPEG")
         well_label: Well identifier (e.g., "A1")
         timestamp: Recording timestamp string
+        actual_fps: Actual FPS achieved (calculated from actual duration if not provided)
+        actual_duration: Actual recording duration in seconds (used to calculate actual_fps if provided)
     """
     try:
         # Create metadata filename by replacing video extension with _metadata.json
         base_path = os.path.splitext(video_path)[0]
         metadata_path = f"{base_path}_metadata.json"
         
+        # Calculate actual FPS if actual_duration is provided but actual_fps is not
+        if actual_duration is not None and actual_fps is None:
+            # Calculate actual FPS based on expected frame count and actual duration
+            expected_frame_count = target_fps * duration_seconds
+            if actual_duration > 0:
+                actual_fps = expected_frame_count / actual_duration
+            else:
+                actual_fps = target_fps  # Fallback to target if duration is invalid
+        
+        # Use target FPS as actual if actual not provided
+        if actual_fps is None:
+            actual_fps = target_fps
+        
         metadata = {
-            "fps": fps,
+            "target_fps": target_fps,
+            "fps": actual_fps,  # Keep "fps" for backward compatibility, but it's now the actual FPS
+            "actual_fps": actual_fps,
             "resolution": list(resolution),
             "duration_seconds": duration_seconds,
+            "actual_duration_seconds": actual_duration if actual_duration is not None else duration_seconds,
             "format": format_type,
             "timestamp": timestamp,
             "well_label": well_label,
@@ -143,7 +163,7 @@ def save_video_metadata(
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
         
-        logger.info(f"Saved video metadata: {metadata_path} (FPS: {fps}, Duration: {duration_seconds}s)")
+        logger.info(f"Saved video metadata: {metadata_path} (Target FPS: {target_fps}, Actual FPS: {actual_fps:.2f}, Duration: {duration_seconds}s)")
     except Exception as e:
         logger.error(f"Failed to save video metadata for {video_path}: {e}")
 
@@ -412,7 +432,7 @@ class ExperimentWindow:
         self.res_y_ent.insert(0, str(DEFAULT_RES[1]))
         
         row += 1
-        tk.Label(camera_frame, text="FPS:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
+        tk.Label(camera_frame, text="TARGET FPS:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
         self.fps_ent = tk.Entry(camera_frame, width=12)
         self.fps_ent.grid(row=row, column=1, sticky="w", padx=2, pady=2)
         self.fps_ent.insert(0, str(DEFAULT_FPS))
@@ -1872,12 +1892,13 @@ class ExperimentWindow:
                     timestamp_str = f"{ds}_{ts}"
                     save_video_metadata(
                         video_path=path,
-                        fps=fps,
+                        target_fps=fps,
                         resolution=(res_x, res_y),
                         duration_seconds=expected_duration,
                         format_type=export,
                         well_label=well_label,
-                        timestamp=timestamp_str
+                        timestamp=timestamp_str,
+                        actual_duration=actual_duration
                     )
                     
                     self.recording = False

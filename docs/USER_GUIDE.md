@@ -404,12 +404,13 @@ The preview tool fits into the overall workflow:
 6. **Camera Settings**:
    - **Resolution X**: Horizontal pixels (default: 1920)
    - **Resolution Y**: Vertical pixels (default: 1080)
-   - **FPS**: Frames per second (e.g., 30.0)
-     - **Important**: FPS is properly embedded in H264 videos and saved in metadata files
+   - **TARGET FPS**: Target frames per second (e.g., 30.0) - this is the desired frame rate
+     - **Important**: Actual FPS achieved during recording is calculated and saved in metadata files
+     - If the camera cannot achieve the target FPS, the actual FPS will be recorded in the metadata JSON
      - Ensures accurate playback duration for scientific velocity measurements
    - **Export Type**: H264, MJPEG, or JPEG
-     - **H264**: FPS metadata embedded in video file
-     - **MJPEG**: FPS metadata saved in separate JSON file (use for accurate playback)
+     - **H264**: Actual FPS metadata embedded in video file
+     - **MJPEG**: Actual FPS metadata saved in separate JSON file (use for accurate playback)
    - **JPEG Quality**: 1-100 (for MJPEG/JPEG)
 
 7. **Motion Settings**:
@@ -589,11 +590,14 @@ In 3D printer simulation mode, all movements are simulated but camera and imagin
 3. **Check FPS Metadata Files** (for video recordings):
    - Each video recording has a corresponding metadata file: `{video_filename}_metadata.json`
    - Example: `20241215_143022_exp_B2.h264` → `20241215_143022_exp_B2_metadata.json`
-   - Contains FPS, resolution, duration, format, timestamp, and well label
+   - Contains target FPS, actual FPS, resolution, duration, actual duration, format, timestamp, and well label
+   - **Target FPS**: The FPS value set in the GUI (desired frame rate)
+   - **Actual FPS**: The actual frame rate achieved during recording (calculated from actual duration)
    - **Critical for accurate playback**, especially for MJPEG files
-   - For MJPEG playback, use the FPS value from the metadata file:
-     - VLC: `vlc --demux=mjpeg --mjpeg-fps=<fps_from_metadata> video.mjpeg`
-   - H264 videos have FPS embedded, but metadata file provides additional information
+   - For MJPEG playback, use the actual FPS value from the metadata file:
+     - VLC: `vlc --demux=mjpeg --mjpeg-fps=<actual_fps_from_metadata> video.mjpeg`
+   - H264 videos have actual FPS embedded, but metadata file provides additional information
+   - If the camera cannot achieve the target FPS, the actual FPS will be recorded in the metadata
 
 4. **Review Logs**:
    - Check log file in `logs/` directory
@@ -656,8 +660,18 @@ For detailed documentation on specific applications:
 
 ### Low FPS During Recording
 
-- **Reduce preview resolution**: Lower preview quality
-- **Check CPU usage**: Close other applications
+**Understanding Target vs Actual FPS**:
+- The GUI displays "TARGET FPS" - this is the desired frame rate you set
+- The system calculates and records the actual FPS achieved during recording
+- If the camera cannot achieve the target FPS, the actual FPS will be saved in the metadata JSON file
+- Always use `actual_fps` from the metadata JSON for accurate playback and analysis
+
+**Solutions**:
+- **Reduce recording resolution**: Lower resolution = higher FPS
+- **Lower TARGET FPS setting**: If camera cannot achieve target, reduce the target FPS value
+- **Check SD card write speed**: Slow storage can limit FPS
+- **Ensure preview is disabled during recording**: Preview is automatically disabled during recording
+- **Check application logs**: System logs actual vs expected duration and calculates actual FPS
 - **Reduce recording resolution**: Lower resolution = higher FPS
 - **Check storage speed**: Ensure save location is fast (not network drive)
 

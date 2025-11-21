@@ -80,10 +80,12 @@ The application automates the execution of well-plate experiments by:
 ### 3. Camera Settings
 
 - **Resolution**: Configurable X and Y resolution (default: 1920x1080)
-- **Frame Rate**: Adjustable FPS (default: 30.0)
-  - **FPS Accuracy**: FPS is properly embedded in H264 videos and saved in metadata files
+- **Frame Rate**: Adjustable TARGET FPS (default: 30.0)
+  - **Target vs Actual FPS**: The GUI displays "TARGET FPS" - the desired frame rate
+  - **Actual FPS Tracking**: System calculates and records the actual FPS achieved during recording
+  - **FPS Accuracy**: Actual FPS is properly embedded in H264 videos and saved in metadata files
   - **Real-Time Playback**: Ensures accurate playback duration for scientific velocity measurements
-  - **FPS Logging**: System logs actual vs expected recording duration to detect FPS issues
+  - **FPS Logging**: System logs actual vs expected recording duration and calculates actual FPS to detect FPS issues
 - **Export Formats**:
   - **H264**: Video encoding with high bitrate (50 Mbps)
     - FPS metadata embedded directly in video file
@@ -99,8 +101,11 @@ The application automates the execution of well-plate experiments by:
   - Only applies to video recording modes (H264, MJPEG), not JPEG still capture
 - **FPS Metadata Files**: JSON metadata files automatically saved alongside each video recording
   - Format: `{video_filename}_metadata.json`
-  - Contains FPS, resolution, duration, format, timestamp, and well label
+  - Contains target FPS, actual FPS, resolution, duration, format, timestamp, and well label
+  - **Target FPS**: The FPS value set in the GUI (desired frame rate)
+  - **Actual FPS**: The actual frame rate achieved during recording (calculated from actual duration)
   - Critical for accurate playback, especially for MJPEG files
+  - If the camera cannot achieve the target FPS, the actual FPS will be recorded in the metadata
 
 ### 4. Motion Configuration
 
@@ -135,9 +140,31 @@ The application automates the execution of well-plate experiments by:
 - **FPS Metadata Files**: JSON metadata files automatically saved alongside each video recording
   - Format: `{video_filename}_metadata.json`
   - Example: `20241215_143022_exp_B2.h264` → `20241215_143022_exp_B2_metadata.json`
-  - Contains: FPS, resolution, duration, format, timestamp, well label, and video filename
+  - Contains: target FPS, actual FPS, resolution, duration, actual duration, format, timestamp, well label, and video filename
+  - **Target FPS**: The FPS value set in the GUI (desired frame rate)
+  - **Actual FPS**: The actual frame rate achieved during recording (calculated from actual duration)
   - Critical for accurate playback timing, especially for MJPEG files
   - Used for scientific velocity measurements requiring precise timing
+  - If the camera cannot achieve the target FPS, the actual FPS will be recorded in the metadata
+  - **Metadata JSON Format Example**:
+    ```json
+    {
+      "target_fps": 30.0,
+      "fps": 29.8,
+      "actual_fps": 29.8,
+      "resolution": [1920, 1080],
+      "duration_seconds": 60.0,
+      "actual_duration_seconds": 60.4,
+      "format": "H264",
+      "timestamp": "20241215_143022",
+      "well_label": "B2",
+      "video_file": "20241215_143022_exp_B2.h264"
+    }
+    ```
+    - `target_fps`: The FPS value set in the GUI (desired frame rate)
+    - `fps`: Actual FPS (kept for backward compatibility)
+    - `actual_fps`: The actual FPS achieved during recording (calculated from actual duration)
+    - `actual_duration_seconds`: The actual recording duration (used to calculate actual_fps)
 - **Experiment Settings Export**: Save complete experiment configuration to JSON with format `{date}_{time}_{exp}_profile.json` directly to `experiments/` folder (no file dialog)
 - **Experiment Settings Load**: Load settings from dropdown (similar to calibration dropdown) - selects from `experiments/` folder
 - **Experiment Settings Import**: Load saved configurations with calibration validation
@@ -254,9 +281,11 @@ The application uses separate camera configurations for different phases:
 
 4. **FPS Metadata Management**:
    - Metadata files saved automatically after each recording
-   - Contains FPS, resolution, duration, format, timestamp, and well label
+   - Contains target FPS, actual FPS, resolution, duration, actual duration, format, timestamp, and well label
+   - Calculates actual FPS from actual recording duration: `actual_fps = (target_fps × expected_duration) / actual_duration`
    - Logs actual vs expected duration to detect FPS issues
    - Warns if duration differs significantly (more than 5% or 1 second)
+   - If camera cannot achieve target FPS, actual FPS is recorded in metadata for accurate playback
 
 ### Timing Sequence Logic
 
@@ -384,9 +413,10 @@ Action phases are validated before experiment execution:
     - Depth-of-field enhancement
 
 13. **Metadata Embedding** ✅ **COMPLETED**
-    - ✅ JSON metadata sidecar files with FPS, resolution, duration, format, timestamp, and well label
-    - ✅ FPS metadata embedded in H264 videos
-    - ✅ FPS metadata saved in JSON files for MJPEG videos
+   - ✅ JSON metadata sidecar files with target FPS, actual FPS, resolution, duration, actual duration, format, timestamp, and well label
+   - ✅ Actual FPS metadata embedded in H264 videos
+   - ✅ Actual FPS metadata saved in JSON files for MJPEG videos
+   - ✅ Actual FPS calculated from actual recording duration if target FPS cannot be achieved
     - ⚠️ EXIF data for JPEG files (optional enhancement)
     - ⚠️ Embed experiment parameters directly in video files (optional enhancement)
 
@@ -505,9 +535,10 @@ Action phases are validated before experiment execution:
 
 5. **Configure Camera**:
    - Resolution: `1920` x `1080` (default)
-   - FPS: `30.0` (default)
+   - TARGET FPS: `30.0` (default) - this is the desired frame rate
    - Export type: `H264`, `MJPEG`, or `JPEG`
    - Quality: `85` (for JPEG/MJPEG)
+   - Note: If the camera cannot achieve the target FPS, the actual FPS will be calculated and saved in the metadata JSON file
 
 6. **Configure Motion**:
    - Select motion config: `default.json`
@@ -532,7 +563,7 @@ When exporting experiment settings:
     {"action": "GPIO OFF", "time": 10.0}
   ],
   "resolution": [1920, 1080],
-  "fps": 30.0,
+  "fps": 30.0,  # Target FPS (actual FPS is calculated and saved in video metadata JSON)
   "export_type": "H264",
   "quality": 85,
   "motion_config_profile": "default",
@@ -607,7 +638,8 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
   - H264: `H264Encoder(bitrate=50_000_000, fps=fps)` - FPS parameter ensures metadata embedding
   - MJPEG: `JpegEncoder(q=quality)` - FPS saved in metadata JSON file
   - JPEG: Direct capture (no encoder)
-- **FPS Metadata**: JSON files saved alongside videos with FPS, resolution, duration, format, timestamp, and well label
+- **FPS Metadata**: JSON files saved alongside videos with target FPS, actual FPS, resolution, duration, actual duration, format, timestamp, and well label
+  - Actual FPS is calculated from actual recording duration if it differs from target FPS
 
 ### Motion Control
 
@@ -684,11 +716,12 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
    - Check application logs for FPS warnings - system logs actual vs expected duration
 
 5. **Video playback duration doesn't match recording time**
-   - **H264**: FPS metadata is embedded - most players should use it automatically
-   - **MJPEG**: Use FPS from metadata JSON file for playback
-     - VLC example: `vlc --demux=mjpeg --mjpeg-fps=30.0 video.mjpeg`
+   - **H264**: Actual FPS metadata is embedded - most players should use it automatically
+   - **MJPEG**: Use actual FPS from metadata JSON file for playback
+     - VLC example: `vlc --demux=mjpeg --mjpeg-fps=<actual_fps_from_metadata> video.mjpeg`
    - Verify metadata file exists alongside video: `{video_filename}_metadata.json`
    - Check logs for FPS warnings during recording
+   - **Important**: Use `actual_fps` from metadata JSON (not `target_fps`) for accurate playback
 
 5. **First frames of video are blurry or affected by vibration**
    - Increase `pre_recording_delay` in `config/default_config.json`
