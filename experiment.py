@@ -322,221 +322,18 @@ class ExperimentWindow:
                 self.parent.quit()
         w.protocol("WM_DELETE_WINDOW", on_close)
 
-        # Calibration loading section - compact layout
-        tk.Label(w, text="Calibration:").grid(row=0, column=0, sticky="w", padx=5, pady=3)
-        self.calibration_var = tk.StringVar(value="")
-        calibration_frame = tk.Frame(w)
-        calibration_frame.grid(row=0, column=1, columnspan=2, sticky="ew", padx=5, pady=3)
+        # Set initial window size - prevent automatic resizing but allow manual resize
+        FIXED_WIDTH = 700
+        FIXED_HEIGHT = 600
+        w.geometry(f"{FIXED_WIDTH}x{FIXED_HEIGHT}")
+        w.minsize(600, 500)  # Minimum size to ensure usability
+        w.resizable(True, True)  # Allow user to resize manually
         
-        # List available calibrations
-        calib_dir = "calibrations"
-        calibrations = [""]
-        if os.path.exists(calib_dir):
-            calibrations.extend([f for f in os.listdir(calib_dir) if f.endswith(".json")])
-        
-        calibration_menu = tk.OptionMenu(calibration_frame, self.calibration_var, *calibrations, command=self.on_calibration_select)
-        calibration_menu.pack(side=tk.LEFT, padx=2)
-        
-        tk.Button(calibration_frame, text="Refresh", command=self.refresh_calibrations).pack(side=tk.LEFT, padx=2)
-        
-        # Select Cells button (shown when calibration loaded) - on same row
-        self.select_cells_btn = tk.Button(calibration_frame, text="Select Cells", command=self.open_checkbox_window, state="disabled")
-        self.select_cells_btn.pack(side=tk.LEFT, padx=2)
-        
-        # Status label with wrapping to prevent resizing
-        self.calibration_status_label = tk.Label(w, text="No calibration loaded", fg="red", font=("Arial", 9), wraplength=300, justify="left")
-        self.calibration_status_label.grid(row=0, column=3, sticky="w", padx=5, pady=3)
-
-        # GPIO Action Phases section - compact
-        tk.Label(w, text="GPIO Action Phases:").grid(row=1, column=0, columnspan=2, sticky="w", padx=5, pady=(3, 0))
-        
-        # Create scrollable frame for action phases
-        phases_container = tk.Frame(w)
-        phases_container.grid(row=2, column=0, columnspan=4, padx=5, pady=3, sticky="ew")
-        
-        # Canvas and scrollbar for scrollable action phases
-        self.phases_canvas = tk.Canvas(phases_container, height=80)  # Reduced height, scrollable
-        phases_scrollbar = tk.Scrollbar(phases_container, orient="vertical", command=self.phases_canvas.yview)
-        self.action_phases_frame = tk.Frame(self.phases_canvas)
-        
-        def update_scroll_region(event=None):
-            """Update scroll region when frame size changes."""
-            self.phases_canvas.configure(scrollregion=self.phases_canvas.bbox("all"))
-        
-        self.action_phases_frame.bind("<Configure>", update_scroll_region)
-        
-        self.phases_canvas.create_window((0, 0), window=self.action_phases_frame, anchor="nw")
-        self.phases_canvas.configure(yscrollcommand=phases_scrollbar.set)
-        
-        self.phases_canvas.pack(side="left", fill="both", expand=True)
-        phases_scrollbar.pack(side="right", fill="y")
-        
-        # Initialize with default phase (GPIO OFF, 30 seconds)
-        self.action_phases = []
-        self.add_action_phase("GPIO OFF", 30.0)
-        
-        # Add Action button - on same row as label
-        tk.Button(w, text="Add Action", command=self.add_action_phase).grid(row=1, column=2, padx=5, pady=3, sticky="w")
-
-        # Camera settings - compact 2-column layout
-        row = 3
-        tk.Label(w, text="Pattern:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
-        self.pattern_var = tk.StringVar(value="raster →↓")
-        tk.OptionMenu(w, self.pattern_var, "snake →↙", "raster →↓").grid(row=row, column=1, sticky="w", padx=5, pady=3)
-
-        tk.Label(w, text="Experiment Name:").grid(row=row, column=2, sticky="w", padx=5, pady=3)
-        self.experiment_name_ent = tk.Entry(w, width=20)
-        self.experiment_name_ent.insert(0, "exp")
-        self.experiment_name_ent.grid(row=row, column=3, sticky="ew", padx=5, pady=3)
-
-        row += 1
-        # Resolution X and Y on same row
-        tk.Label(w, text="Resolution X:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
-        self.res_x_ent = tk.Entry(w, width=12)
-        self.res_x_ent.grid(row=row, column=1, sticky="w", padx=5, pady=3)
-        self.res_x_ent.insert(0, str(DEFAULT_RES[0]))
-
-        tk.Label(w, text="Resolution Y:").grid(row=row, column=2, sticky="w", padx=5, pady=3)
-        self.res_y_ent = tk.Entry(w, width=12)
-        self.res_y_ent.grid(row=row, column=3, sticky="w", padx=5, pady=3)
-        self.res_y_ent.insert(0, str(DEFAULT_RES[1]))
-
-        row += 1
-        # FPS and Export Type on same row
-        tk.Label(w, text="FPS:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
-        self.fps_ent = tk.Entry(w, width=12)
-        self.fps_ent.grid(row=row, column=1, sticky="w", padx=5, pady=3)
-        self.fps_ent.insert(0, str(DEFAULT_FPS))
-
-        tk.Label(w, text="Export Type:").grid(row=row, column=2, sticky="w", padx=5, pady=3)
-        self.export_var = tk.StringVar(value=DEFAULT_EXPORT)
-        tk.OptionMenu(w, self.export_var, "H264", "MJPEG", "JPEG").grid(row=row, column=3, sticky="w", padx=5, pady=3)
-
-        row += 1
-        # JPEG Quality and Motion Profile on same row
-        tk.Label(w, text="JPEG Quality:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
-        self.quality_ent = tk.Entry(w, width=12)
-        self.quality_ent.grid(row=row, column=1, sticky="w", padx=5, pady=3)
-        self.quality_ent.insert(0, str(DEFAULT_QUALITY))
-
-        tk.Label(w, text="Motion Profile:").grid(row=row, column=2, sticky="w", padx=5, pady=3)
-        self.motion_config_var = tk.StringVar(value="default")
-        # Load profiles from motion_config.json
-        motion_config_path = os.path.join("config", "motion_config.json")
-        profiles = ["default"]
-        if os.path.exists(motion_config_path):
-            try:
-                with open(motion_config_path, 'r') as f:
-                    motion_config_data = json.load(f)
-                    profiles = list(motion_config_data.keys())
-            except Exception as e:
-                logger.warning(f"Error loading motion config: {e}")
-        motion_config_menu = tk.OptionMenu(w, self.motion_config_var, *profiles)
-        motion_config_menu.grid(row=row, column=3, sticky="w", padx=5, pady=3)
-        
-        row += 1
-        # Motion settings display - compact
-        tk.Label(w, text="Motion Settings:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
-        self.motion_info_label = tk.Label(w, text="Load config to see settings", fg="gray", font=("Arial", 9), wraplength=400, justify="left")
-        self.motion_info_label.grid(row=row, column=1, columnspan=3, sticky="w", padx=5, pady=3)
-
-        row += 1
-        # Experiment settings section - compact
-        tk.Label(w, text="Experiment Settings:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
-        self.experiment_settings_var = tk.StringVar(value="")
-        exp_settings_frame = tk.Frame(w)
-        exp_settings_frame.grid(row=row, column=1, columnspan=2, sticky="ew", padx=5, pady=3)
-        
-        # List available experiment settings
-        exp_dir = EXPERIMENTS_FOLDER
-        exp_settings = [""]
-        if os.path.exists(exp_dir):
-            exp_settings.extend([f for f in os.listdir(exp_dir) if f.endswith("_profile.json")])
-        
-        exp_settings_menu = tk.OptionMenu(exp_settings_frame, self.experiment_settings_var, *exp_settings, command=self.on_experiment_settings_select)
-        exp_settings_menu.pack(side=tk.LEFT, padx=2)
-        
-        tk.Button(exp_settings_frame, text="Refresh", command=self.refresh_experiment_settings).pack(side=tk.LEFT, padx=2)
-        tk.Button(exp_settings_frame, text="Export", command=self.export_experiment_settings).pack(side=tk.LEFT, padx=2)
-        
-        self.experiment_settings_status_label = tk.Label(w, text="No settings loaded", fg="red", font=("Arial", 9), wraplength=300, justify="left")
-        self.experiment_settings_status_label.grid(row=row, column=3, sticky="w", padx=5, pady=3)
-
-        row += 1
-        # Status & controls - compact
-        tk.Label(w, text="Status:").grid(row=row, column=0, sticky="w", padx=5, pady=3)
-        self.status_lbl = tk.Label(w, text="Idle", wraplength=400, justify="left")
-        self.status_lbl.grid(row=row, column=1, columnspan=2, sticky="w", padx=5, pady=3)
-
-        # Recording indicator button (flashing when recording)
-        self.recording_btn = tk.Button(w, text="● REC", bg="gray", state="disabled", relief="flat", width=8)
-        self.recording_btn.grid(row=row, column=3, padx=5, pady=3)
-
-        row += 1
-        # Control buttons
-        self.run_btn = tk.Button(w, text="Run", command=self.start)
-        self.run_btn.grid(row=row, column=0, padx=5, pady=3)
-        tk.Button(w, text="Pause", command=self.pause).grid(row=row, column=1, padx=5, pady=3)
-        tk.Button(w, text="Stop",  command=self.stop).grid(row=row, column=2, padx=5, pady=3)
-
-        row += 1
-        # Timers - compact 2-column layout
-        tk.Label(w, text="Duration:").grid(row=row, column=0, sticky="e", padx=5, pady=2)
-        self.duration_lbl = tk.Label(w, text="00:00:00")
-        self.duration_lbl.grid(row=row, column=1, sticky="w", padx=5, pady=2)
-        
-        tk.Label(w, text="Elapsed:").grid(row=row, column=2, sticky="e", padx=5, pady=2)
-        self.elapsed_lbl = tk.Label(w, text="00:00:00")
-        self.elapsed_lbl.grid(row=row, column=3, sticky="w", padx=5, pady=2)
-        
-        row += 1
-        tk.Label(w, text="Remaining:").grid(row=row, column=0, sticky="e", padx=5, pady=2)
-        self.remaining_lbl = tk.Label(w, text="00:00:00")
-        self.remaining_lbl.grid(row=row, column=1, sticky="w", padx=5, pady=2)
-        
-        # Configure grid weights for proper resizing - use all columns
-        w.grid_columnconfigure(1, weight=1)
-        w.grid_columnconfigure(3, weight=1)
-        w.grid_rowconfigure(2, weight=0)  # Action phases row - fixed height with scrollbar
-        
-        # Calculate required window size and set minimum size (only once on initial creation)
-        w.update_idletasks()
-        
-        # Get required size
-        req_width = w.winfo_reqwidth()
-        req_height = w.winfo_reqheight()
-        
-        # Get current window size (if window already exists)
-        try:
-            current_width = w.winfo_width()
-            current_height = w.winfo_height()
-            # If window is too small (less than 10x10, it's not yet displayed properly)
-            if current_width < 10 or current_height < 10:
-                current_width = req_width
-                current_height = req_height
-        except:
-            current_width = req_width
-            current_height = req_height
-        
-        # Set minimum size (ensure window is never too small)
-        min_width = max(req_width, 500)
-        min_height = max(req_height, 400)
-        w.minsize(min_width, min_height)
-        
-        # Only resize if current window is smaller than required (initial setup only)
-        if current_width < min_width or current_height < min_height:
-            new_width = max(current_width, min_width)
-            new_height = max(current_height, min_height)
-            w.geometry(f"{new_width}x{new_height}")
-        
-        # Store the initial size and lock it - prevent future automatic resizing
-        self.initial_window_size = (w.winfo_width(), w.winfo_height())
+        # Store initial size - this prevents automatic resizing
+        self.initial_window_size = (FIXED_WIDTH, FIXED_HEIGHT)
         self.window_size_locked = True
         
-        # Allow user to resize window manually
-        w.resizable(True, True)
-        
-        # Bind to window resize events to update stored size (user manual resize)
+        # Track user manual resizing
         def on_window_configure(event):
             """Update stored window size when user manually resizes."""
             if event.widget == w and self.window_size_locked:
@@ -549,18 +346,220 @@ class ExperimentWindow:
                     pass
         
         w.bind("<Configure>", on_window_configure)
+
+        # Create main scrollable container
+        main_canvas = tk.Canvas(w, highlightthickness=0)
+        main_scrollbar = tk.Scrollbar(w, orient="vertical", command=main_canvas.yview)
+        scrollable_frame = tk.Frame(main_canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all"))
+        )
+        
+        main_canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        main_canvas.configure(yscrollcommand=main_scrollbar.set)
+        
+        # Pack canvas and scrollbar
+        main_canvas.pack(side="left", fill="both", expand=True)
+        main_scrollbar.pack(side="right", fill="y")
+        
+        # Bind mouse wheel to canvas
+        def on_mousewheel(event):
+            main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        main_canvas.bind_all("<MouseWheel>", on_mousewheel)
+        
+        # Use scrollable_frame as the main container
+        container = scrollable_frame
+
+        # === SECTION 1: CALIBRATION ===
+        calib_frame = tk.LabelFrame(container, text="Calibration", padx=5, pady=5)
+        calib_frame.grid(row=0, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        calib_frame.grid_columnconfigure(1, weight=1)
+        
+        tk.Label(calib_frame, text="File:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
+        self.calibration_var = tk.StringVar(value="")
+        calibration_frame = tk.Frame(calib_frame)
+        calibration_frame.grid(row=0, column=1, columnspan=2, sticky="ew", padx=2, pady=2)
+        
+        calib_dir = "calibrations"
+        calibrations = [""]
+        if os.path.exists(calib_dir):
+            calibrations.extend([f for f in os.listdir(calib_dir) if f.endswith(".json")])
+        
+        calibration_menu = tk.OptionMenu(calibration_frame, self.calibration_var, *calibrations, command=self.on_calibration_select)
+        calibration_menu.pack(side=tk.LEFT, padx=2)
+        
+        tk.Button(calibration_frame, text="Refresh", command=self.refresh_calibrations).pack(side=tk.LEFT, padx=2)
+        self.select_cells_btn = tk.Button(calibration_frame, text="Select Cells", command=self.open_checkbox_window, state="disabled")
+        self.select_cells_btn.pack(side=tk.LEFT, padx=2)
+        
+        self.calibration_status_label = tk.Label(calib_frame, text="No calibration loaded", fg="red", font=("Arial", 9), anchor="w")
+        self.calibration_status_label.grid(row=0, column=3, sticky="ew", padx=2, pady=2)
+        calib_frame.grid_columnconfigure(3, weight=1)
+
+        # === SECTION 2: GPIO ACTION PHASES ===
+        phases_frame = tk.LabelFrame(container, text="GPIO Action Phases", padx=5, pady=5)
+        phases_frame.grid(row=1, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        
+        # Scrollable phases container
+        phases_container = tk.Frame(phases_frame)
+        phases_container.grid(row=0, column=0, columnspan=3, sticky="ew", padx=2, pady=2)
+        
+        self.phases_canvas = tk.Canvas(phases_container, height=90, highlightthickness=0)
+        phases_scrollbar = tk.Scrollbar(phases_container, orient="vertical", command=self.phases_canvas.yview)
+        self.action_phases_frame = tk.Frame(self.phases_canvas)
+        
+        def update_phases_scroll(event=None):
+            self.phases_canvas.configure(scrollregion=self.phases_canvas.bbox("all"))
+        
+        self.action_phases_frame.bind("<Configure>", update_phases_scroll)
+        self.phases_canvas.create_window((0, 0), window=self.action_phases_frame, anchor="nw")
+        self.phases_canvas.configure(yscrollcommand=phases_scrollbar.set)
+        
+        self.phases_canvas.pack(side="left", fill="both", expand=True)
+        phases_scrollbar.pack(side="right", fill="y")
+        
+        tk.Button(phases_frame, text="Add Action", command=self.add_action_phase).grid(row=0, column=3, padx=2, pady=2, sticky="n")
+        
+        self.action_phases = []
+        self.add_action_phase("GPIO OFF", 30.0)
+
+        # === SECTION 3: CAMERA SETTINGS ===
+        camera_frame = tk.LabelFrame(container, text="Camera Settings", padx=5, pady=5)
+        camera_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        camera_frame.grid_columnconfigure(1, weight=1)
+        camera_frame.grid_columnconfigure(3, weight=1)
+        
+        row = 0
+        tk.Label(camera_frame, text="Pattern:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
+        self.pattern_var = tk.StringVar(value="raster →↓")
+        tk.OptionMenu(camera_frame, self.pattern_var, "snake →↙", "raster →↓").grid(row=row, column=1, sticky="w", padx=2, pady=2)
+        
+        tk.Label(camera_frame, text="Experiment Name:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
+        self.experiment_name_ent = tk.Entry(camera_frame, width=20)
+        self.experiment_name_ent.insert(0, "exp")
+        self.experiment_name_ent.grid(row=row, column=3, sticky="ew", padx=2, pady=2)
+        
+        row += 1
+        tk.Label(camera_frame, text="Resolution X:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
+        self.res_x_ent = tk.Entry(camera_frame, width=12)
+        self.res_x_ent.grid(row=row, column=1, sticky="w", padx=2, pady=2)
+        self.res_x_ent.insert(0, str(DEFAULT_RES[0]))
+        
+        tk.Label(camera_frame, text="Resolution Y:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
+        self.res_y_ent = tk.Entry(camera_frame, width=12)
+        self.res_y_ent.grid(row=row, column=3, sticky="w", padx=2, pady=2)
+        self.res_y_ent.insert(0, str(DEFAULT_RES[1]))
+        
+        row += 1
+        tk.Label(camera_frame, text="FPS:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
+        self.fps_ent = tk.Entry(camera_frame, width=12)
+        self.fps_ent.grid(row=row, column=1, sticky="w", padx=2, pady=2)
+        self.fps_ent.insert(0, str(DEFAULT_FPS))
+        
+        tk.Label(camera_frame, text="Export Type:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
+        self.export_var = tk.StringVar(value=DEFAULT_EXPORT)
+        tk.OptionMenu(camera_frame, self.export_var, "H264", "MJPEG", "JPEG").grid(row=row, column=3, sticky="w", padx=2, pady=2)
+        
+        row += 1
+        tk.Label(camera_frame, text="JPEG Quality:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
+        self.quality_ent = tk.Entry(camera_frame, width=12)
+        self.quality_ent.grid(row=row, column=1, sticky="w", padx=2, pady=2)
+        self.quality_ent.insert(0, str(DEFAULT_QUALITY))
+
+        # === SECTION 4: MOTION SETTINGS ===
+        motion_frame = tk.LabelFrame(container, text="Motion Settings", padx=5, pady=5)
+        motion_frame.grid(row=3, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        motion_frame.grid_columnconfigure(1, weight=1)
+        
+        tk.Label(motion_frame, text="Profile:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
+        self.motion_config_var = tk.StringVar(value="default")
+        motion_config_path = os.path.join("config", "motion_config.json")
+        profiles = ["default"]
+        if os.path.exists(motion_config_path):
+            try:
+                with open(motion_config_path, 'r') as f:
+                    motion_config_data = json.load(f)
+                    profiles = list(motion_config_data.keys())
+            except Exception as e:
+                logger.warning(f"Error loading motion config: {e}")
+        motion_config_menu = tk.OptionMenu(motion_frame, self.motion_config_var, *profiles)
+        motion_config_menu.grid(row=0, column=1, sticky="w", padx=2, pady=2)
+        
+        self.motion_info_label = tk.Label(motion_frame, text="Load config to see settings", fg="gray", font=("Arial", 9), anchor="w", wraplength=500)
+        self.motion_info_label.grid(row=1, column=0, columnspan=4, sticky="ew", padx=2, pady=2)
+
+        # === SECTION 5: EXPERIMENT SETTINGS ===
+        exp_frame = tk.LabelFrame(container, text="Experiment Settings", padx=5, pady=5)
+        exp_frame.grid(row=4, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        exp_frame.grid_columnconfigure(1, weight=1)
+        
+        tk.Label(exp_frame, text="File:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
+        self.experiment_settings_var = tk.StringVar(value="")
+        exp_settings_frame = tk.Frame(exp_frame)
+        exp_settings_frame.grid(row=0, column=1, columnspan=2, sticky="ew", padx=2, pady=2)
+        
+        exp_dir = EXPERIMENTS_FOLDER
+        exp_settings = [""]
+        if os.path.exists(exp_dir):
+            exp_settings.extend([f for f in os.listdir(exp_dir) if f.endswith("_profile.json")])
+        
+        exp_settings_menu = tk.OptionMenu(exp_settings_frame, self.experiment_settings_var, *exp_settings, command=self.on_experiment_settings_select)
+        exp_settings_menu.pack(side=tk.LEFT, padx=2)
+        
+        tk.Button(exp_settings_frame, text="Refresh", command=self.refresh_experiment_settings).pack(side=tk.LEFT, padx=2)
+        tk.Button(exp_settings_frame, text="Export", command=self.export_experiment_settings).pack(side=tk.LEFT, padx=2)
+        
+        self.experiment_settings_status_label = tk.Label(exp_frame, text="No settings loaded", fg="red", font=("Arial", 9), anchor="w")
+        self.experiment_settings_status_label.grid(row=0, column=3, sticky="ew", padx=2, pady=2)
+        exp_frame.grid_columnconfigure(3, weight=1)
+
+        # === SECTION 6: STATUS & CONTROLS ===
+        control_frame = tk.LabelFrame(container, text="Status & Controls", padx=5, pady=5)
+        control_frame.grid(row=5, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        control_frame.grid_columnconfigure(1, weight=1)
+        
+        tk.Label(control_frame, text="Status:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
+        self.status_lbl = tk.Label(control_frame, text="Idle", anchor="w", wraplength=500)
+        self.status_lbl.grid(row=0, column=1, columnspan=2, sticky="ew", padx=2, pady=2)
+        
+        self.recording_btn = tk.Button(control_frame, text="● REC", bg="gray", state="disabled", relief="flat", width=8)
+        self.recording_btn.grid(row=0, column=3, padx=2, pady=2)
+        
+        button_frame = tk.Frame(control_frame)
+        button_frame.grid(row=1, column=0, columnspan=4, pady=5)
+        
+        self.run_btn = tk.Button(button_frame, text="Run", command=self.start, width=10)
+        self.run_btn.pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Pause", command=self.pause, width=10).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Stop", command=self.stop, width=10).pack(side=tk.LEFT, padx=5)
+        
+        timer_frame = tk.Frame(control_frame)
+        timer_frame.grid(row=2, column=0, columnspan=4, pady=5)
+        
+        tk.Label(timer_frame, text="Duration:").pack(side=tk.LEFT, padx=5)
+        self.duration_lbl = tk.Label(timer_frame, text="00:00:00", font=("Courier", 10))
+        self.duration_lbl.pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(timer_frame, text="Elapsed:").pack(side=tk.LEFT, padx=5)
+        self.elapsed_lbl = tk.Label(timer_frame, text="00:00:00", font=("Courier", 10))
+        self.elapsed_lbl.pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(timer_frame, text="Remaining:").pack(side=tk.LEFT, padx=5)
+        self.remaining_lbl = tk.Label(timer_frame, text="00:00:00", font=("Courier", 10))
+        self.remaining_lbl.pack(side=tk.LEFT, padx=5)
+        
+        # Configure container columns
+        container.grid_columnconfigure(0, weight=1)
+        
+        # Update canvas scroll region
+        container.update_idletasks()
+        main_canvas.configure(scrollregion=main_canvas.bbox("all"))
         
         # Load and display motion config on selection change
         def update_motion_info(*args):
             """Update motion settings display when profile changes."""
-            # Store current window size to prevent resizing
-            stored_size = None
-            if self.window and self.window_size_locked:
-                try:
-                    stored_size = self.initial_window_size
-                except AttributeError:
-                    pass
-            
             try:
                 profile_name = self.motion_config_var.get()
                 config_path = os.path.join("config", "motion_config.json")
@@ -581,10 +580,6 @@ class ExperimentWindow:
                     self.motion_info_label.config(text="Config file not found", fg="red")
             except Exception as e:
                 self.motion_info_label.config(text=f"Error loading config: {e}", fg="red")
-            
-            # Restore window size if it was locked (prevent resizing from label text changes)
-            if stored_size and self.window and self.window_size_locked:
-                self.window.after_idle(lambda: self.window.geometry(f"{stored_size[0]}x{stored_size[1]}"))
         
         self.motion_config_var.trace("w", update_motion_info)
         update_motion_info()  # Initial load
@@ -594,14 +589,6 @@ class ExperimentWindow:
 
         # Live example filename
         def upd(e=None):
-            # Store current window size to prevent resizing
-            stored_size = None
-            if self.window and self.window_size_locked:
-                try:
-                    stored_size = self.initial_window_size
-                except AttributeError:
-                    pass
-            
             exp_name = self.experiment_name_ent.get().strip() or "exp"
             date_str = datetime.now().strftime("%Y%m%d")
             output_folder = os.path.join(OUTPUTS_FOLDER, f"{date_str}_{exp_name}")
@@ -623,16 +610,9 @@ class ExperimentWindow:
             ts     = time.strftime("%H%M%S")
             ds     = date_str  # Use YYYYMMDD format
             fn = f"{ds}_{ts}_{exp_name}_{y0}{x0}{ext}"
-            # Truncate long paths to prevent window resizing
-            full_path = f"Example: {os.path.join(output_folder, fn)}"
-            if len(full_path) > 60:
-                # Show just the filename if path is too long
-                full_path = f"Example: .../{fn}"
+            # Show just filename to keep it short
+            full_path = f"Example: {fn}"
             self.status_lbl.config(text=full_path)
-            
-            # Restore window size if it was locked (prevent resizing from status label text changes)
-            if stored_size and self.window and self.window_size_locked:
-                self.window.after_idle(lambda: self.window.geometry(f"{stored_size[0]}x{stored_size[1]}"))
 
         for wgt in (self.experiment_name_ent,
                     self.res_x_ent, self.res_y_ent, self.fps_ent):
@@ -797,11 +777,14 @@ class ExperimentWindow:
             self.pattern_var.set(pattern_setting)
             
             self.update_run_button_state()
-            self.experiment_settings_status_label.config(text=f"Loaded: {filename}", fg="green")
+            # Truncate filename if too long
+            display_name = filename[:40] + "..." if len(filename) > 40 else filename
+            self.experiment_settings_status_label.config(text=f"Loaded: {display_name}", fg="green")
             
         except Exception as e:
             logger.error(f"Error loading settings: {e}")
-            self.experiment_settings_status_label.config(text=f"Error loading settings: {e}", fg="red")
+            error_msg = str(e)[:50] + "..." if len(str(e)) > 50 else str(e)
+            self.experiment_settings_status_label.config(text=f"Error: {error_msg}", fg="red")
     
     def on_calibration_select(self, filename: str) -> None:
         """
@@ -810,15 +793,6 @@ class ExperimentWindow:
         Args:
             filename: Selected calibration filename (empty string if none)
         """
-        # Store current window size before any updates to prevent resizing
-        if self.window and self.window_size_locked:
-            try:
-                stored_size = self.initial_window_size
-            except AttributeError:
-                stored_size = None
-        else:
-            stored_size = None
-        
         if not filename or filename == "":
             # No calibration selected
             self.loaded_calibration = None
@@ -832,10 +806,6 @@ class ExperimentWindow:
                 self.checkbox_window.destroy()
                 self.checkbox_window = None
             self.update_run_button_state()
-            
-            # Restore window size if it was locked
-            if stored_size and self.window and self.window_size_locked:
-                self.window.geometry(f"{stored_size[0]}x{stored_size[1]}")
             return
         
         try:
@@ -843,15 +813,12 @@ class ExperimentWindow:
             calib_path = os.path.join("calibrations", filename)
             if not os.path.exists(calib_path):
                 self.calibration_status_label.config(
-                    text=f"Error: File not found: {filename}",
+                    text=f"Error: File not found",
                     fg="red"
                 )
                 self.loaded_calibration = None
                 self.calibration_file = None
                 self.update_run_button_state()
-                # Restore window size if it was locked
-                if stored_size and self.window and self.window_size_locked:
-                    self.window.after_idle(lambda: self.window.geometry(f"{stored_size[0]}x{stored_size[1]}"))
                 return
             
             with open(calib_path, 'r') as f:
@@ -864,13 +831,11 @@ class ExperimentWindow:
             if not all(field in self.loaded_calibration for field in required_fields):
                 raise ValueError("Invalid calibration file format")
             
-            # Update status - truncate long filenames to prevent resizing
+            # Update status - truncate long filenames
             num_wells = len(self.loaded_calibration.get("interpolated_positions", []))
-            status_text = f"Loaded: {filename} ({num_wells} wells)"
-            if len(status_text) > 50:
-                # Truncate filename if too long
-                name_part = filename[:30] + "..." if len(filename) > 30 else filename
-                status_text = f"Loaded: {name_part} ({num_wells} wells)"
+            # Truncate filename if too long
+            display_name = filename[:40] + "..." if len(filename) > 40 else filename
+            status_text = f"Loaded: {display_name} ({num_wells} wells)"
             self.calibration_status_label.config(
                 text=status_text,
                 fg="green"
@@ -885,14 +850,11 @@ class ExperimentWindow:
             
             self.update_run_button_state()
             
-            # Restore window size if it was locked (prevent resizing from label text changes)
-            if stored_size and self.window and self.window_size_locked:
-                self.window.after_idle(lambda: self.window.geometry(f"{stored_size[0]}x{stored_size[1]}"))
-            
         except Exception as e:
             logger.error(f"Error loading calibration: {e}")
+            error_msg = str(e)[:50] + "..." if len(str(e)) > 50 else str(e)
             self.calibration_status_label.config(
-                text=f"Error loading calibration: {e}",
+                text=f"Error: {error_msg}",
                 fg="red"
             )
             self.loaded_calibration = None
@@ -901,9 +863,6 @@ class ExperimentWindow:
             if self.select_cells_btn:
                 self.select_cells_btn.config(state="disabled")
             self.update_run_button_state()
-            # Restore window size if it was locked
-            if stored_size and self.window and self.window_size_locked:
-                self.window.after_idle(lambda: self.window.geometry(f"{stored_size[0]}x{stored_size[1]}"))
     
     def initialize_checkboxes(self) -> None:
         """Initialize checkbox variables for all wells (all checked by default)."""
@@ -1554,7 +1513,9 @@ class ExperimentWindow:
             with open(filepath, 'w') as f:
                 json.dump(settings, f, indent=2)
             
-            self.experiment_settings_status_label.config(text=f"Exported: {filename}", fg="green")
+            # Truncate filename if too long
+            display_name = filename[:40] + "..." if len(filename) > 40 else filename
+            self.experiment_settings_status_label.config(text=f"Exported: {display_name}", fg="green")
             # Refresh the dropdown to include the new file
             self.refresh_experiment_settings()
             # Select the newly exported file
@@ -1562,7 +1523,8 @@ class ExperimentWindow:
                 
         except Exception as e:
             logger.error(f"Error exporting settings: {e}")
-            self.experiment_settings_status_label.config(text=f"Error exporting settings: {e}", fg="red")
+            error_msg = str(e)[:50] + "..." if len(str(e)) > 50 else str(e)
+            self.experiment_settings_status_label.config(text=f"Error: {error_msg}", fg="red")
     
 
     def start(self) -> None:
