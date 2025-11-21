@@ -15,6 +15,7 @@ The application automates the execution of well-plate experiments by:
 3. **Laser Control**: Provides precise timing sequences for laser stimulation (OFF-ON-OFF pattern)
 4. **Data Export**: Generates CSV files with well coordinates and metadata
 5. **Configuration Management**: Saves and loads experiment configurations for reproducibility
+6. **Simulation Mode**: Test imaging workflows without 3D printer hardware using `--simulate` flag
 
 ### Main Workflow
 
@@ -78,15 +79,26 @@ The application automates the execution of well-plate experiments by:
 
 - **Resolution**: Configurable X and Y resolution (default: 1920x1080)
 - **Frame Rate**: Adjustable FPS (default: 30.0)
+  - **FPS Accuracy**: FPS is properly embedded in H264 videos and saved in metadata files
+  - **Real-Time Playback**: Ensures accurate playback duration for scientific velocity measurements
+  - **FPS Logging**: System logs actual vs expected recording duration to detect FPS issues
 - **Export Formats**:
   - **H264**: Video encoding with high bitrate (50 Mbps)
+    - FPS metadata embedded directly in video file
+    - Ensures accurate playback duration
   - **MJPEG**: Motion JPEG video with quality control
+    - FPS metadata saved in separate JSON file (MJPEG doesn't support native FPS metadata)
+    - Use metadata file FPS for accurate playback
   - **JPEG**: Single still image capture
 - **Quality Control**: JPEG quality setting (1-100, default: 85)
 - **Pre-Recording Delay**: Configurable delay before video recording starts (default: 0.5 seconds)
   - Allows vibrations from printer movement to settle before recording begins
   - Configurable via `hardware.camera.pre_recording_delay` in `config/default_config.json`
   - Only applies to video recording modes (H264, MJPEG), not JPEG still capture
+- **FPS Metadata Files**: JSON metadata files automatically saved alongside each video recording
+  - Format: `{video_filename}_metadata.json`
+  - Contains FPS, resolution, duration, format, timestamp, and well label
+  - Critical for accurate playback, especially for MJPEG files
 
 ### 4. Motion Configuration
 
@@ -118,6 +130,12 @@ The application automates the execution of well-plate experiments by:
   - Provides detailed error messages if directory creation fails
   - Verifies write permissions before starting experiments
 - **CSV Export**: Automatic generation of CSV file with format `{date}_{time}_{exp}_points.csv` containing well coordinates in `outputs/YYYYMMDD_{experiment_name}/`
+- **FPS Metadata Files**: JSON metadata files automatically saved alongside each video recording
+  - Format: `{video_filename}_metadata.json`
+  - Example: `20241215_143022_exp_B2.h264` → `20241215_143022_exp_B2_metadata.json`
+  - Contains: FPS, resolution, duration, format, timestamp, well label, and video filename
+  - Critical for accurate playback timing, especially for MJPEG files
+  - Used for scientific velocity measurements requiring precise timing
 - **Experiment Settings Export**: Save complete experiment configuration to JSON with format `{date}_{time}_{exp}_profile.json` directly to `experiments/` folder (no file dialog)
 - **Experiment Settings Load**: Load settings from dropdown (similar to calibration dropdown) - selects from `experiments/` folder
 - **Experiment Settings Import**: Load saved configurations with calibration validation
@@ -217,6 +235,17 @@ The application uses separate camera configurations for different phases:
    - Optimized buffer settings (`buffer_count=2`) for maximum FPS
    - Preview disabled during recording to maximize performance
    - Pre-recording delay applied before starting video capture (configurable via `hardware.camera.pre_recording_delay`)
+
+3. **Encoder Configuration**:
+   - **H264**: `H264Encoder(bitrate=50_000_000, fps=fps)` - FPS parameter ensures metadata is written to video
+   - **MJPEG**: `JpegEncoder(q=quality)` - FPS metadata saved in separate JSON file
+   - FPS value passed to encoder to ensure accurate playback duration
+
+4. **FPS Metadata Management**:
+   - Metadata files saved automatically after each recording
+   - Contains FPS, resolution, duration, format, timestamp, and well label
+   - Logs actual vs expected duration to detect FPS issues
+   - Warns if duration differs significantly (more than 5% or 1 second)
 
 ### Timing Sequence Logic
 
@@ -343,10 +372,12 @@ Action phases are validated before experiment execution:
     - Automatic focus stacking
     - Depth-of-field enhancement
 
-13. **Metadata Embedding**
-    - Embed experiment parameters in video files
-    - EXIF data for JPEG files
-    - JSON metadata sidecar files
+13. **Metadata Embedding** ✅ **COMPLETED**
+    - ✅ JSON metadata sidecar files with FPS, resolution, duration, format, timestamp, and well label
+    - ✅ FPS metadata embedded in H264 videos
+    - ✅ FPS metadata saved in JSON files for MJPEG videos
+    - ⚠️ EXIF data for JPEG files (optional enhancement)
+    - ⚠️ Embed experiment parameters directly in video files (optional enhancement)
 
 14. **Remote Monitoring**
     - Web interface for status
@@ -427,6 +458,8 @@ Action phases are validated before experiment execution:
 1. **Launch Application**:
    ```bash
    python experiment.py
+   # Or with simulation mode (no 3D printer required):
+   python experiment.py --simulate
    ```
 
 2. **Load Calibration** (Required):
@@ -558,9 +591,10 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
 - **Preview Config**: `640x480`, 2 buffers (if preview needed)
 - **Recording Config**: User-specified resolution, user-specified FPS, 2 buffers
 - **Encoder Selection**:
-  - H264: `H264Encoder(bitrate=50_000_000)`
-  - MJPEG: `JpegEncoder(q=quality)`
+  - H264: `H264Encoder(bitrate=50_000_000, fps=fps)` - FPS parameter ensures metadata embedding
+  - MJPEG: `JpegEncoder(q=quality)` - FPS saved in metadata JSON file
   - JPEG: Direct capture (no encoder)
+- **FPS Metadata**: JSON files saved alongside videos with FPS, resolution, duration, format, timestamp, and well label
 
 ### Motion Control
 
@@ -634,6 +668,14 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
    - Lower FPS setting
    - Check SD card write speed
    - Ensure preview is disabled during recording
+   - Check application logs for FPS warnings - system logs actual vs expected duration
+
+5. **Video playback duration doesn't match recording time**
+   - **H264**: FPS metadata is embedded - most players should use it automatically
+   - **MJPEG**: Use FPS from metadata JSON file for playback
+     - VLC example: `vlc --demux=mjpeg --mjpeg-fps=30.0 video.mjpeg`
+   - Verify metadata file exists alongside video: `{video_filename}_metadata.json`
+   - Check logs for FPS warnings during recording
 
 5. **First frames of video are blurry or affected by vibration**
    - Increase `pre_recording_delay` in `config/default_config.json`

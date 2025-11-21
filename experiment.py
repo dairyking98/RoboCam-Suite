@@ -177,7 +177,7 @@ class ExperimentWindow:
         z_val (float): Z coordinate (focus height)
     """
     
-    def __init__(self, parent: tk.Tk, picam2: Picamera2, robocam: RoboCam) -> None:
+    def __init__(self, parent: tk.Tk, picam2: Picamera2, robocam: RoboCam, simulate: bool = False) -> None:
         """
         Initialize experiment window.
         
@@ -185,10 +185,12 @@ class ExperimentWindow:
             parent: Parent tkinter window
             picam2: Picamera2 instance for video/still capture
             robocam: RoboCam instance for printer control
+            simulate: If True, run in simulation mode (for display purposes)
         """
         self.parent: tk.Tk = parent
         self.picam2: Picamera2 = picam2
         self.robocam: RoboCam = robocam
+        self.simulate: bool = simulate
         # Load config for laser GPIO pin and camera settings
         config = get_config()
         laser_pin = config.get("hardware.laser.gpio_pin", 21)
@@ -279,11 +281,17 @@ class ExperimentWindow:
         if (self.window is None and isinstance(self.parent, tk.Tk) and 
             len(self.parent.winfo_children()) == 0):
             w = self.parent
-            w.title("Experiment")
+            title = "Experiment"
+            if self.simulate:
+                title += " [SIMULATION MODE]"
+            w.title(title)
             self.window = w
         else:
             w = tk.Toplevel(self.parent)
-            w.title("Experiment")
+            title = "Experiment"
+            if self.simulate:
+                title += " [SIMULATION MODE]"
+            w.title(title)
             self.window = w
 
         def on_close():
@@ -1778,12 +1786,22 @@ if __name__ == "__main__":
     
     Opens the experiment configuration and execution interface directly.
     """
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="RoboCam Experiment - Automated well-plate experiment execution")
+    parser.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Run in simulation mode without 3D printer (for testing imaging without hardware)"
+    )
+    args = parser.parse_args()
+    
     root: tk.Tk = tk.Tk()
     picam2: Picamera2 = Picamera2()
     # Load config for baudrate
     config = get_config()
     baudrate = config.get("hardware.printer.baudrate", 115200)
-    robocam: RoboCam = RoboCam(baudrate=baudrate, config=config)
-    app: ExperimentWindow = ExperimentWindow(root, picam2, robocam)
+    robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate=args.simulate)
+    app: ExperimentWindow = ExperimentWindow(root, picam2, robocam, simulate=args.simulate)
     app.open()  # Open experiment window directly
     root.mainloop()

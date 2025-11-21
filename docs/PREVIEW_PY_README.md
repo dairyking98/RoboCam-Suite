@@ -27,6 +27,14 @@ The preview application enables users to:
 
 ## Features
 
+### 0. Simulation Mode
+
+- **No Hardware Required**: Run with `--simulate` flag to test imaging without 3D printer
+- **Full Camera Functionality**: All camera and preview features work normally
+- **Simulated Movements**: Printer movements update position tracking but don't move hardware
+- **Testing Workflow**: Perfect for testing experiment configurations and imaging settings
+- **Visual Indicator**: Window title shows "[SIMULATION MODE]" when active
+
 ### 1. High-Performance Camera Preview
 
 - **Native Hardware Acceleration**: Uses DRM or QTGL backend for maximum performance
@@ -121,6 +129,15 @@ python preview.py --backend auto    # Auto-select (default)
 python preview.py --backend qtgl   # Force QTGL (desktop)
 python preview.py --backend drm     # Force DRM (console)
 python preview.py --backend null    # Headless mode
+```
+
+Or with simulation mode (no 3D printer required):
+
+```bash
+python preview.py --simulate
+# Runs without 3D printer connection - movements are simulated
+# Camera and imaging features work normally
+# Window title shows "[SIMULATION MODE]"
 ```
 
 ### Basic Usage Workflow

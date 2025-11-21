@@ -48,16 +48,18 @@ class CameraApp:
         preview_backend (str): Preview backend being used
     """
     
-    def __init__(self, root: tk.Tk, preview_backend: str = "auto") -> None:
+    def __init__(self, root: tk.Tk, preview_backend: str = "auto", simulate: bool = False) -> None:
         """
         Initialize calibration application.
         
         Args:
             root: Tkinter root window
             preview_backend: Preview backend to use ("auto", "drm", "qtgl", "null")
+            simulate: If True, run in simulation mode without 3D printer connection
         """
         self.root: tk.Tk = root
-        self.root.title("RoboCam Calibration - Controls")
+        self.root.title("RoboCam Calibration - Controls" + (" [SIMULATION MODE]" if simulate else ""))
+        self._simulate: bool = simulate
 
         # Load config for camera settings
         config = get_config()
@@ -120,7 +122,7 @@ class CameraApp:
         
         # Initialize RoboCam with error handling
         try:
-            self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config)
+            self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate=self._simulate)
         except Exception as e:
             error_msg = str(e)
             if "not connected" in error_msg.lower() or "serial port" in error_msg.lower():
@@ -758,9 +760,14 @@ if __name__ == "__main__":
         choices=["auto", "drm", "qtgl", "null"],
         help="Preview backend to use (default: auto)"
     )
+    parser.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Run in simulation mode without 3D printer (for testing imaging without hardware)"
+    )
     args = parser.parse_args()
     
     root = tk.Tk()
-    app = CameraApp(root, preview_backend=args.backend)
+    app = CameraApp(root, preview_backend=args.backend, simulate=args.simulate)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.mainloop()

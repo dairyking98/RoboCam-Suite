@@ -63,6 +63,7 @@ The calibration application allows you to manually position the camera over well
 ./start_calibrate.sh
 # Or: source venv/bin/activate && python calibrate.py
 # Optional: python calibrate.py --backend qtgl  # Force specific backend
+# Optional: python calibrate.py --simulate  # Run without 3D printer (for testing)
 ```
 
 #### Using the Calibration Interface
@@ -102,6 +103,16 @@ You can specify the preview backend when starting calibrate.py:
 - `--backend qtgl`: Force QTGL backend (for desktop sessions)
 - `--backend drm`: Force DRM backend (for console)
 - `--backend null`: Headless mode (no preview window, useful for remote operation)
+
+#### Simulation Mode
+
+You can run calibrate.py in simulation mode to test without 3D printer hardware:
+
+- `--simulate`: Run without 3D printer connection
+  - Camera and preview work normally
+  - Movements are simulated (position tracking updates, but no actual movement)
+  - Window title shows "[SIMULATION MODE]"
+  - Useful for testing imaging workflows and calibration procedures without hardware
 
 #### Calibration Workflow
 
@@ -220,6 +231,7 @@ The preview application (`preview.py`) allows you to sequentially navigate throu
 source venv/bin/activate
 python preview.py
 # Or: python preview.py --backend auto
+# Or: python preview.py --simulate  # Run without 3D printer (for testing)
 ```
 
 ### Preview Interface
@@ -325,6 +337,7 @@ The preview tool fits into the overall workflow:
 ```bash
 ./start_experiment.sh
 # Or: source venv/bin/activate && python experiment.py
+# Or: python experiment.py --simulate  # Run without 3D printer (for testing)
 ```
 
 ### Configuring an Experiment
@@ -372,7 +385,11 @@ The preview tool fits into the overall workflow:
    - **Resolution X**: Horizontal pixels (default: 1920)
    - **Resolution Y**: Vertical pixels (default: 1080)
    - **FPS**: Frames per second (e.g., 30.0)
+     - **Important**: FPS is properly embedded in H264 videos and saved in metadata files
+     - Ensures accurate playback duration for scientific velocity measurements
    - **Export Type**: H264, MJPEG, or JPEG
+     - **H264**: FPS metadata embedded in video file
+     - **MJPEG**: FPS metadata saved in separate JSON file (use for accurate playback)
    - **JPEG Quality**: 1-100 (for MJPEG/JPEG)
 
 7. **Motion Settings**:
@@ -509,10 +526,16 @@ The selected profile's settings are displayed below the dropdown, showing:
 3. **Start**:
    - Click "Run" button in experiment window
    - Experiment will:
-     - Home the printer
-     - Move to each well in sequence
+     - Home the printer (or simulate homing in simulation mode)
+     - Move to each well in sequence (or simulate movement in simulation mode)
      - Record video/still at each well
      - Control laser according to timing settings
+
+**Note**: You can test experiments without 3D printer hardware by running with `--simulate`:
+```bash
+python experiment.py --simulate
+```
+In simulation mode, all movements are simulated but camera and imaging features work normally. The window title shows "[SIMULATION MODE]" when active.
 
 4. **Monitor**:
    - Watch status messages in the GUI
@@ -541,9 +564,19 @@ The selected profile's settings are displayed below the dropdown, showing:
    - Verify all wells were visited
    - Check coordinates match expectations
 
-3. **Review Logs**:
+3. **Check FPS Metadata Files** (for video recordings):
+   - Each video recording has a corresponding metadata file: `{video_filename}_metadata.json`
+   - Example: `20241215_143022_exp_B2.h264` → `20241215_143022_exp_B2_metadata.json`
+   - Contains FPS, resolution, duration, format, timestamp, and well label
+   - **Critical for accurate playback**, especially for MJPEG files
+   - For MJPEG playback, use the FPS value from the metadata file:
+     - VLC: `vlc --demux=mjpeg --mjpeg-fps=<fps_from_metadata> video.mjpeg`
+   - H264 videos have FPS embedded, but metadata file provides additional information
+
+4. **Review Logs**:
    - Check log file in `logs/` directory
    - Look for any errors or warnings
+   - Check for FPS warnings - system logs actual vs expected duration to detect FPS issues
 
 ## Additional Resources
 

@@ -19,7 +19,14 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 - **4-Corner Path Calibration**: Guided calibration procedure to account for angled well plates with automatic bilinear interpolation (properly handles rotation and skew)
 - **Go to Coordinate**: Direct navigation to specific X, Y, Z coordinates in calibration mode
 - **Video/Still Capture**: Record videos or capture still images at each well
+  - **Accurate FPS Recording**: FPS metadata embedded in H264 videos and saved in JSON metadata files
+  - **Real-Time Playback**: Ensures videos play at correct speed for scientific velocity measurements
+  - **FPS Metadata Files**: JSON metadata files saved alongside videos with FPS, resolution, and duration information
 - **Laser Control**: GPIO-controlled laser with configurable timing sequences (OFF-ON-OFF)
+- **Simulation Mode**: Test imaging workflows without 3D printer hardware using `--simulate` flag
+  - All camera and imaging features work normally
+  - Movements are simulated (position tracking updates, but no actual hardware movement)
+  - Perfect for testing experiment configurations and calibration procedures
 - **Configurable Experiments**: JSON-based configuration for experiment parameters
 - **Motion Configuration**: Separate feedrate and acceleration settings for preliminary and between-wells movements
 - **Calibration-Based Experiments**: Load calibrations and select wells via checkbox grid
@@ -117,6 +124,8 @@ mkdir -p config/templates
 # Or manually:
 source venv/bin/activate
 python calibrate.py
+# Or with simulation mode (no 3D printer required):
+python calibrate.py --simulate
 ```
 
 ### Starting the Preview Application
@@ -128,6 +137,8 @@ source venv/bin/activate
 python preview.py
 # Or with backend selection:
 python preview.py --backend auto
+# Or with simulation mode (no 3D printer required):
+python preview.py --simulate
 ```
 
 ### Starting the Experiment Application
@@ -137,6 +148,8 @@ python preview.py --backend auto
 # Or manually:
 source venv/bin/activate
 python experiment.py
+# Or with simulation mode (no 3D printer required):
+python experiment.py --simulate
 ```
 
 ## Usage
@@ -147,6 +160,7 @@ python experiment.py
    ```bash
    ./start_calibrate.sh
    # Or: python calibrate.py --backend auto
+   # Or: python calibrate.py --simulate  # Test without 3D printer
    ```
 
 2. Two windows will open:
@@ -166,6 +180,8 @@ python experiment.py
 
 **Preview Backends**: Use `--backend auto` (default), `qtgl`, `drm`, or `null` for headless mode
 
+**Simulation Mode**: Use `--simulate` to run without 3D printer hardware. All camera and imaging features work normally, but movements are simulated (position tracking updates without actual hardware movement). Window title shows "[SIMULATION MODE]" when active.
+
 ### Preview Alignment Check (preview.py)
 
 1. Launch the preview application:
@@ -173,6 +189,7 @@ python experiment.py
    source venv/bin/activate
    python preview.py
    # Or: python preview.py --backend auto
+   # Or: python preview.py --simulate  # Test without 3D printer
    ```
 
 2. Two windows will open:
@@ -199,9 +216,16 @@ python experiment.py
 
 **Preview Backends**: Use `--backend auto` (default), `qtgl`, `drm`, or `null` for headless mode
 
+**Simulation Mode**: Use `--simulate` to run without 3D printer hardware. All camera and imaging features work normally, but movements are simulated (position tracking updates without actual hardware movement). Window title shows "[SIMULATION MODE]" when active.
+
 ### Experiment Setup (experiment.py)
 
-1. Launch the experiment application
+1. Launch the experiment application:
+   ```bash
+   ./start_experiment.sh
+   # Or: python experiment.py
+   # Or: python experiment.py --simulate  # Test without 3D printer
+   ```
 2. Click "Open Experiment" to open the experiment configuration window
 3. **Load Calibration** (Required):
    - Select a calibration from the dropdown (calibrations saved from calibrate.py)
@@ -371,6 +395,33 @@ Videos or images are automatically saved to `outputs/YYYYMMDD_{experiment_name}/
 - `YYYYMMDD` is the date when the experiment is run (e.g., "20241215")
 - `{experiment_name}` is the value from the "Experiment Name" field
 
+**FPS Metadata Files**: For each video recording, a JSON metadata file is automatically saved alongside the video with the format `{video_filename}_metadata.json`. This file contains:
+- **FPS**: Frame rate used for recording (critical for accurate playback)
+- **Resolution**: Video resolution (width, height)
+- **Duration**: Expected recording duration in seconds
+- **Format**: Video format (H264 or MJPEG)
+- **Timestamp**: Recording timestamp
+- **Well Label**: Well identifier (e.g., "A1")
+
+**Example metadata file** (`20241215_143022_exp_B2_metadata.json`):
+```json
+{
+  "fps": 30.0,
+  "resolution": [1920, 1080],
+  "duration_seconds": 30.0,
+  "format": "H264",
+  "timestamp": "20241215_143022",
+  "well_label": "B2",
+  "video_file": "20241215_143022_exp_B2.h264"
+}
+```
+
+**FPS Accuracy**:
+- **H264 videos**: FPS metadata is embedded directly in the video file for accurate playback
+- **MJPEG videos**: FPS metadata is saved in the JSON file (MJPEG format doesn't support native FPS metadata)
+  - For MJPEG playback, use the FPS from the metadata file
+  - VLC example: `vlc --demux=mjpeg --mjpeg-fps=30.0 video.mjpeg`
+
 **Directory Creation**: The application automatically creates the `outputs/YYYYMMDD_{experiment_name}/` directory if it doesn't exist. If you encounter permission errors, the application will identify the issue and provide specific fix instructions. To manually set up the directory:
 ```bash
 mkdir -p outputs
@@ -476,6 +527,18 @@ export ROBOCAM_BAUDRATE=9600
   - Use separate camera streams for preview and recording (planned feature)
   - Check available CPU/memory resources
   - Reduce recording resolution if necessary
+  - Check logs for FPS warnings - the system logs actual vs expected duration to help identify FPS issues
+
+### Video Playback Duration Mismatch
+
+- **Problem**: Videos play faster/slower than expected, or duration doesn't match recording time
+- **Solution**:
+  - **H264 videos**: FPS metadata is embedded in the video - most players should use it automatically
+  - **MJPEG videos**: Use the FPS value from the `{video_filename}_metadata.json` file
+    - VLC: `vlc --demux=mjpeg --mjpeg-fps=<fps_from_metadata> video.mjpeg`
+    - Or check the metadata JSON file for the correct FPS value
+  - Verify the metadata file exists alongside your video file
+  - Check application logs for FPS warnings during recording
 
 ### Printer Not Responding
 

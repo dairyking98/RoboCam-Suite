@@ -37,21 +37,23 @@ class RoboCam:
         Z (float): Current Z position in mm
     """
     
-    def __init__(self, baudrate: Optional[int] = None, config: Optional[Config] = None) -> None:
+    def __init__(self, baudrate: Optional[int] = None, config: Optional[Config] = None, simulate: bool = False) -> None:
         """
         Initialize RoboCam and connect to printer.
         
         Args:
             baudrate: Serial communication baud rate. If None, uses config default.
             config: Configuration object. If None, uses global config.
+            simulate: If True, skip printer connection and simulate movements (for testing without hardware).
             
         Note:
             Automatically finds and connects to USB serial port.
             Sends M105 command to announce control and updates position.
+            In simulation mode, skips serial connection and all movements just update position tracking.
             
         Raises:
-            ConnectionError: If printer connection fails
-            serial.SerialException: If serial port cannot be opened
+            ConnectionError: If printer connection fails (only in non-simulation mode)
+            serial.SerialException: If serial port cannot be opened (only in non-simulation mode)
         """
         # Load configuration
         self.config: Config = config if config else get_config()
@@ -67,27 +69,37 @@ class RoboCam:
         self.connection_retry_delay: float = printer_config.get("connection_retry_delay", 2.0)
         self.max_retries: int = printer_config.get("max_retries", 5)
         
+        # Simulation mode flag
+        self.simulate: bool = simulate
+        
         # Initialize position tracking
         self.X: Optional[float] = None
         self.Y: Optional[float] = None
         self.Z: Optional[float] = None
         self.printer_on_serial: Optional[serial.Serial] = None
         
-        # Connect to printer
-        try:
-            serial_port = self.find_serial_port()
-            if serial_port:
-                self.printer_on_serial = self.wait_for_connection(serial_port)
-            else:
-                raise ConnectionError("No serial port found. Check USB connection to printer.")
-            
-            # Announce control
-            self.send_gcode("M105")  # creality ender 5 s1, to announce control via serial
-            
-            # Update position
-            self.X, self.Y, self.Z = self.update_current_position()
-        except Exception as e:
-            raise ConnectionError(f"Failed to initialize RoboCam: {e}") from e
+        if self.simulate:
+            # Simulation mode: initialize position to origin
+            logger.info("RoboCam running in SIMULATION MODE - no printer connection")
+            self.X = 0.0
+            self.Y = 0.0
+            self.Z = 0.0
+        else:
+            # Connect to printer
+            try:
+                serial_port = self.find_serial_port()
+                if serial_port:
+                    self.printer_on_serial = self.wait_for_connection(serial_port)
+                else:
+                    raise ConnectionError("No serial port found. Check USB connection to printer.")
+                
+                # Announce control
+                self.send_gcode("M105")  # creality ender 5 s1, to announce control via serial
+                
+                # Update position
+                self.X, self.Y, self.Z = self.update_current_position()
+            except Exception as e:
+                raise ConnectionError(f"Failed to initialize RoboCam: {e}") from e
 
     def send_gcode(self, command: str, timeout: Optional[float] = None) -> None:
         """
@@ -98,14 +110,20 @@ class RoboCam:
             timeout: Timeout in seconds. If None, uses config timeout.
             
         Raises:
-            ConnectionError: If printer is not connected
-            serial.SerialException: If serial communication fails
-            TimeoutError: If printer doesn't respond within timeout
+            ConnectionError: If printer is not connected (only in non-simulation mode)
+            serial.SerialException: If serial communication fails (only in non-simulation mode)
+            TimeoutError: If printer doesn't respond within timeout (only in non-simulation mode)
             
         Note:
             Waits for "ok" response from printer before returning.
             Raises exception if printer responds with "error".
+            In simulation mode, this is a no-op.
         """
+        if self.simulate:
+            logger.debug(f'[SIMULATION] G-code command: "{command}"')
+            time.sleep(self.command_delay)  # Simulate command delay
+            return
+        
         if self.printer_on_serial is None:
             raise ConnectionError("Printer not connected. Cannot send G-code command.")
         
@@ -238,20 +256,25 @@ class RoboCam:
             acceleration: Acceleration value in mm/s² (must be > 0)
             
         Raises:
-            ConnectionError: If printer is not connected
+            ConnectionError: If printer is not connected (only in non-simulation mode)
             ValueError: If acceleration is invalid
-            RuntimeError: If command fails
+            RuntimeError: If command fails (only in non-simulation mode)
             
         Note:
             Sends M204 S<acceleration> command to set acceleration.
             Some printers may use M204 P<acceleration> for print acceleration.
             This uses S parameter for general acceleration.
+            In simulation mode, this is a no-op.
         """
-        if self.printer_on_serial is None:
-            raise ConnectionError("Printer not connected. Cannot set acceleration.")
-        
         if acceleration <= 0:
             raise ValueError(f"Invalid acceleration: {acceleration} (must be > 0)")
+        
+        if self.simulate:
+            logger.info(f'[SIMULATION] Acceleration set to {acceleration} mm/s²')
+            return
+        
+        if self.printer_on_serial is None:
+            raise ConnectionError("Printer not connected. Cannot set acceleration.")
         
         try:
             # M204 S sets acceleration in mm/s²
@@ -267,14 +290,23 @@ class RoboCam:
         Home the printer to origin (0, 0, 0).
         
         Raises:
-            ConnectionError: If printer is not connected
-            RuntimeError: If homing command fails
-            TimeoutError: If homing times out
+            ConnectionError: If printer is not connected (only in non-simulation mode)
+            RuntimeError: If homing command fails (only in non-simulation mode)
+            TimeoutError: If homing times out (only in non-simulation mode)
             
         Note:
             Sends G28 command which homes all axes.
             Updates position after homing completes.
+            In simulation mode, just resets position to (0, 0, 0).
         """
+        if self.simulate:
+            logger.info('[SIMULATION] Homing printer - resetting to origin')
+            self.X = 0.0
+            self.Y = 0.0
+            self.Z = 0.0
+            logger.info(f"[SIMULATION] Printer homed. Reset positions to X: {self.X}, Y: {self.Y}, Z: {self.Z}")
+            return
+        
         logger.info('Homing Printer, please wait for the countdown to complete')
         try:
             self.send_gcode('G28', timeout=self.home_timeout)  # Use configurable home timeout
@@ -292,14 +324,19 @@ class RoboCam:
             Tuple of (X, Y, Z) positions in mm, or (None, None, None) if unavailable.
             
         Raises:
-            ConnectionError: If printer is not connected
-            TimeoutError: If position query times out
-            ValueError: If position cannot be parsed
+            ConnectionError: If printer is not connected (only in non-simulation mode)
+            TimeoutError: If position query times out (only in non-simulation mode)
+            ValueError: If position cannot be parsed (only in non-simulation mode)
             
         Note:
             Sends M114 command to get current position.
             Parses response and updates self.X, self.Y, self.Z.
+            In simulation mode, returns current tracked position.
         """
+        if self.simulate:
+            logger.debug('[SIMULATION] Updating current position')
+            return self.X, self.Y, self.Z
+        
         if self.printer_on_serial is None:
             raise ConnectionError("Printer not connected. Cannot update position.")
         
@@ -368,21 +405,37 @@ class RoboCam:
             speed: Movement speed in mm/min. None to use default.
             
         Raises:
-            ConnectionError: If printer is not connected
-            RuntimeError: If movement command fails
+            ConnectionError: If printer is not connected (only in non-simulation mode)
+            RuntimeError: If movement command fails (only in non-simulation mode)
             ValueError: If position values are invalid
             
         Note:
             Uses G91 (relative positioning mode).
             Sends M400 to wait for movement completion before returning.
             Updates position after movement.
+            In simulation mode, just updates internal position tracking.
         """
-        if self.printer_on_serial is None:
-            raise ConnectionError("Printer not connected. Cannot move.")
-        
         # Validate that at least one axis is specified
         if X is None and Y is None and Z is None:
             raise ValueError("At least one axis (X, Y, or Z) must be specified for movement")
+        
+        if speed is not None and speed <= 0:
+            raise ValueError(f"Invalid speed: {speed} (must be > 0)")
+        
+        if self.simulate:
+            # Update position tracking
+            if X is not None:
+                self.X = (self.X or 0.0) + X
+            if Y is not None:
+                self.Y = (self.Y or 0.0) + Y
+            if Z is not None:
+                self.Z = (self.Z or 0.0) + Z
+            logger.debug(f'[SIMULATION] Relative move to X:{self.X}, Y:{self.Y}, Z:{self.Z}')
+            time.sleep(0.1)  # Simulate movement delay
+            return
+        
+        if self.printer_on_serial is None:
+            raise ConnectionError("Printer not connected. Cannot move.")
         
         logger.debug(f'Relative move to X:{X}, Y:{Y}, Z:{Z}')
         
@@ -391,8 +444,6 @@ class RoboCam:
             command = "G0"
 
             if speed is not None:
-                if speed <= 0:
-                    raise ValueError(f"Invalid speed: {speed} (must be > 0)")
                 command += f" F{speed}"
             if X is not None:
                 command += f" X{X}"
@@ -419,21 +470,37 @@ class RoboCam:
             speed: Movement speed in mm/min. None to use default.
             
         Raises:
-            ConnectionError: If printer is not connected
-            RuntimeError: If movement command fails
+            ConnectionError: If printer is not connected (only in non-simulation mode)
+            RuntimeError: If movement command fails (only in non-simulation mode)
             ValueError: If position values are invalid
             
         Note:
             Uses G90 (absolute positioning mode).
             Sends M400 to wait for movement completion before returning.
             Updates position after movement.
+            In simulation mode, just updates internal position tracking.
         """
-        if self.printer_on_serial is None:
-            raise ConnectionError("Printer not connected. Cannot move.")
-        
         # Validate that at least one axis is specified
         if X is None and Y is None and Z is None:
             raise ValueError("At least one axis (X, Y, or Z) must be specified for movement")
+        
+        if speed is not None and speed <= 0:
+            raise ValueError(f"Invalid speed: {speed} (must be > 0)")
+        
+        if self.simulate:
+            # Update position tracking
+            if X is not None:
+                self.X = X
+            if Y is not None:
+                self.Y = Y
+            if Z is not None:
+                self.Z = Z
+            logger.debug(f'[SIMULATION] Absolute move to X:{self.X}, Y:{self.Y}, Z:{self.Z}')
+            time.sleep(0.1)  # Simulate movement delay
+            return
+        
+        if self.printer_on_serial is None:
+            raise ConnectionError("Printer not connected. Cannot move.")
         
         logger.debug(f'Absolute move to X:{X}, Y:{Y}, Z:{Z}')
         
@@ -442,8 +509,6 @@ class RoboCam:
             command = "G0"
 
             if speed is not None:
-                if speed <= 0:
-                    raise ValueError(f"Invalid speed: {speed} (must be > 0)")
                 command += f" F{speed}"
             if X is not None:
                 command += f" X{X}"

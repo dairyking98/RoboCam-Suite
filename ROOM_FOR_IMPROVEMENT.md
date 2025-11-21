@@ -159,13 +159,15 @@ This document tracks areas where the RoboCam-Suite codebase can be improved, org
 
 ### 7. FPS Optimization (CRITICAL)
 
-**Current State**: ✅ **SIGNIFICANTLY IMPROVED** - Native preview for calibrate.py, optimized recording config for experiment.py.
+**Current State**: ✅ **COMPLETED** - Native preview for calibrate.py, optimized recording config for experiment.py, FPS accuracy improvements.
 
 **Issues**:
 - ✅ calibrate.py now uses native hardware-accelerated preview (DRM/QTGL)
 - ✅ FPS tracking implemented in calibrate.py
 - ✅ experiment.py uses optimized recording configuration (buffer_count=2)
 - ✅ Preview disabled during recording in experiment.py (no GUI preview needed)
+- ✅ FPS metadata properly embedded in H264 videos and saved in JSON files
+- ✅ FPS accuracy improvements for scientific velocity measurements
 - ⚠️ Video capture still uses same Picamera2 instance (could be further optimized with separate instance)
 
 **Improvements Needed**:
@@ -174,6 +176,9 @@ This document tracks areas where the RoboCam-Suite codebase can be improved, org
 - ✅ Separate preview and recording camera configurations in experiment.py (COMPLETED)
 - ✅ Optimize camera buffer settings for recording (buffer_count=2) (COMPLETED)
 - ✅ Preview disabled during recording in experiment.py (COMPLETED)
+- ✅ FPS parameter passed to H264Encoder for metadata embedding (COMPLETED)
+- ✅ FPS metadata files saved alongside videos (COMPLETED)
+- ✅ FPS logging and duration verification (COMPLETED)
 - ⚠️ Video capture already runs in separate thread (no tkinter blocking)
 - ⚠️ Could use separate Picamera2 instances for further optimization (not critical)
 

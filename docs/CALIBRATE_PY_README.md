@@ -232,6 +232,8 @@ Calibrations are saved as JSON files for easy loading in `experiment.py`.
    ```bash
    ./start_calibrate.sh
    # Or: python calibrate.py --backend qtgl
+   # Or with simulation mode (no 3D printer required):
+   python calibrate.py --simulate
    ```
 
 2. **Home Printer**:
@@ -301,6 +303,14 @@ python calibrate.py --backend drm
 ```bash
 python calibrate.py --backend null
 # No preview window, controls only
+```
+
+**Simulation Mode** (no 3D printer required):
+```bash
+python calibrate.py --simulate
+# Runs without 3D printer connection - movements are simulated
+# Camera and imaging features work normally
+# Window title shows "[SIMULATION MODE]"
 ```
 
 ## Calibration File Format
