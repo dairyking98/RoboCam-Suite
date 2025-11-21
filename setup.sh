@@ -109,7 +109,8 @@ echo ""
 
 # Upgrade pip
 echo "Upgrading pip..."
-pip install --upgrade pip
+# Suppress send2trash dependency parsing warning (harmless metadata issue)
+pip install --upgrade pip 2>&1 | grep -v "WARNING: Error parsing dependencies of send2trash" || true
 
 echo ""
 
@@ -119,8 +120,10 @@ if [ -f "requirements.txt" ]; then
     # Try to install dependencies, but don't exit on error
     # This allows partial installation if some packages fail
     set +e  # Temporarily disable exit on error
-    pip install -r requirements.txt
-    PIP_EXIT_CODE=$?
+    # Suppress send2trash dependency parsing warning (harmless metadata issue)
+    # Filter warning while preserving pip's exit code
+    pip install -r requirements.txt 2>&1 | grep -v "WARNING: Error parsing dependencies of send2trash"
+    PIP_EXIT_CODE=${PIPESTATUS[0]}
     set -e  # Re-enable exit on error
     
     if [ $PIP_EXIT_CODE -eq 0 ]; then
