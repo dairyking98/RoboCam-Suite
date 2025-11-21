@@ -30,7 +30,8 @@ echo "Starting RoboCam-Suite Experiment Application..."
 echo "Log file: logs/experiment_$(date +%Y%m%d_%H%M%S).log"
 echo ""
 
-python experiment.py 2>&1 | tee "logs/experiment_$(date +%Y%m%d_%H%M%S).log"
+# Pass through all command-line arguments (e.g., --simulate)
+python experiment.py "$@" 2>&1 | tee "logs/experiment_$(date +%Y%m%d_%H%M%S).log"
 
 # Deactivate virtual environment on exit
 deactivate

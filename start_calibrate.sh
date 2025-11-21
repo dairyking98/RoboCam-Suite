@@ -30,7 +30,8 @@ echo "Starting RoboCam-Suite Calibration Application..."
 echo "Log file: logs/calibrate_$(date +%Y%m%d_%H%M%S).log"
 echo ""
 
-python calibrate.py 2>&1 | tee "logs/calibrate_$(date +%Y%m%d_%H%M%S).log"
+# Pass through all command-line arguments (e.g., --simulate, --backend)
+python calibrate.py "$@" 2>&1 | tee "logs/calibrate_$(date +%Y%m%d_%H%M%S).log"
 
 # Deactivate virtual environment on exit
 deactivate

@@ -30,7 +30,8 @@ echo "Starting RoboCam-Suite Preview Application..."
 echo "Log file: logs/preview_$(date +%Y%m%d_%H%M%S).log"
 echo ""
 
-python preview.py 2>&1 | tee "logs/preview_$(date +%Y%m%d_%H%M%S).log"
+# Pass through all command-line arguments (e.g., --simulate, --backend)
+python preview.py "$@" 2>&1 | tee "logs/preview_$(date +%Y%m%d_%H%M%S).log"
 
 # Deactivate virtual environment on exit
 deactivate
