@@ -747,8 +747,14 @@ class CameraApp:
             self.update_position()
             
             # Update FPS display
-            fps = self.fps_tracker.get_fps()
-            self.fps_label.config(text=f"{fps:.1f}")
+            if self._simulate_cam:
+                # In camera simulation mode, show "SIM" instead of FPS
+                self.fps_label.config(text="SIM")
+            elif self.fps_tracker is not None:
+                fps = self.fps_tracker.get_fps()
+                self.fps_label.config(text=f"{fps:.1f}")
+            else:
+                self.fps_label.config(text="N/A")
             
             # Schedule next update (200ms = 5 Hz update rate for status)
             self.root.after(200, self.update_status)

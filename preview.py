@@ -706,7 +706,7 @@ class PreviewApp:
             if self._simulate_cam:
                 # In camera simulation mode, show "SIM" instead of FPS
                 self.fps_label.config(text="SIM")
-            elif self.picam2:
+            elif self.picam2 and self.fps_tracker is not None:
                 fps = self.fps_tracker.get_fps()
                 self.fps_label.config(text=f"{fps:.1f}")
             else:
