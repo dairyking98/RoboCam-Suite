@@ -1565,6 +1565,19 @@ class ExperimentWindow:
         if self.running:
             return
         
+        # Check if running in simulation mode
+        if self.simulate_3d or self.simulate_cam:
+            sim_modes = []
+            if self.simulate_3d:
+                sim_modes.append("3D printer")
+            if self.simulate_cam:
+                sim_modes.append("camera")
+            sim_text = " and ".join(sim_modes)
+            error_msg = f"Unable to run experiment: Running in {sim_text} simulation mode"
+            logger.error(error_msg)
+            self.status_lbl.config(text=error_msg, fg="red")
+            return
+        
         # Validate calibration is loaded (blocking)
         if not self.loaded_calibration:
             logger.error("No calibration loaded")
@@ -1693,7 +1706,13 @@ class ExperimentWindow:
         elif export == "H264":
             # Pass fps parameter to ensure FPS metadata is written to the H264 stream
             # This ensures accurate playback duration for scientific measurements
-            self.encoder = H264Encoder(bitrate=50_000_000, fps=fps)
+            # Note: fps parameter may not be supported in all picamera2 versions
+            try:
+                self.encoder = H264Encoder(bitrate=50_000_000, fps=fps)
+            except TypeError:
+                # Fallback for older picamera2 versions that don't support fps parameter
+                logger.warning(f"H264Encoder doesn't support fps parameter, using default (fps will be in metadata JSON)")
+                self.encoder = H264Encoder(bitrate=50_000_000)
         else:
             self.encoder = None  # JPEG still mode
 
