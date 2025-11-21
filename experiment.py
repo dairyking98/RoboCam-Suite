@@ -432,7 +432,7 @@ class ExperimentWindow:
         self.res_y_ent.insert(0, str(DEFAULT_RES[1]))
         
         row += 1
-        tk.Label(camera_frame, text="TARGET FPS:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
+        tk.Label(camera_frame, text="Target FPS:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
         self.fps_ent = tk.Entry(camera_frame, width=12)
         self.fps_ent.grid(row=row, column=1, sticky="w", padx=2, pady=2)
         self.fps_ent.insert(0, str(DEFAULT_FPS))
@@ -490,9 +490,8 @@ class ExperimentWindow:
         tk.Button(exp_settings_frame, text="Refresh", command=self.refresh_experiment_settings).pack(side=tk.LEFT, padx=2)
         tk.Button(exp_settings_frame, text="Export", command=self.export_experiment_settings).pack(side=tk.LEFT, padx=2)
         
-        self.experiment_settings_status_label = tk.Label(exp_frame, text="No settings loaded", fg="red", font=("Arial", 9), anchor="w")
-        self.experiment_settings_status_label.grid(row=0, column=3, sticky="ew", padx=2, pady=2)
-        exp_frame.grid_columnconfigure(3, weight=1)
+        self.experiment_settings_status_label = tk.Label(exp_frame, text="No settings loaded", fg="red", font=("Arial", 9), wraplength=500, justify="left")
+        self.experiment_settings_status_label.grid(row=1, column=0, columnspan=4, sticky="w", padx=2, pady=2)
 
         # === SECTION 6: STATUS & CONTROLS ===
         control_frame = tk.LabelFrame(container, text="Status & Controls", padx=5, pady=5)
