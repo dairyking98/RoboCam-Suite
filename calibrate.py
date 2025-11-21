@@ -56,7 +56,7 @@ class CameraApp:
             root: Tkinter root window
             preview_backend: Preview backend to use ("auto", "drm", "qtgl", "null")
             simulate_3d: If True, run in 3D printer simulation mode (no printer connection)
-            simulate_cam: If True, run in camera simulation mode (placeholder instead of camera)
+            simulate_cam: If True, run in camera simulation mode (no camera connection)
         """
         self.root: tk.Tk = root
         sim_text = []
