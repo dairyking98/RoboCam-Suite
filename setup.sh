@@ -126,6 +126,22 @@ if [ -f "requirements.txt" ]; then
     PIP_EXIT_CODE=${PIPESTATUS[0]}
     set -e  # Re-enable exit on error
     
+    # Fix numpy/simplejpeg compatibility issue
+    # System simplejpeg may be compiled against different numpy version than venv's numpy
+    # Install simplejpeg in venv to ensure it's compiled against venv's numpy version
+    echo ""
+    echo "Fixing simplejpeg/numpy compatibility..."
+    VENV_NUMPY_VERSION=$(python3 -c "import numpy; print(numpy.__version__)" 2>/dev/null || echo "")
+    if [ -n "$VENV_NUMPY_VERSION" ]; then
+        echo "Venv numpy version: $VENV_NUMPY_VERSION"
+        echo "Installing simplejpeg in venv to match numpy version..."
+        # Uninstall any existing simplejpeg (system or venv)
+        pip uninstall -y simplejpeg 2>/dev/null || true
+        # Install simplejpeg in venv (will compile against venv's numpy)
+        pip install simplejpeg 2>&1 | grep -v "WARNING: Error parsing dependencies of send2trash" || true
+        echo "Simplejpeg installed in venv (compiled against numpy $VENV_NUMPY_VERSION)"
+    fi
+    
     if [ $PIP_EXIT_CODE -eq 0 ]; then
         echo "Dependencies installed successfully."
     else
