@@ -52,10 +52,16 @@ if ! dpkg -l | grep -q "^ii.*build-essential"; then
     MISSING_DEPS+=("build-essential")
 fi
 
+# Check for python3-rpi.gpio (required for GPIO control)
+if ! dpkg -l | grep -q "^ii.*python3-rpi.gpio"; then
+    MISSING_DEPS+=("python3-rpi.gpio")
+fi
+
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     echo "Missing system dependencies detected: ${MISSING_DEPS[*]}"
     echo "These are required for:"
     echo "  - python3-libcamera: Required for picamera2 (Raspberry Pi camera support)"
+    echo "  - python3-rpi.gpio: Required for GPIO control (laser control)"
     echo "  - libcap-dev, python3-dev, build-essential: Required to build Python packages"
     echo ""
     echo "Please install them before continuing:"
