@@ -86,9 +86,11 @@ class PreviewApp:
         
         if self._simulate:
             # In simulation mode, show default image instead of camera
+            print("Setting up simulation preview...")
             self._setup_simulation_preview()
             # Initialize fps_tracker to None (not used in simulation)
             self.fps_tracker = None
+            print("Simulation preview setup complete")
         else:
             # Normal camera setup
             self.picam2 = Picamera2()
@@ -141,15 +143,20 @@ class PreviewApp:
         try:
             self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate=self._simulate)
         except Exception as e:
-            error_msg = str(e)
+            error_msg = str(e).lower()
             if self._simulate:
+                # In simulation mode, don't show error - just continue
+                print(f"Simulation mode: Ignoring printer initialization error: {e}")
                 user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
-            elif "not connected" in error_msg.lower() or "serial port" in error_msg.lower():
+                # Don't show error dialog in simulation mode, just print
+                print(user_msg)
+            elif "not connected" in error_msg or "serial port" in error_msg or "failed to initialize" in error_msg or "connection" in error_msg:
                 user_msg = "Printer connection failed. Check USB cable and try again."
+                messagebox.showerror("Connection Error", user_msg)
             else:
                 user_msg = f"Initialization error: {error_msg}"
+                messagebox.showerror("Connection Error", user_msg)
             
-            messagebox.showerror("Connection Error", user_msg)
             print(f"RoboCam initialization error: {e}")
             self.robocam = None
 
@@ -162,25 +169,45 @@ class PreviewApp:
             # Create a separate window for the simulation image
             self.simulation_image_window = tk.Toplevel(self.root)
             self.simulation_image_window.title("Simulation Preview [SIMULATION MODE]")
+            # Make sure window is visible
+            self.simulation_image_window.lift()
+            self.simulation_image_window.focus_force()
             
             # Download the default image
             image_url = "https://i.kym-cdn.com/photos/images/newsfeed/000/270/485/b1f.gif"
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.gif')
-            temp_file.close()
+            temp_file = None
+            temp_file_path = None
             
             try:
-                urllib.request.urlretrieve(image_url, temp_file.name)
+                # Create temp file
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.gif')
+                temp_file_path = temp_file.name
+                temp_file.close()
+                
+                # Download image
+                print(f"Downloading simulation preview image from {image_url}...")
+                urllib.request.urlretrieve(image_url, temp_file_path)
+                print("Image downloaded successfully")
                 
                 # Load and display the image
                 try:
-                    from PIL import Image, ImageTk
-                    img = Image.open(temp_file.name)
+                    from PIL import Image, ImageTk, ImageSequence
+                    print("Opening image with PIL...")
+                    img = Image.open(temp_file_path)
                     
-                    # Resize to match preview resolution if needed
-                    preview_res = (800, 600)  # Default preview resolution
-                    img = img.resize(preview_res, Image.Resampling.LANCZOS)
+                    # Check if it's an animated GIF
+                    frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
                     
-                    photo = ImageTk.PhotoImage(img)
+                    if len(frames) > 1:
+                        # Animated GIF - use first frame and resize
+                        preview_res = (800, 600)  # Default preview resolution
+                        first_frame = frames[0].resize(preview_res, Image.Resampling.LANCZOS)
+                        photo = ImageTk.PhotoImage(first_frame)
+                    else:
+                        # Static image - resize and display
+                        preview_res = (800, 600)  # Default preview resolution
+                        img = img.resize(preview_res, Image.Resampling.LANCZOS)
+                        photo = ImageTk.PhotoImage(img)
                     
                     # Create label to display image
                     img_label = tk.Label(self.simulation_image_window, image=photo)
@@ -196,12 +223,21 @@ class PreviewApp:
                     )
                     text_label.pack()
                     
-                    print("Simulation preview image loaded successfully")
-                except ImportError:
-                    # PIL not available, show text only
+                    # Force window update
+                    self.simulation_image_window.update()
+                    self.root.update()
+                    
+                    print("Simulation preview image loaded and displayed successfully")
+                except ImportError as ie:
+                    print(f"PIL/Pillow not available: {ie}")
                     raise Exception("PIL/Pillow not installed. Install with: pip install Pillow")
+                except Exception as img_error:
+                    print(f"Error processing image: {img_error}")
+                    raise
             except Exception as e:
                 print(f"Failed to load simulation image: {e}")
+                import traceback
+                traceback.print_exc()
                 # Fallback: show text only
                 fallback_label = tk.Label(
                     self.simulation_image_window,
@@ -215,13 +251,17 @@ class PreviewApp:
                 fallback_label.pack()
             finally:
                 # Clean up temp file
-                try:
-                    os.unlink(temp_file.name)
-                except:
-                    pass
+                if temp_file_path:
+                    try:
+                        os.unlink(temp_file_path)
+                        print(f"Cleaned up temp file: {temp_file_path}")
+                    except Exception as cleanup_error:
+                        print(f"Failed to clean up temp file: {cleanup_error}")
                     
         except Exception as e:
             print(f"Failed to create simulation preview window: {e}")
+            import traceback
+            traceback.print_exc()
             self.simulation_image_window = None
 
     def create_widgets(self) -> None:

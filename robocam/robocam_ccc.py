@@ -99,7 +99,15 @@ class RoboCam:
                 # Update position
                 self.X, self.Y, self.Z = self.update_current_position()
             except Exception as e:
-                raise ConnectionError(f"Failed to initialize RoboCam: {e}") from e
+                # Don't raise ConnectionError in simulation mode
+                if self.simulate:
+                    logger.warning(f"Simulation mode: Ignoring printer connection error: {e}")
+                    # Set default position
+                    self.X = 0.0
+                    self.Y = 0.0
+                    self.Z = 0.0
+                else:
+                    raise ConnectionError(f"Failed to initialize RoboCam: {e}") from e
 
     def send_gcode(self, command: str, timeout: Optional[float] = None) -> None:
         """

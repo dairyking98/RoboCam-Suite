@@ -124,17 +124,24 @@ class CameraApp:
         try:
             self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate=self._simulate)
         except Exception as e:
-            error_msg = str(e)
+            error_msg = str(e).lower()
             if self._simulate:
+                # In simulation mode, don't show error - just continue
+                print(f"Simulation mode: Ignoring printer initialization error: {e}")
                 user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
-            elif "not connected" in error_msg.lower() or "serial port" in error_msg.lower():
+                # Don't show error dialog in simulation mode, just print
+                print(user_msg)
+            elif "not connected" in error_msg or "serial port" in error_msg or "failed to initialize" in error_msg or "connection" in error_msg:
                 user_msg = "Printer connection failed. Check USB cable and try again."
+                # Show error in a message box
+                import tkinter.messagebox as messagebox
+                messagebox.showerror("Connection Error", user_msg)
             else:
                 user_msg = f"Initialization error: {error_msg}"
+                # Show error in a message box
+                import tkinter.messagebox as messagebox
+                messagebox.showerror("Connection Error", user_msg)
             
-            # Show error in a message box
-            import tkinter.messagebox as messagebox
-            messagebox.showerror("Connection Error", user_msg)
             print(f"RoboCam initialization error: {e}")
             # Continue anyway - user can retry connection later
             self.robocam = None
