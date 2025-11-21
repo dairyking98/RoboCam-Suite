@@ -23,9 +23,9 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
   - **Real-Time Playback**: Ensures videos play at correct speed for scientific velocity measurements
   - **FPS Metadata Files**: JSON metadata files saved alongside videos with FPS, resolution, and duration information
 - **Laser Control**: GPIO-controlled laser with configurable timing sequences (OFF-ON-OFF)
-- **Simulation Mode**: Test imaging workflows without 3D printer hardware using `--simulate` flag
-  - All camera and imaging features work normally
-  - Movements are simulated (position tracking updates, but no actual hardware movement)
+- **Simulation Modes**: Test workflows without hardware using `--simulate_3d` and `--simulate_cam` flags
+  - `--simulate_3d`: Simulates 3D printer (movements update position tracking, but no actual hardware movement)
+  - `--simulate_cam`: Simulates camera (uses placeholder image or skips capture operations)
   - Perfect for testing experiment configurations and calibration procedures
 - **Configurable Experiments**: JSON-based configuration for experiment parameters
 - **Motion Configuration**: Separate feedrate and acceleration settings for preliminary and between-wells movements
@@ -124,8 +124,10 @@ mkdir -p config/templates
 # Or manually:
 source venv/bin/activate
 python calibrate.py
-# Or with simulation mode (no 3D printer required):
-python calibrate.py --simulate
+# Or with simulation modes (no hardware required):
+python calibrate.py --simulate_3d  # Simulate 3D printer only
+python calibrate.py --simulate_cam  # Simulate camera only
+python calibrate.py --simulate_3d --simulate_cam  # Simulate both
 ```
 
 ### Starting the Preview Application
@@ -137,8 +139,10 @@ source venv/bin/activate
 python preview.py
 # Or with backend selection:
 python preview.py --backend auto
-# Or with simulation mode (no 3D printer required):
-python preview.py --simulate
+# Or with simulation modes (no hardware required):
+python preview.py --simulate_3d  # Simulate 3D printer only
+python preview.py --simulate_cam  # Simulate camera only (shows placeholder image)
+python preview.py --simulate_3d --simulate_cam  # Simulate both
 ```
 
 ### Starting the Experiment Application
@@ -148,8 +152,10 @@ python preview.py --simulate
 # Or manually:
 source venv/bin/activate
 python experiment.py
-# Or with simulation mode (no 3D printer required):
-python experiment.py --simulate
+# Or with simulation modes (no hardware required):
+python experiment.py --simulate_3d  # Simulate 3D printer only
+python experiment.py --simulate_cam  # Simulate camera only
+python experiment.py --simulate_3d --simulate_cam  # Simulate both
 ```
 
 ## Usage
@@ -160,7 +166,8 @@ python experiment.py --simulate
    ```bash
    ./start_calibrate.sh
    # Or: python calibrate.py --backend auto
-   # Or: python calibrate.py --simulate  # Test without 3D printer
+   # Or: python calibrate.py --simulate_3d  # Test without 3D printer
+   # Or: python calibrate.py --simulate_cam  # Test without camera
    ```
 
 2. Two windows will open:
@@ -180,7 +187,10 @@ python experiment.py --simulate
 
 **Preview Backends**: Use `--backend auto` (default), `qtgl`, `drm`, or `null` for headless mode
 
-**Simulation Mode**: Use `--simulate` to run without 3D printer hardware. All camera and imaging features work normally, but movements are simulated (position tracking updates without actual hardware movement). Window title shows "[SIMULATION MODE]" when active.
+**Simulation Modes**: 
+- `--simulate_3d`: Run without 3D printer hardware. Movements are simulated (position tracking updates without actual hardware movement).
+- `--simulate_cam`: Run without camera hardware. Uses placeholder image instead of live camera feed.
+- Window title shows "[3D PRINTER SIM]" and/or "[CAMERA SIM]" when active.
 
 ### Preview Alignment Check (preview.py)
 
@@ -189,7 +199,8 @@ python experiment.py --simulate
    source venv/bin/activate
    python preview.py
    # Or: python preview.py --backend auto
-   # Or: python preview.py --simulate  # Test without 3D printer
+   # Or: python preview.py --simulate_3d  # Test without 3D printer
+   # Or: python preview.py --simulate_cam  # Test without camera (shows placeholder image)
    ```
 
 2. Two windows will open:
@@ -216,7 +227,10 @@ python experiment.py --simulate
 
 **Preview Backends**: Use `--backend auto` (default), `qtgl`, `drm`, or `null` for headless mode
 
-**Simulation Mode**: Use `--simulate` to run without 3D printer hardware. All camera and imaging features work normally, but movements are simulated (position tracking updates without actual hardware movement). Window title shows "[SIMULATION MODE]" when active.
+**Simulation Modes**: 
+- `--simulate_3d`: Run without 3D printer hardware. Movements are simulated (position tracking updates without actual hardware movement).
+- `--simulate_cam`: Run without camera hardware. Uses placeholder image instead of live camera feed.
+- Window title shows "[3D PRINTER SIM]" and/or "[CAMERA SIM]" when active.
 
 ### Experiment Setup (experiment.py)
 
@@ -224,7 +238,8 @@ python experiment.py --simulate
    ```bash
    ./start_experiment.sh
    # Or: python experiment.py
-   # Or: python experiment.py --simulate  # Test without 3D printer
+   # Or: python experiment.py --simulate_3d  # Test without 3D printer
+   # Or: python experiment.py --simulate_cam  # Test without camera
    ```
 2. Click "Open Experiment" to open the experiment configuration window
 3. **Load Calibration** (Required):

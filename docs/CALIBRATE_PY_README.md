@@ -232,8 +232,10 @@ Calibrations are saved as JSON files for easy loading in `experiment.py`.
    ```bash
    ./start_calibrate.sh
    # Or: python calibrate.py --backend qtgl
-   # Or with simulation mode (no 3D printer required):
-   python calibrate.py --simulate
+   # Or with simulation modes (no hardware required):
+   python calibrate.py --simulate_3d  # Simulate 3D printer only
+   python calibrate.py --simulate_cam  # Simulate camera only
+   python calibrate.py --simulate_3d --simulate_cam  # Simulate both
    ```
 
 2. **Home Printer**:
@@ -305,12 +307,15 @@ python calibrate.py --backend null
 # No preview window, controls only
 ```
 
-**Simulation Mode** (no 3D printer required):
+**Simulation Modes** (no hardware required):
 ```bash
-python calibrate.py --simulate
-# Runs without 3D printer connection - movements are simulated
-# Camera and imaging features work normally
-# Window title shows "[SIMULATION MODE]"
+python calibrate.py --simulate_3d  # Simulate 3D printer only
+python calibrate.py --simulate_cam  # Simulate camera only
+python calibrate.py --simulate_3d --simulate_cam  # Simulate both
+
+# In 3D printer simulation mode: movements are simulated
+# In camera simulation mode: camera operations are skipped
+# Window title shows "[3D PRINTER SIM]" and/or "[CAMERA SIM]"
 ```
 
 ## Calibration File Format

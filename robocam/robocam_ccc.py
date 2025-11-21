@@ -37,14 +37,14 @@ class RoboCam:
         Z (float): Current Z position in mm
     """
     
-    def __init__(self, baudrate: Optional[int] = None, config: Optional[Config] = None, simulate: bool = False) -> None:
+    def __init__(self, baudrate: Optional[int] = None, config: Optional[Config] = None, simulate_3d: bool = False) -> None:
         """
         Initialize RoboCam and connect to printer.
         
         Args:
             baudrate: Serial communication baud rate. If None, uses config default.
             config: Configuration object. If None, uses global config.
-            simulate: If True, skip printer connection and simulate movements (for testing without hardware).
+            simulate_3d: If True, skip printer connection and simulate movements (for testing without 3D printer hardware).
             
         Note:
             Automatically finds and connects to USB serial port.
@@ -69,8 +69,9 @@ class RoboCam:
         self.connection_retry_delay: float = printer_config.get("connection_retry_delay", 2.0)
         self.max_retries: int = printer_config.get("max_retries", 5)
         
-        # Simulation mode flag
-        self.simulate: bool = simulate
+        # Simulation mode flag (for 3D printer)
+        self.simulate: bool = simulate_3d  # Keep for backward compatibility
+        self.simulate_3d: bool = simulate_3d
         
         # Initialize position tracking
         self.X: Optional[float] = None
@@ -78,9 +79,9 @@ class RoboCam:
         self.Z: Optional[float] = None
         self.printer_on_serial: Optional[serial.Serial] = None
         
-        if self.simulate:
+        if self.simulate_3d:
             # Simulation mode: initialize position to origin
-            logger.info("RoboCam running in SIMULATION MODE - no printer connection")
+            logger.info("RoboCam running in 3D PRINTER SIMULATION MODE - no printer connection")
             self.X = 0.0
             self.Y = 0.0
             self.Z = 0.0
@@ -100,8 +101,8 @@ class RoboCam:
                 self.X, self.Y, self.Z = self.update_current_position()
             except Exception as e:
                 # Don't raise ConnectionError in simulation mode
-                if self.simulate:
-                    logger.warning(f"Simulation mode: Ignoring printer connection error: {e}")
+                if self.simulate_3d:
+                    logger.warning(f"3D printer simulation mode: Ignoring printer connection error: {e}")
                     # Set default position
                     self.X = 0.0
                     self.Y = 0.0
@@ -127,8 +128,8 @@ class RoboCam:
             Raises exception if printer responds with "error".
             In simulation mode, this is a no-op.
         """
-        if self.simulate:
-            logger.debug(f'[SIMULATION] G-code command: "{command}"')
+        if self.simulate_3d:
+            logger.debug(f'[3D PRINTER SIMULATION] G-code command: "{command}"')
             time.sleep(self.command_delay)  # Simulate command delay
             return
         
@@ -277,8 +278,8 @@ class RoboCam:
         if acceleration <= 0:
             raise ValueError(f"Invalid acceleration: {acceleration} (must be > 0)")
         
-        if self.simulate:
-            logger.info(f'[SIMULATION] Acceleration set to {acceleration} mm/s²')
+        if self.simulate_3d:
+            logger.info(f'[3D PRINTER SIMULATION] Acceleration set to {acceleration} mm/s²')
             return
         
         if self.printer_on_serial is None:
@@ -307,12 +308,12 @@ class RoboCam:
             Updates position after homing completes.
             In simulation mode, just resets position to (0, 0, 0).
         """
-        if self.simulate:
-            logger.info('[SIMULATION] Homing printer - resetting to origin')
+        if self.simulate_3d:
+            logger.info('[3D PRINTER SIMULATION] Homing printer - resetting to origin')
             self.X = 0.0
             self.Y = 0.0
             self.Z = 0.0
-            logger.info(f"[SIMULATION] Printer homed. Reset positions to X: {self.X}, Y: {self.Y}, Z: {self.Z}")
+            logger.info(f"[3D PRINTER SIMULATION] Printer homed. Reset positions to X: {self.X}, Y: {self.Y}, Z: {self.Z}")
             return
         
         logger.info('Homing Printer, please wait for the countdown to complete')
@@ -341,8 +342,8 @@ class RoboCam:
             Parses response and updates self.X, self.Y, self.Z.
             In simulation mode, returns current tracked position.
         """
-        if self.simulate:
-            logger.debug('[SIMULATION] Updating current position')
+        if self.simulate_3d:
+            logger.debug('[3D PRINTER SIMULATION] Updating current position')
             return self.X, self.Y, self.Z
         
         if self.printer_on_serial is None:
@@ -430,7 +431,7 @@ class RoboCam:
         if speed is not None and speed <= 0:
             raise ValueError(f"Invalid speed: {speed} (must be > 0)")
         
-        if self.simulate:
+        if self.simulate_3d:
             # Update position tracking
             if X is not None:
                 self.X = (self.X or 0.0) + X
@@ -438,7 +439,7 @@ class RoboCam:
                 self.Y = (self.Y or 0.0) + Y
             if Z is not None:
                 self.Z = (self.Z or 0.0) + Z
-            logger.debug(f'[SIMULATION] Relative move to X:{self.X}, Y:{self.Y}, Z:{self.Z}')
+            logger.debug(f'[3D PRINTER SIMULATION] Relative move to X:{self.X}, Y:{self.Y}, Z:{self.Z}')
             time.sleep(0.1)  # Simulate movement delay
             return
         
@@ -495,7 +496,7 @@ class RoboCam:
         if speed is not None and speed <= 0:
             raise ValueError(f"Invalid speed: {speed} (must be > 0)")
         
-        if self.simulate:
+        if self.simulate_3d:
             # Update position tracking
             if X is not None:
                 self.X = X
@@ -503,7 +504,7 @@ class RoboCam:
                 self.Y = Y
             if Z is not None:
                 self.Z = Z
-            logger.debug(f'[SIMULATION] Absolute move to X:{self.X}, Y:{self.Y}, Z:{self.Z}')
+            logger.debug(f'[3D PRINTER SIMULATION] Absolute move to X:{self.X}, Y:{self.Y}, Z:{self.Z}')
             time.sleep(0.1)  # Simulate movement delay
             return
         

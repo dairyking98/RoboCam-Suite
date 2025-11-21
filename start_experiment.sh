@@ -30,7 +30,11 @@ echo "Starting RoboCam-Suite Experiment Application..."
 echo "Log file: logs/experiment_$(date +%Y%m%d_%H%M%S).log"
 echo ""
 
-# Pass through all command-line arguments (e.g., --simulate)
+# Pass through all command-line arguments (e.g., --simulate_3d, --simulate_cam)
+# Examples:
+#   ./start_experiment.sh --simulate_3d
+#   ./start_experiment.sh --simulate_cam
+#   ./start_experiment.sh --simulate_3d --simulate_cam
 python experiment.py "$@" 2>&1 | tee "logs/experiment_$(date +%Y%m%d_%H%M%S).log"
 
 # Deactivate virtual environment on exit

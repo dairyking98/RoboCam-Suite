@@ -15,7 +15,9 @@ The application automates the execution of well-plate experiments by:
 3. **Laser Control**: Provides precise timing sequences for laser stimulation (OFF-ON-OFF pattern)
 4. **Data Export**: Generates CSV files with well coordinates and metadata
 5. **Configuration Management**: Saves and loads experiment configurations for reproducibility
-6. **Simulation Mode**: Test imaging workflows without 3D printer hardware using `--simulate` flag
+6. **Simulation Modes**: Test workflows without hardware using `--simulate_3d` and `--simulate_cam` flags
+   - `--simulate_3d`: Simulates 3D printer (movements update position tracking, but no actual hardware movement)
+   - `--simulate_cam`: Simulates camera (capture operations are skipped, logged instead)
 
 ### Main Workflow
 
@@ -458,8 +460,10 @@ Action phases are validated before experiment execution:
 1. **Launch Application**:
    ```bash
    python experiment.py
-   # Or with simulation mode (no 3D printer required):
-   python experiment.py --simulate
+   # Or with simulation modes (no hardware required):
+   python experiment.py --simulate_3d  # Simulate 3D printer only
+   python experiment.py --simulate_cam  # Simulate camera only
+   python experiment.py --simulate_3d --simulate_cam  # Simulate both
    ```
 
 2. **Load Calibration** (Required):

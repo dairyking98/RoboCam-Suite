@@ -27,13 +27,13 @@ The preview application enables users to:
 
 ## Features
 
-### 0. Simulation Mode
+### 0. Simulation Modes
 
-- **No Hardware Required**: Run with `--simulate` flag to test imaging without 3D printer
-- **Full Camera Functionality**: All camera and preview features work normally
-- **Simulated Movements**: Printer movements update position tracking but don't move hardware
+- **No Hardware Required**: Run with `--simulate_3d` and/or `--simulate_cam` flags to test without hardware
+- **3D Printer Simulation** (`--simulate_3d`): Printer movements update position tracking but don't move hardware
+- **Camera Simulation** (`--simulate_cam`): Uses placeholder image instead of live camera feed
 - **Testing Workflow**: Perfect for testing experiment configurations and imaging settings
-- **Visual Indicator**: Window title shows "[SIMULATION MODE]" when active
+- **Visual Indicators**: Window title shows "[3D PRINTER SIM]" and/or "[CAMERA SIM]" when active
 
 ### 1. High-Performance Camera Preview
 
@@ -131,13 +131,16 @@ python preview.py --backend drm     # Force DRM (console)
 python preview.py --backend null    # Headless mode
 ```
 
-Or with simulation mode (no 3D printer required):
+Or with simulation modes (no hardware required):
 
 ```bash
-python preview.py --simulate
-# Runs without 3D printer connection - movements are simulated
-# Camera and imaging features work normally
-# Window title shows "[SIMULATION MODE]"
+python preview.py --simulate_3d  # Simulate 3D printer only
+python preview.py --simulate_cam  # Simulate camera only (shows placeholder image)
+python preview.py --simulate_3d --simulate_cam  # Simulate both
+
+# In 3D printer simulation mode: movements are simulated
+# In camera simulation mode: placeholder image is shown instead of live camera
+# Window title shows "[3D PRINTER SIM]" and/or "[CAMERA SIM]"
 ```
 
 ### Basic Usage Workflow

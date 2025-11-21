@@ -30,7 +30,12 @@ echo "Starting RoboCam-Suite Preview Application..."
 echo "Log file: logs/preview_$(date +%Y%m%d_%H%M%S).log"
 echo ""
 
-# Pass through all command-line arguments (e.g., --simulate, --backend)
+# Pass through all command-line arguments (e.g., --simulate_3d, --simulate_cam, --backend)
+# Examples:
+#   ./start_preview.sh --simulate_3d
+#   ./start_preview.sh --simulate_cam
+#   ./start_preview.sh --simulate_3d --simulate_cam
+#   ./start_preview.sh --backend qtgl
 python preview.py "$@" 2>&1 | tee "logs/preview_$(date +%Y%m%d_%H%M%S).log"
 
 # Deactivate virtual environment on exit

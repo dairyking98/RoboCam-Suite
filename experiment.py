@@ -177,20 +177,22 @@ class ExperimentWindow:
         z_val (float): Z coordinate (focus height)
     """
     
-    def __init__(self, parent: tk.Tk, picam2: Picamera2, robocam: RoboCam, simulate: bool = False) -> None:
+    def __init__(self, parent: tk.Tk, picam2: Optional[Picamera2], robocam: RoboCam, simulate_3d: bool = False, simulate_cam: bool = False) -> None:
         """
         Initialize experiment window.
         
         Args:
             parent: Parent tkinter window
-            picam2: Picamera2 instance for video/still capture
+            picam2: Picamera2 instance for video/still capture (None if simulate_cam is True)
             robocam: RoboCam instance for printer control
-            simulate: If True, run in simulation mode (for display purposes)
+            simulate_3d: If True, run in 3D printer simulation mode (for display purposes)
+            simulate_cam: If True, run in camera simulation mode (no camera operations)
         """
         self.parent: tk.Tk = parent
-        self.picam2: Picamera2 = picam2
+        self.picam2: Optional[Picamera2] = picam2
         self.robocam: RoboCam = robocam
-        self.simulate: bool = simulate
+        self.simulate_3d: bool = simulate_3d
+        self.simulate_cam: bool = simulate_cam
         # Load config for laser GPIO pin and camera settings
         config = get_config()
         laser_pin = config.get("hardware.laser.gpio_pin", 21)
@@ -282,15 +284,25 @@ class ExperimentWindow:
             len(self.parent.winfo_children()) == 0):
             w = self.parent
             title = "Experiment"
-            if self.simulate:
-                title += " [SIMULATION MODE]"
+            sim_text = []
+            if self.simulate_3d:
+                sim_text.append("3D PRINTER SIM")
+            if self.simulate_cam:
+                sim_text.append("CAMERA SIM")
+            if sim_text:
+                title += f" [{' + '.join(sim_text)}]"
             w.title(title)
             self.window = w
         else:
             w = tk.Toplevel(self.parent)
             title = "Experiment"
-            if self.simulate:
-                title += " [SIMULATION MODE]"
+            sim_text = []
+            if self.simulate_3d:
+                sim_text.append("3D PRINTER SIM")
+            if self.simulate_cam:
+                sim_text.append("CAMERA SIM")
+            if sim_text:
+                title += f" [{' + '.join(sim_text)}]"
             w.title(title)
             self.window = w
 
@@ -1477,6 +1489,10 @@ class ExperimentWindow:
         # Create separate configurations for preview and recording
         # Preview: Lower resolution for GUI display (if needed)
         # Recording: Full resolution optimized for capture FPS
+        if self.picam2 is None:
+            logger.warning("Camera simulation mode: Skipping camera configuration")
+            return
+        
         preview_config = self.picam2.create_preview_configuration(
             main={'size': (640, 480)},  # Lower resolution for preview
             buffer_count=2
@@ -1655,7 +1671,10 @@ class ExperimentWindow:
                     # Use FileOutput for proper continuous video recording
                     output = FileOutput(path)
                     recording_start_time = time.time()
-                    self.picam2.start_recording(self.encoder, output)
+                    if self.picam2 is not None:
+                        self.picam2.start_recording(self.encoder, output)
+                    else:
+                        logger.info(f"[CAMERA SIMULATION] Would start recording video to: {output.fileoutput}")
                     self.recording = True
                     self.start_recording_flash()
 
@@ -1677,7 +1696,10 @@ class ExperimentWindow:
                             time.sleep(0.05 if not self.paused else 0.1)
 
                     try:
-                        self.picam2.stop_recording()
+                        if self.picam2 is not None:
+                            self.picam2.stop_recording()
+                        else:
+                            logger.info("[CAMERA SIMULATION] Would stop recording")
                     except:
                         pass
                     
@@ -1790,18 +1812,30 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="RoboCam Experiment - Automated well-plate experiment execution")
     parser.add_argument(
-        "--simulate",
+        "--simulate_3d",
         action="store_true",
-        help="Run in simulation mode without 3D printer (for testing imaging without hardware)"
+        help="Run in 3D printer simulation mode (no printer connection, movements are simulated)"
+    )
+    parser.add_argument(
+        "--simulate_cam",
+        action="store_true",
+        help="Run in camera simulation mode (no camera connection, capture operations are skipped)"
     )
     args = parser.parse_args()
     
     root: tk.Tk = tk.Tk()
-    picam2: Picamera2 = Picamera2()
     # Load config for baudrate
     config = get_config()
     baudrate = config.get("hardware.printer.baudrate", 115200)
-    robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate=args.simulate)
-    app: ExperimentWindow = ExperimentWindow(root, picam2, robocam, simulate=args.simulate)
+    robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate_3d=args.simulate_3d)
+    
+    # Initialize camera only if not in camera simulation mode
+    if args.simulate_cam:
+        picam2: Optional[Picamera2] = None
+        print("Camera simulation mode: Skipping camera initialization")
+    else:
+        picam2: Picamera2 = Picamera2()
+    
+    app: ExperimentWindow = ExperimentWindow(root, picam2, robocam, simulate_3d=args.simulate_3d, simulate_cam=args.simulate_cam)
     app.open()  # Open experiment window directly
     root.mainloop()

@@ -30,7 +30,12 @@ echo "Starting RoboCam-Suite Calibration Application..."
 echo "Log file: logs/calibrate_$(date +%Y%m%d_%H%M%S).log"
 echo ""
 
-# Pass through all command-line arguments (e.g., --simulate, --backend)
+# Pass through all command-line arguments (e.g., --simulate_3d, --simulate_cam, --backend)
+# Examples:
+#   ./start_calibrate.sh --simulate_3d
+#   ./start_calibrate.sh --simulate_cam
+#   ./start_calibrate.sh --simulate_3d --simulate_cam
+#   ./start_calibrate.sh --backend qtgl
 python calibrate.py "$@" 2>&1 | tee "logs/calibrate_$(date +%Y%m%d_%H%M%S).log"
 
 # Deactivate virtual environment on exit

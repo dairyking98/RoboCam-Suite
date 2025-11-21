@@ -50,21 +50,28 @@ class PreviewApp:
         homed (bool): Whether printer has been homed
     """
     
-    def __init__(self, root: tk.Tk, preview_backend: str = "auto", simulate: bool = False) -> None:
+    def __init__(self, root: tk.Tk, preview_backend: str = "auto", simulate_3d: bool = False, simulate_cam: bool = False) -> None:
         """
         Initialize preview application.
         
         Args:
             root: Tkinter root window
             preview_backend: Preview backend to use ("auto", "drm", "qtgl", "null")
-            simulate: If True, run in simulation mode without 3D printer connection
+            simulate_3d: If True, run in 3D printer simulation mode (no printer connection)
+            simulate_cam: If True, run in camera simulation mode (placeholder image instead of camera)
         """
         self.root: tk.Tk = root
         title = "RoboCam Preview - Alignment Check"
-        if simulate:
-            title += " [SIMULATION MODE]"
+        sim_text = []
+        if simulate_3d:
+            sim_text.append("3D PRINTER SIM")
+        if simulate_cam:
+            sim_text.append("CAMERA SIM")
+        if sim_text:
+            title += f" [{' + '.join(sim_text)}]"
         self.root.title(title)
-        self._simulate: bool = simulate
+        self._simulate_3d: bool = simulate_3d
+        self._simulate_cam: bool = simulate_cam
 
         # Load config for camera settings
         config = get_config()
@@ -82,15 +89,16 @@ class PreviewApp:
         self.picam2: Optional[Picamera2] = None
         self.preview_backend: str = "null"
         self.simulation_image_window: Optional[tk.Toplevel] = None
+        self.simulation_image_photo: Optional[Any] = None  # Keep reference to prevent garbage collection
         self.fps_tracker: Optional[FPSTracker] = None
         
-        if self._simulate:
-            # In simulation mode, show default image instead of camera
-            print("Setting up simulation preview...")
+        if self._simulate_cam:
+            # In camera simulation mode, show default image instead of camera
+            print("Setting up camera simulation preview...")
             self._setup_simulation_preview()
-            # Initialize fps_tracker to None (not used in simulation)
+            # Initialize fps_tracker to None (not used in camera simulation)
             self.fps_tracker = None
-            print("Simulation preview setup complete")
+            print("Camera simulation preview setup complete")
         else:
             # Normal camera setup
             self.picam2 = Picamera2()
@@ -141,12 +149,12 @@ class PreviewApp:
         
         # Initialize RoboCam with error handling
         try:
-            self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate=self._simulate)
+            self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate_3d=self._simulate_3d)
         except Exception as e:
             error_msg = str(e).lower()
-            if self._simulate:
-                # In simulation mode, don't show error - just continue
-                print(f"Simulation mode: Ignoring printer initialization error: {e}")
+            if self._simulate_3d:
+                # In 3D printer simulation mode, don't show error - just continue
+                print(f"3D printer simulation mode: Ignoring printer initialization error: {e}")
                 user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
                 # Don't show error dialog in simulation mode, just print
                 print(user_msg)
@@ -165,110 +173,192 @@ class PreviewApp:
     
     def _setup_simulation_preview(self) -> None:
         """Set up default image preview for simulation mode."""
+        # Create a separate window for the simulation image
+        self.simulation_image_window = tk.Toplevel(self.root)
+        self.simulation_image_window.title("Simulation Preview [SIMULATION MODE]")
+        self.simulation_image_window.geometry("900x700")
+        self.simulation_image_window.configure(bg="black")
+        
+        # Store reference to keep image alive
+        self.simulation_image_photo = None
+        
+        # Create a frame to hold content
+        content_frame = tk.Frame(self.simulation_image_window, bg="black")
+        content_frame.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+        
+        # Create a placeholder canvas with colored background (always visible)
+        placeholder_canvas = tk.Canvas(
+            content_frame,
+            width=800,
+            height=600,
+            bg="#1a1a1a",
+            highlightthickness=0
+        )
+        placeholder_canvas.pack(pady=10)
+        
+        # Add placeholder text on canvas
+        placeholder_canvas.create_text(
+            400, 300,
+            text="SIMULATION MODE\nLoading preview image...",
+            fill="orange",
+            font=("Arial", 16, "bold"),
+            justify=tk.CENTER
+        )
+        
+        # Download the default image
+        image_url = "https://i.kym-cdn.com/photos/images/newsfeed/000/270/485/b1f.gif"
+        temp_file_path = None
+        
         try:
-            # Create a separate window for the simulation image
-            self.simulation_image_window = tk.Toplevel(self.root)
-            self.simulation_image_window.title("Simulation Preview [SIMULATION MODE]")
-            # Make sure window is visible
-            self.simulation_image_window.lift()
-            self.simulation_image_window.focus_force()
-            
-            # Download the default image
-            image_url = "https://i.kym-cdn.com/photos/images/newsfeed/000/270/485/b1f.gif"
-            temp_file = None
-            temp_file_path = None
-            
+            # Check if PIL is available first
             try:
-                # Create temp file
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.gif')
-                temp_file_path = temp_file.name
-                temp_file.close()
-                
-                # Download image
-                print(f"Downloading simulation preview image from {image_url}...")
+                from PIL import Image, ImageTk, ImageSequence
+            except ImportError:
+                raise ImportError("PIL/Pillow not installed. Install with: pip install Pillow")
+            
+            # Create temp file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.gif')
+            temp_file_path = temp_file.name
+            temp_file.close()
+            
+            # Download image with timeout
+            print(f"Downloading simulation preview image from {image_url}...")
+            try:
+                import socket
+                socket.setdefaulttimeout(10)  # 10 second timeout
                 urllib.request.urlretrieve(image_url, temp_file_path)
                 print("Image downloaded successfully")
-                
-                # Load and display the image
-                try:
-                    from PIL import Image, ImageTk, ImageSequence
-                    print("Opening image with PIL...")
-                    img = Image.open(temp_file_path)
-                    
-                    # Check if it's an animated GIF
-                    frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
-                    
-                    if len(frames) > 1:
-                        # Animated GIF - use first frame and resize
-                        preview_res = (800, 600)  # Default preview resolution
-                        first_frame = frames[0].resize(preview_res, Image.Resampling.LANCZOS)
-                        photo = ImageTk.PhotoImage(first_frame)
-                    else:
-                        # Static image - resize and display
-                        preview_res = (800, 600)  # Default preview resolution
-                        img = img.resize(preview_res, Image.Resampling.LANCZOS)
-                        photo = ImageTk.PhotoImage(img)
-                    
-                    # Create label to display image
-                    img_label = tk.Label(self.simulation_image_window, image=photo)
-                    img_label.image = photo  # Keep a reference
-                    img_label.pack()
-                    
-                    # Add text label
-                    text_label = tk.Label(
-                        self.simulation_image_window,
-                        text="SIMULATION MODE\nCamera preview simulated",
-                        font=("Arial", 14, "bold"),
-                        fg="orange"
-                    )
-                    text_label.pack()
-                    
-                    # Force window update
-                    self.simulation_image_window.update()
-                    self.root.update()
-                    
-                    print("Simulation preview image loaded and displayed successfully")
-                except ImportError as ie:
-                    print(f"PIL/Pillow not available: {ie}")
-                    raise Exception("PIL/Pillow not installed. Install with: pip install Pillow")
-                except Exception as img_error:
-                    print(f"Error processing image: {img_error}")
-                    raise
+            except Exception as download_error:
+                print(f"Failed to download image: {download_error}")
+                raise
+            
+            # Load and display the image
+            print("Opening image with PIL...")
+            img = Image.open(temp_file_path)
+            
+            # Check if it's an animated GIF
+            try:
+                frames = [frame.copy() for frame in ImageSequence.Iterator(img)]
+                if len(frames) > 1:
+                    # Animated GIF - use first frame and resize
+                    preview_res = (800, 600)  # Default preview resolution
+                    first_frame = frames[0].resize(preview_res, Image.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(first_frame)
+                    print(f"Loaded animated GIF, using first frame of {len(frames)} frames")
+                else:
+                    # Static image - resize and display
+                    preview_res = (800, 600)  # Default preview resolution
+                    img = img.resize(preview_res, Image.Resampling.LANCZOS)
+                    photo = ImageTk.PhotoImage(img)
+                    print("Loaded static image")
+            except Exception as frame_error:
+                # If frame extraction fails, just use the image directly
+                print(f"Frame extraction failed, using image directly: {frame_error}")
+                preview_res = (800, 600)
+                img = img.resize(preview_res, Image.Resampling.LANCZOS)
+                photo = ImageTk.PhotoImage(img)
+            
+            # Store reference to prevent garbage collection
+            self.simulation_image_photo = photo
+            
+            # Remove placeholder canvas and replace with image
+            placeholder_canvas.destroy()
+            
+            # Create label to display image
+            img_label = tk.Label(content_frame, image=photo, bg="black")
+            img_label.pack(pady=10)
+            
+            # Add text label
+            text_label = tk.Label(
+                content_frame,
+                text="SIMULATION MODE\nCamera preview simulated",
+                font=("Arial", 14, "bold"),
+                fg="orange",
+                bg="black"
+            )
+            text_label.pack(pady=5)
+            
+            # Make sure window is visible and on top
+            self.simulation_image_window.lift()
+            self.simulation_image_window.attributes('-topmost', True)
+            self.simulation_image_window.after(100, lambda: self.simulation_image_window.attributes('-topmost', False))
+            
+            # Force window update
+            self.simulation_image_window.update_idletasks()
+            self.simulation_image_window.update()
+            self.root.update_idletasks()
+            
+            print("Simulation preview image loaded and displayed successfully")
+            
+        except ImportError as ie:
+                print(f"PIL/Pillow not available: {ie}")
+                # Update placeholder canvas with error message
+                placeholder_canvas.delete("all")
+                placeholder_canvas.create_text(
+                    400, 250,
+                    text="SIMULATION MODE\nCamera preview not available",
+                    fill="orange",
+                    font=("Arial", 16, "bold"),
+                    justify=tk.CENTER
+                )
+                placeholder_canvas.create_text(
+                    400, 350,
+                    text="PIL/Pillow not installed.\nInstall with: pip install Pillow",
+                    fill="yellow",
+                    font=("Arial", 12),
+                    justify=tk.CENTER
+                )
             except Exception as e:
                 print(f"Failed to load simulation image: {e}")
                 import traceback
                 traceback.print_exc()
-                # Fallback: show text only
-                fallback_label = tk.Label(
-                    self.simulation_image_window,
-                    text="SIMULATION MODE\nCamera preview not available\n(Default image failed to load)\n\nInstall Pillow for image preview:\npip install Pillow",
-                    font=("Arial", 12, "bold"),
-                    fg="orange",
-                    width=50,
-                    height=10,
-                    justify=tk.LEFT
+                # Update placeholder canvas with error message
+                placeholder_canvas.delete("all")
+                placeholder_canvas.create_text(
+                    400, 250,
+                    text="SIMULATION MODE\nCamera preview not available",
+                    fill="orange",
+                    font=("Arial", 16, "bold"),
+                    justify=tk.CENTER
                 )
-                fallback_label.pack()
+                error_text = f"Error loading default image:\n{str(e)[:100]}"
+                placeholder_canvas.create_text(
+                    400, 350,
+                    text=error_text,
+                    fill="yellow",
+                    font=("Arial", 10),
+                    justify=tk.CENTER,
+                    width=700
+                )
             finally:
                 # Clean up temp file
-                if temp_file_path:
+                if temp_file_path and os.path.exists(temp_file_path):
                     try:
                         os.unlink(temp_file_path)
                         print(f"Cleaned up temp file: {temp_file_path}")
                     except Exception as cleanup_error:
                         print(f"Failed to clean up temp file: {cleanup_error}")
-                    
+        
+        # Make sure window is visible and on top (even if image failed)
+        try:
+            if self.simulation_image_window:
+                self.simulation_image_window.lift()
+                self.simulation_image_window.attributes('-topmost', True)
+                self.simulation_image_window.after(100, lambda: self.simulation_image_window.attributes('-topmost', False))
+                self.simulation_image_window.update_idletasks()
+                self.simulation_image_window.update()
+                self.root.update_idletasks()
+                print("Simulation preview window created and displayed")
         except Exception as e:
-            print(f"Failed to create simulation preview window: {e}")
+            print(f"Failed to show simulation preview window: {e}")
             import traceback
             traceback.print_exc()
-            self.simulation_image_window = None
 
     def create_widgets(self) -> None:
         """Create and layout GUI widgets."""
         # Info label about preview window
-        if self._simulate:
-            info_text = "Simulation preview running in separate window (default image)"
+        if self._simulate_cam:
+            info_text = "Camera simulation preview running in separate window (default image)"
         else:
             info_text = f"Camera preview running in separate window ({self.preview_backend} backend)"
         tk.Label(self.root, text=info_text, font=("Arial", 9), fg="gray").grid(
@@ -541,7 +631,7 @@ class PreviewApp:
             
         except Exception as e:
             error_msg = str(e)
-            if self._simulate:
+            if self._simulate_3d:
                 user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
             elif "not connected" in error_msg.lower():
                 user_msg = "Printer not connected. Check USB cable."
@@ -596,7 +686,7 @@ class PreviewApp:
             self.status_label.config(text="Homed successfully", fg="green")
         except Exception as e:
             error_msg = str(e)
-            if self._simulate:
+            if self._simulate_3d:
                 user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
             elif "not connected" in error_msg.lower():
                 user_msg = "Printer not connected. Check USB cable."
@@ -613,8 +703,8 @@ class PreviewApp:
         if self.running:
             self.update_position()
             
-            if self._simulate:
-                # In simulation mode, show "SIM" instead of FPS
+            if self._simulate_cam:
+                # In camera simulation mode, show "SIM" instead of FPS
                 self.fps_label.config(text="SIM")
             elif self.picam2:
                 fps = self.fps_tracker.get_fps()
@@ -664,14 +754,19 @@ if __name__ == "__main__":
         help="Preview backend to use (default: auto)"
     )
     parser.add_argument(
-        "--simulate",
+        "--simulate_3d",
         action="store_true",
-        help="Run in simulation mode without 3D printer (for testing imaging without hardware)"
+        help="Run in 3D printer simulation mode (no printer connection, movements are simulated)"
+    )
+    parser.add_argument(
+        "--simulate_cam",
+        action="store_true",
+        help="Run in camera simulation mode (no camera connection, placeholder image used)"
     )
     args = parser.parse_args()
     
     root = tk.Tk()
-    app = PreviewApp(root, preview_backend=args.backend, simulate=args.simulate)
+    app = PreviewApp(root, preview_backend=args.backend, simulate_3d=args.simulate_3d, simulate_cam=args.simulate_cam)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.mainloop()
 

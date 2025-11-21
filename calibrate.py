@@ -48,18 +48,26 @@ class CameraApp:
         preview_backend (str): Preview backend being used
     """
     
-    def __init__(self, root: tk.Tk, preview_backend: str = "auto", simulate: bool = False) -> None:
+    def __init__(self, root: tk.Tk, preview_backend: str = "auto", simulate_3d: bool = False, simulate_cam: bool = False) -> None:
         """
         Initialize calibration application.
         
         Args:
             root: Tkinter root window
             preview_backend: Preview backend to use ("auto", "drm", "qtgl", "null")
-            simulate: If True, run in simulation mode without 3D printer connection
+            simulate_3d: If True, run in 3D printer simulation mode (no printer connection)
+            simulate_cam: If True, run in camera simulation mode (placeholder instead of camera)
         """
         self.root: tk.Tk = root
-        self.root.title("RoboCam Calibration - Controls" + (" [SIMULATION MODE]" if simulate else ""))
-        self._simulate: bool = simulate
+        sim_text = []
+        if simulate_3d:
+            sim_text.append("3D PRINTER SIM")
+        if simulate_cam:
+            sim_text.append("CAMERA SIM")
+        title_suffix = f" [{' + '.join(sim_text)}]" if sim_text else ""
+        self.root.title("RoboCam Calibration - Controls" + title_suffix)
+        self._simulate_3d: bool = simulate_3d
+        self._simulate_cam: bool = simulate_cam
 
         # Load config for camera settings
         config = get_config()
@@ -74,44 +82,51 @@ class CameraApp:
             preview_resolution = default_preview_resolution
 
         # Picamera2 setup
-        self.picam2: Picamera2 = Picamera2()
-        self.picam2_config = self.picam2.create_preview_configuration(
-            main={"size": preview_resolution},
-            controls={"FrameRate": default_fps},  # Set FPS to 30
-            buffer_count=2  # Optimize buffer count
-        )
-        self.picam2.configure(self.picam2_config)
-        
-        # Set up FPS tracking
-        # Note: With hardware-accelerated preview (DRM/QTGL), post_callback may not
-        # be called for every frame, so FPS reading may be lower than actual camera FPS.
-        # The actual preview display FPS may be higher than what's reported here.
-        self.fps_tracker: FPSTracker = FPSTracker()
-        
-        def frame_callback(request):
-            """Callback fired for each camera frame."""
-            self.fps_tracker.update()
-        
-        self.picam2.post_callback = frame_callback
-        
-        # Start native preview (creates separate window)
-        try:
-            self.preview_backend: str = start_best_preview(self.picam2, backend=preview_backend)
-            self.picam2.start()
-            print(f"Camera preview started using {self.preview_backend} backend")
-        except Exception as exc:
-            # Provide helpful error messages
-            hint = []
-            if preview_backend == "auto":
-                if has_desktop_session():
-                    hint.append("Try: --backend qtgl (desktop session detected)")
-                else:
-                    hint.append("Try: --backend drm (no desktop session detected)")
-            hint.append("Diagnostic: libcamera-hello -t 0")
-            msg = f"Camera/preview start failed: {exc}"
-            if hint:
-                msg += " | " + " | ".join(hint)
-            raise RuntimeError(msg) from exc
+        if self._simulate_cam:
+            # Camera simulation mode: skip camera initialization
+            self.picam2: Optional[Picamera2] = None
+            self.preview_backend: str = "null"
+            self.fps_tracker: Optional[FPSTracker] = None
+            print("Camera simulation mode: Skipping camera initialization")
+        else:
+            self.picam2: Picamera2 = Picamera2()
+            self.picam2_config = self.picam2.create_preview_configuration(
+                main={"size": preview_resolution},
+                controls={"FrameRate": default_fps},  # Set FPS to 30
+                buffer_count=2  # Optimize buffer count
+            )
+            self.picam2.configure(self.picam2_config)
+            
+            # Set up FPS tracking
+            # Note: With hardware-accelerated preview (DRM/QTGL), post_callback may not
+            # be called for every frame, so FPS reading may be lower than actual camera FPS.
+            # The actual preview display FPS may be higher than what's reported here.
+            self.fps_tracker: FPSTracker = FPSTracker()
+            
+            def frame_callback(request):
+                """Callback fired for each camera frame."""
+                self.fps_tracker.update()
+            
+            self.picam2.post_callback = frame_callback
+            
+            # Start native preview (creates separate window)
+            try:
+                self.preview_backend: str = start_best_preview(self.picam2, backend=preview_backend)
+                self.picam2.start()
+                print(f"Camera preview started using {self.preview_backend} backend")
+            except Exception as exc:
+                # Provide helpful error messages
+                hint = []
+                if preview_backend == "auto":
+                    if has_desktop_session():
+                        hint.append("Try: --backend qtgl (desktop session detected)")
+                    else:
+                        hint.append("Try: --backend drm (no desktop session detected)")
+                hint.append("Diagnostic: libcamera-hello -t 0")
+                msg = f"Camera/preview start failed: {exc}"
+                if hint:
+                    msg += " | " + " | ".join(hint)
+                raise RuntimeError(msg) from exc
 
         # UI Elements
         self.create_widgets()
@@ -122,12 +137,12 @@ class CameraApp:
         
         # Initialize RoboCam with error handling
         try:
-            self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate=self._simulate)
+            self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate_3d=self._simulate_3d)
         except Exception as e:
             error_msg = str(e).lower()
-            if self._simulate:
-                # In simulation mode, don't show error - just continue
-                print(f"Simulation mode: Ignoring printer initialization error: {e}")
+            if self._simulate_3d:
+                # In 3D printer simulation mode, don't show error - just continue
+                print(f"3D printer simulation mode: Ignoring printer initialization error: {e}")
                 user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
                 # Don't show error dialog in simulation mode, just print
                 print(user_msg)
@@ -319,7 +334,7 @@ class CameraApp:
         except Exception as e:
             error_msg = str(e)
             # Make error messages more user-friendly
-            if self._simulate:
+            if self._simulate_3d:
                 user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
             elif "not connected" in error_msg.lower():
                 user_msg = "Printer not connected. Check USB cable."
@@ -347,7 +362,7 @@ class CameraApp:
             self.status_label.config(text="Homed successfully", fg="green")
         except Exception as e:
             error_msg = str(e)
-            if self._simulate:
+            if self._simulate_3d:
                 user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
             elif "not connected" in error_msg.lower():
                 user_msg = "Printer not connected. Check USB cable."
@@ -394,7 +409,7 @@ class CameraApp:
             self.status_label.config(text="Invalid coordinate value", fg="red")
         except Exception as e:
             error_msg = str(e)
-            if self._simulate:
+            if self._simulate_3d:
                 user_msg = "You are simulating a 3D printer! No printer connection needed in simulation mode."
             elif "not connected" in error_msg.lower():
                 user_msg = "Printer not connected. Check USB cable."
@@ -758,7 +773,8 @@ class CameraApp:
         """
         self.running = False
         try:
-            self.picam2.stop()
+            if self.picam2 is not None:
+                self.picam2.stop()
         except Exception:
             pass
         self.root.destroy()
@@ -776,13 +792,18 @@ if __name__ == "__main__":
         help="Preview backend to use (default: auto)"
     )
     parser.add_argument(
-        "--simulate",
+        "--simulate_3d",
         action="store_true",
-        help="Run in simulation mode without 3D printer (for testing imaging without hardware)"
+        help="Run in 3D printer simulation mode (no printer connection, movements are simulated)"
+    )
+    parser.add_argument(
+        "--simulate_cam",
+        action="store_true",
+        help="Run in camera simulation mode (no camera connection, placeholder image used)"
     )
     args = parser.parse_args()
     
     root = tk.Tk()
-    app = CameraApp(root, preview_backend=args.backend, simulate=args.simulate)
+    app = CameraApp(root, preview_backend=args.backend, simulate_3d=args.simulate_3d, simulate_cam=args.simulate_cam)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.mainloop()

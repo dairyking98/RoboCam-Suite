@@ -63,7 +63,8 @@ The calibration application allows you to manually position the camera over well
 ./start_calibrate.sh
 # Or: source venv/bin/activate && python calibrate.py
 # Optional: python calibrate.py --backend qtgl  # Force specific backend
-# Optional: python calibrate.py --simulate  # Run without 3D printer (for testing)
+# Optional: python calibrate.py --simulate_3d  # Run without 3D printer (for testing)
+# Optional: python calibrate.py --simulate_cam  # Run without camera (for testing)
 ```
 
 #### Using the Calibration Interface
@@ -108,10 +109,16 @@ You can specify the preview backend when starting calibrate.py:
 
 You can run calibrate.py in simulation mode to test without 3D printer hardware:
 
-- `--simulate`: Run without 3D printer connection
+- `--simulate_3d`: Run without 3D printer connection
   - Camera and preview work normally
   - Movements are simulated (position tracking updates, but no actual movement)
-  - Window title shows "[SIMULATION MODE]"
+  - Window title shows "[3D PRINTER SIM]"
+  
+- `--simulate_cam`: Run without camera connection
+  - Camera operations are skipped
+  - Window title shows "[CAMERA SIM]"
+  
+- Both flags can be used together: `--simulate_3d --simulate_cam`
   - Useful for testing imaging workflows and calibration procedures without hardware
 
 #### Calibration Workflow
@@ -231,7 +238,8 @@ The preview application (`preview.py`) allows you to sequentially navigate throu
 source venv/bin/activate
 python preview.py
 # Or: python preview.py --backend auto
-# Or: python preview.py --simulate  # Run without 3D printer (for testing)
+# Or: python preview.py --simulate_3d  # Run without 3D printer (for testing)
+# Or: python preview.py --simulate_cam  # Run without camera (shows placeholder image)
 ```
 
 ### Preview Interface
@@ -337,7 +345,8 @@ The preview tool fits into the overall workflow:
 ```bash
 ./start_experiment.sh
 # Or: source venv/bin/activate && python experiment.py
-# Or: python experiment.py --simulate  # Run without 3D printer (for testing)
+# Or: python experiment.py --simulate_3d  # Run without 3D printer (for testing)
+# Or: python experiment.py --simulate_cam  # Run without camera (for testing)
 ```
 
 ### Configuring an Experiment
@@ -526,16 +535,18 @@ The selected profile's settings are displayed below the dropdown, showing:
 3. **Start**:
    - Click "Run" button in experiment window
    - Experiment will:
-     - Home the printer (or simulate homing in simulation mode)
-     - Move to each well in sequence (or simulate movement in simulation mode)
+     - Home the printer (or simulate homing in 3D printer simulation mode)
+     - Move to each well in sequence (or simulate movement in 3D printer simulation mode)
      - Record video/still at each well
      - Control laser according to timing settings
 
-**Note**: You can test experiments without 3D printer hardware by running with `--simulate`:
+**Note**: You can test experiments without hardware by running with simulation flags:
 ```bash
-python experiment.py --simulate
+python experiment.py --simulate_3d  # Simulate 3D printer only
+python experiment.py --simulate_cam  # Simulate camera only
+python experiment.py --simulate_3d --simulate_cam  # Simulate both
 ```
-In simulation mode, all movements are simulated but camera and imaging features work normally. The window title shows "[SIMULATION MODE]" when active.
+In 3D printer simulation mode, all movements are simulated but camera and imaging features work normally. In camera simulation mode, capture operations are skipped. The window title shows "[3D PRINTER SIM]" and/or "[CAMERA SIM]" when active.
 
 4. **Monitor**:
    - Watch status messages in the GUI
