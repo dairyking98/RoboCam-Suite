@@ -73,11 +73,22 @@ class Picamera2HighFpsCapture:
             # Stop existing camera if it's running (in case it was provided and already started)
             if self.picam2 is not None:
                 try:
+                    # Clear any callbacks that might interfere with new configuration
+                    if hasattr(self.picam2, 'post_callback'):
+                        self.picam2.post_callback = None
+                    if hasattr(self.picam2, 'pre_callback'):
+                        self.picam2.pre_callback = None
+                    
                     if hasattr(self.picam2, 'started') and self.picam2.started:
                         self.picam2.stop()
                         logger.info("Stopped existing Picamera2 instance before reconfiguring")
-                        # Small delay to ensure camera is fully stopped
-                        time.sleep(0.1)
+                        # Longer delay to ensure camera and request handlers are fully stopped
+                        time.sleep(0.5)
+                    
+                    # Additional cleanup - ensure no pending requests
+                    # The allocator error suggests old request handlers might still be active
+                    # Wait a bit more for any pending operations to complete
+                    time.sleep(0.2)
                 except Exception as e:
                     logger.warning(f"Error stopping existing Picamera2 instance: {e}")
             else:
@@ -94,7 +105,10 @@ class Picamera2HighFpsCapture:
                 buffer_count=2  # Optimize buffer for high FPS
             )
             
+            # Configure and start - this should initialize the allocator properly
             self.picam2.configure(config)
+            # Small delay after configure to ensure allocator is ready
+            time.sleep(0.1)
             self.picam2.start()
             
             # Register cleanup on exit

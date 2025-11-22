@@ -718,15 +718,18 @@ class PreviewWindow:
     
     def _measure_fps_highfps(self, w: int, h: int, target_fps: float, was_preview_active: bool, capture_type: str) -> None:
         """Measure FPS using high-FPS capture methods (Picamera2 or rpicam-vid)."""
-        # Stop camera if running
+        # Stop camera if running and clear callbacks to avoid allocator conflicts
         if self.picam2 is not None:
             try:
+                # Clear any callbacks that might interfere
+                if hasattr(self.picam2, 'post_callback'):
+                    self.picam2.post_callback = None
                 if hasattr(self.picam2, 'started') and self.picam2.started:
                     self.picam2.stop()
-                    # Small delay to ensure camera is fully stopped before starting new capture
-                    time.sleep(0.2)
-            except:
-                pass
+                    # Longer delay to ensure camera is fully stopped and cleaned up
+                    time.sleep(0.5)
+            except Exception as e:
+                logger.warning(f"Error stopping camera before high-FPS measurement: {e}")
         
         # Video capture parameters
         res_x, res_y = w, h
@@ -742,8 +745,12 @@ class PreviewWindow:
         try:
             if use_picamera2:
                 # Use Picamera2 high-FPS implementation
+                # Create a new instance to avoid allocator conflicts with preview instance
+                # The preview window's picam2 instance may have callbacks/state that interfere
                 from robocam.picamera2_highfps_capture import Picamera2HighFpsCapture
-                capture_instance = Picamera2HighFpsCapture(width=w, height=h, fps=fps)
+                # Don't pass existing picam2 - let it create a fresh instance
+                # This avoids allocator conflicts from previous configurations
+                capture_instance = Picamera2HighFpsCapture(width=w, height=h, fps=fps, picam2=None)
                 if not capture_instance.start_capture():
                     raise RuntimeError("Failed to start Picamera2 high-FPS capture")
                 logger.info(f"Picamera2 high-FPS started: {w}x{h} @ {fps} FPS")
