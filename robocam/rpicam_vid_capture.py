@@ -187,8 +187,13 @@ class RpicamVidCapture:
             return None
         
         try:
-            # Read raw YUV420 frame (w*h*3/2 bytes total)
-            frame_bytes = self.process.stdout.read(self.bytes_per_frame)
+            # Read raw YUV420 frame (w*h*3/2 bytes total) with a short timeout to avoid blocking forever
+            import select, os
+            rlist, _, _ = select.select([self.process.stdout], [], [], 0.25)
+            if not rlist:
+                logger.warning("rpicam-vid read timeout")
+                return None
+            frame_bytes = os.read(self.process.stdout.fileno(), self.bytes_per_frame)
             
             if len(frame_bytes) != self.bytes_per_frame:
                 logger.warning(f"Read incomplete frame: {len(frame_bytes)}/{self.bytes_per_frame} bytes")
