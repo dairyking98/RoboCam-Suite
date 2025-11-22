@@ -722,6 +722,7 @@ class PreviewWindow:
         preview_picam2 = self.picam2
         
         # Always stop the preview window's picam2 instance completely before creating new one
+        # This is critical to avoid camera hardware conflicts
         if self.picam2 is not None:
             try:
                 # Stop preview first
@@ -736,10 +737,12 @@ class PreviewWindow:
                 # Always stop the camera instance - this is critical for proper cleanup
                 if hasattr(self.picam2, 'started') and self.picam2.started:
                     self.picam2.stop()
-                    logger.info("Stopped preview window's picam2 instance")
+                    logger.info("Stopped preview window's picam2 instance before high-FPS measurement")
                 
                 # Wait for camera to fully stop and release hardware
-                time.sleep(0.5)
+                # Longer wait for rpicam-vid since it's a subprocess that needs hardware access
+                wait_time = 1.0 if "rpicam-vid" in capture_type else 0.5
+                time.sleep(wait_time)
                 
             except Exception as e:
                 logger.warning(f"Error stopping camera before high-FPS measurement: {e}")
@@ -757,12 +760,9 @@ class PreviewWindow:
         capture_instance = None
         try:
             if use_picamera2:
-                # Use Picamera2 high-FPS implementation
-                # Create a completely new instance with fresh state
+                # Use Picamera2 high-FPS implementation, reusing the preview instance to avoid allocator issues
                 from robocam.picamera2_highfps_capture import Picamera2HighFpsCapture
-                # Don't pass existing picam2 - create fresh instance
-                # This avoids allocator conflicts from previous configurations
-                capture_instance = Picamera2HighFpsCapture(width=w, height=h, fps=fps, picam2=None)
+                capture_instance = Picamera2HighFpsCapture(width=w, height=h, fps=fps, picam2=preview_picam2)
                 if not capture_instance.start_capture():
                     raise RuntimeError("Failed to start Picamera2 high-FPS capture")
                 logger.info(f"Picamera2 high-FPS started: {w}x{h} @ {fps} FPS")
@@ -821,7 +821,9 @@ class PreviewWindow:
                 capture_instance = None
             
             # Wait for capture instance to fully release hardware
-            time.sleep(0.5)
+            # Longer wait for rpicam-vid subprocess
+            wait_time = 1.0 if use_rpicam_vid else 0.5
+            time.sleep(wait_time)
             
             # Restore preview window's picam2 reference
             if preview_picam2 is not None:
@@ -839,7 +841,11 @@ class PreviewWindow:
             
         except Exception as e:
             logger.error(f"Error with high-FPS method: {e}", exc_info=True)
-            method_name = "Picamera2 high-FPS" if use_picamera2 else "rpicam-vid" if use_rpicam_vid else "high-FPS"
+            # Determine method name for error message
+            try:
+                method_name = "Picamera2 high-FPS" if use_picamera2 else "rpicam-vid" if use_rpicam_vid else "high-FPS"
+            except:
+                method_name = "high-FPS"
             self.status_label.config(text=f"{method_name} error: {e}", fg="red")
             
             # Always stop capture instance on error
@@ -851,8 +857,12 @@ class PreviewWindow:
                     logger.warning(f"Error during cleanup: {cleanup_error}")
                 capture_instance = None
             
-            # Wait for hardware release
-            time.sleep(0.5)
+            # Wait for hardware release - longer for rpicam-vid
+            try:
+                wait_time = 1.0 if use_rpicam_vid else 0.5
+            except:
+                wait_time = 0.5
+            time.sleep(wait_time)
             
             # Restore preview window's picam2 reference
             if preview_picam2 is not None:
@@ -883,22 +893,25 @@ class PreviewWindow:
             is_grayscale = "Grayscale" in current_capture_type
             
             # Configure for capture (YUV420 format for grayscale, default for color)
+            # Use buffer_count=2 for optimal FPS performance
             if is_grayscale:
                 config = self.picam2.create_video_configuration(
                     main={"size": (w, h), "format": "YUV420"},
                     controls={"FrameRate": target_fps},
-                    buffer_count=2
+                    buffer_count=2  # Optimize for high FPS
                 )
             else:
                 config = self.picam2.create_video_configuration(
                     main={"size": (w, h)},
                     controls={"FrameRate": target_fps},
-                    buffer_count=2
+                    buffer_count=2  # Optimize for high FPS
                 )
             
+            # Configure and start with proper delays
             self.picam2.configure(config)
+            time.sleep(0.1)  # Brief pause after configure
             self.picam2.start()
-            time.sleep(0.5)
+            time.sleep(0.3)  # Wait for camera to be ready
             
             # Measure FPS
             self.status_label.config(text="Measuring FPS (5 seconds)...", fg="orange")
@@ -913,15 +926,21 @@ class PreviewWindow:
                     
                     # Process frame based on format
                     if is_grayscale:
-                        # Extract Y channel from YUV420
-                        if array.ndim == 3:
+                        # Extract Y channel from YUV420 efficiently
+                        # YUV420 format: first h rows are Y channel, rest is U/V
+                        if array.ndim == 2:
+                            # Full YUV420 frame - extract Y channel (first h rows)
+                            if array.shape[0] >= h:
+                                gray_frame = array[:h, :w]
+                            else:
+                                gray_frame = array
+                        elif array.ndim == 3:
+                            # 3D array - extract Y channel (first channel)
                             gray_frame = array[:, :, 0] if array.shape[2] >= 1 else array
-                        elif array.ndim == 2:
-                            gray_frame = array
                         else:
                             gray_frame = array
                     else:
-                        # Color frame - just process it
+                        # Color frame - no processing needed for FPS measurement
                         pass
                     
                     fps_tracker.update()

@@ -65,10 +65,6 @@ class Picamera2HighFpsCapture:
         Returns:
             True if capture started successfully, False otherwise
         """
-        if self.picam2 is not None and hasattr(self.picam2, 'started') and self.picam2.started:
-            logger.warning("Capture already started")
-            return False
-        
         try:
             # Always stop existing camera if it's running (critical for proper transitions)
             if self.picam2 is not None:
@@ -84,6 +80,12 @@ class Picamera2HighFpsCapture:
                         self.picam2.stop()
                         logger.info("Stopped existing Picamera2 instance before reconfiguring")
                     
+                    # If allocator is missing (older picamera2 builds), recreate instance
+                    if not hasattr(self.picam2, "allocator"):
+                        self.picam2 = Picamera2()
+                        self._picam2_provided = False
+                        logger.info("Recreated Picamera2 instance because allocator was missing")
+                    
                     # Wait for camera to fully stop and release hardware
                     time.sleep(0.5)
                 except Exception as e:
@@ -98,7 +100,7 @@ class Picamera2HighFpsCapture:
             # YUV420: Y (luminance) channel is h rows, U and V are h/2 rows each
             # Total height is h*3/2, width is w
             config = self.picam2.create_video_configuration(
-                main={"format": "YUV420", "size": (self.width, self.height)},
+                main={"format": "Y", "size": (self.width, self.height)},
                 controls={"FrameRate": self.fps},
                 buffer_count=2  # Optimize buffer for high FPS
             )
@@ -150,30 +152,26 @@ class Picamera2HighFpsCapture:
             return None
         
         try:
-            # Capture YUV420 frame
-            # YUV420 format: Y channel is first h rows, U and V follow
-            yuv = self.picam2.capture_array("main")
+            # Use single-plane Y format; this avoids copying chroma planes for maximum throughput
+            with self.picam2.capture_request() as request:
+                frame = request.make_array("main")
             
-            # YUV420 frame shape: (h*3/2, w) - first h rows are Y (luminance) channel
-            # Extract Y channel for grayscale
-            if yuv.ndim == 2:
-                # If already 2D, check if it's the full YUV frame or just Y
-                if yuv.shape[0] == self.height:
-                    # Already grayscale (just Y channel)
-                    return yuv
-                elif yuv.shape[0] == self.height * 3 // 2:
-                    # Full YUV420 frame - extract Y channel (first h rows)
-                    gray = yuv[:self.height, :self.width].copy()
-                    return gray
-                else:
-                    logger.warning(f"Unexpected frame shape: {yuv.shape}")
-                    return None
-            elif yuv.ndim == 3:
-                # 3D array - extract Y channel (first channel)
-                return yuv[:, :, 0].copy()
-            else:
-                logger.warning(f"Unexpected frame dimensions: {yuv.ndim}")
+            if frame is None:
+                logger.warning("Received empty frame")
                 return None
+            
+            # Expect a 2D array shaped (h, w) for Y format
+            if frame.ndim == 2 and frame.shape[0] == self.height and frame.shape[1] == self.width:
+                return frame
+            
+            # Fallback: handle YUV layouts if a different format slips through
+            if frame.ndim == 2 and frame.shape[0] == self.height * 3 // 2:
+                return frame[:self.height, :self.width].copy()
+            if frame.ndim == 3:
+                return frame[:, :, 0].copy()
+            
+            logger.warning(f"Unexpected frame shape: {frame.shape}")
+            return None
                 
         except Exception as e:
             logger.error(f"Error reading frame: {e}")

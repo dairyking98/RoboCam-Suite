@@ -75,10 +75,19 @@ class RpicamVidCapture:
         
         # Check if rpicam-vid is available
         try:
-            sp.run(["rpicam-vid", "--help"], 
-                   stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=2)
-        except (FileNotFoundError, sp.TimeoutExpired):
+            result = sp.run(["rpicam-vid", "--help"], 
+                           stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=2)
+            if result.returncode != 0:
+                logger.error("rpicam-vid command failed. Please install libcamera-apps: sudo apt-get install -y libcamera-apps")
+                return False
+        except FileNotFoundError:
             logger.error("rpicam-vid command not found. Please install libcamera-apps: sudo apt-get install -y libcamera-apps")
+            return False
+        except sp.TimeoutExpired:
+            logger.error("rpicam-vid command timed out. Camera may be in use by another process.")
+            return False
+        except Exception as e:
+            logger.error(f"Error checking rpicam-vid availability: {e}")
             return False
         
         # Build rpicam-vid command
@@ -99,11 +108,23 @@ class RpicamVidCapture:
         
         try:
             # Start subprocess with unbuffered output
+            # Use stderr=sp.PIPE to capture error messages
             self.process = sp.Popen(
                 video_cmd,
                 stdout=sp.PIPE,
+                stderr=sp.PIPE,
                 bufsize=0  # Unbuffered
             )
+            
+            # Give process a moment to start and check if it's still running
+            time.sleep(0.2)
+            if self.process.poll() is not None:
+                # Process exited immediately - likely an error
+                stderr_output = self.process.stderr.read().decode('utf-8', errors='ignore') if self.process.stderr else ""
+                error_msg = f"rpicam-vid process exited immediately. Error: {stderr_output[:200]}"
+                logger.error(error_msg)
+                self.stop_capture()
+                return False
             
             # Register cleanup on exit
             atexit.register(self.stop_capture)
@@ -112,7 +133,13 @@ class RpicamVidCapture:
             try:
                 raw_stream = self.process.stdout.read(self.bytes_per_frame)
                 if len(raw_stream) != self.bytes_per_frame:
-                    logger.error("Failed to read initial frame")
+                    stderr_output = ""
+                    if self.process.stderr:
+                        try:
+                            stderr_output = self.process.stderr.read().decode('utf-8', errors='ignore')[:200]
+                        except:
+                            pass
+                    logger.error(f"Failed to read initial frame. Expected {self.bytes_per_frame} bytes, got {len(raw_stream)}. Error: {stderr_output}")
                     self.stop_capture()
                     return False
             except Exception as e:
@@ -125,7 +152,8 @@ class RpicamVidCapture:
             
         except Exception as e:
             logger.error(f"Failed to start rpicam-vid: {e}")
-            self.process = None
+            if self.process is not None:
+                self.stop_capture()
             return False
     
     def read_frame(self) -> Optional[np.ndarray]:
