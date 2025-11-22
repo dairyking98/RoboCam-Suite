@@ -42,6 +42,17 @@ RoboCam-Suite supports three capture types, each with different architectures:
 - **Architecture**: Subprocess-based (`raspividyuv` command-line tool)
 - **Frame Capture**: Direct byte reading from subprocess stdout
 - **Video Encoding**: OpenCV VideoWriter with FFV1/MJPG codecs
+- **Installation**: Requires `raspberrypi-userland` package (contains `raspividyuv` command)
+  - **On systems with package available**: Install via: `sudo apt-get install -y raspberrypi-userland`
+  - **On newer Raspberry Pi OS (libcamera)**: Package may not be available. Build from source:
+    ```bash
+    git clone https://github.com/raspberrypi/userland.git
+    cd userland
+    ./buildme
+    ```
+  - Command may be at `/opt/vc/bin/raspividyuv` - create symlink if needed: `sudo ln -s /opt/vc/bin/raspividyuv /usr/local/bin/raspividyuv`
+  - Verify: `raspividyuv --help`
+  - **Note**: Requires legacy camera support. May not be available on newer Raspberry Pi OS versions. Use Picamera2 (Grayscale) as alternative.
 
 ### Unified Capture Interface
 

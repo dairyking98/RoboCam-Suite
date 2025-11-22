@@ -50,6 +50,25 @@ Complete guide for using the RoboCam-Suite calibration and experiment applicatio
    ```bash
    ./setup.sh
    ```
+   
+   The setup script will automatically check for and install required dependencies, including:
+   - Python packages (see `requirements.txt`)
+   - System packages: `python3-libcamera`, `raspberrypi-userland`, `libcap-dev`, etc.
+   - Verifies `raspividyuv` command is available (for high-FPS grayscale capture mode)
+   
+   **Note**: If `raspividyuv` is not available after setup:
+   - **If package is available**: Install via `sudo apt-get install -y raspberrypi-userland`
+   - **On newer Raspberry Pi OS (libcamera)**: Package may not be available. Build from source:
+     ```bash
+     git clone https://github.com/raspberrypi/userland.git
+     cd userland
+     ./buildme
+     ```
+   - **If command exists but not in PATH**: Check `/opt/vc/bin/raspividyuv` and create symlink:
+     ```bash
+     sudo ln -s /opt/vc/bin/raspividyuv /usr/local/bin/raspividyuv
+     ```
+   - **Alternative**: Use "Picamera2 (Grayscale)" capture mode instead, which works on all systems
 
 ## Calibration Procedure
 
@@ -368,7 +387,19 @@ RoboCam-Suite supports multiple capture types for different use cases. All three
    - Best for: High-speed imaging, fast motion capture, scientific velocity measurements
    - Performance: 100-250+ FPS (depends on resolution)
    - Format: Grayscale (luminance only)
-   - **Note**: Requires `raspividyuv` command to be available (part of Raspberry Pi camera tools)
+   - **Note**: Requires `raspividyuv` command to be available (part of `raspberrypi-userland` package)
+   - **Installation**: 
+     - The setup script checks for `raspividyuv`. 
+     - **If package is available**: Install via `sudo apt-get install -y raspberrypi-userland`
+     - **On newer Raspberry Pi OS (libcamera)**: Package may not be available. Build from source:
+       ```bash
+       git clone https://github.com/raspberrypi/userland.git
+       cd userland && ./buildme
+       ```
+   - **Troubleshooting**: 
+     - If command not found after installation, check `/opt/vc/bin/raspividyuv`
+     - Create symlink if needed: `sudo ln -s /opt/vc/bin/raspividyuv /usr/local/bin/raspividyuv`
+     - **Alternative**: Use "Picamera2 (Grayscale)" capture mode instead (works on all systems)
 
 ### Quick Capture Feature (calibrate.py and preview.py)
 

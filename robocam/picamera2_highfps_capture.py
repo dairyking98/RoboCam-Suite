@@ -1,56 +1,58 @@
 """
-Raspividyuv Capture Module - High-FPS Grayscale Capture
+Picamera2 High-FPS Capture Module - High-FPS Grayscale Capture
 
-Fast reading from Raspberry Pi camera using raspividyuv command-line tool.
-Allows grayscale video capture at very high frame rates (100+ FPS).
+Fast grayscale capture using Picamera2 with YUV420 format.
+Allows grayscale video capture at very high frame rates (100+ FPS) using modern libcamera stack.
+
+This is the recommended approach for Raspberry Pi OS (Bullseye/Bookworm) using libcamera.
+Replaces the legacy raspividyuv command-line tool.
 
 Based on: https://gist.github.com/CarlosGS/b8462a8a1cb69f55d8356cbb0f3a4d63
 
 Author: RoboCam-Suite
 """
 
-import subprocess as sp
 import numpy as np
 import cv2
 import atexit
 import time
 import os
-from typing import Optional, Tuple, List
+from typing import Optional, List
+from picamera2 import Picamera2
 from robocam.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 
-class RaspividyuvCapture:
+class Picamera2HighFpsCapture:
     """
-    High-FPS grayscale capture using raspividyuv command-line tool.
+    High-FPS grayscale capture using Picamera2 with YUV420 format.
     
-    Provides direct access to raw YUV frames for maximum performance.
+    Provides direct access to raw YUV420 frames, extracting Y (luminance) channel for grayscale.
     Supports saving frames as individual PNG files or encoding to video.
     
     Attributes:
         width (int): Frame width in pixels
         height (int): Frame height in pixels
         fps (int): Target frames per second
-        bytes_per_frame (int): Number of bytes per frame (width * height for grayscale)
-        process (Optional[sp.Popen]): Subprocess running raspividyuv
+        picam2 (Optional[Picamera2]): Picamera2 instance
         frames (List[np.ndarray]): Buffer for captured frames
+        _recording (bool): Whether currently recording frames
     """
     
     def __init__(self, width: int = 640, height: int = 480, fps: int = 250) -> None:
         """
-        Initialize raspividyuv capture.
+        Initialize Picamera2 high-FPS capture.
         
         Args:
-            width: Frame width in pixels
-            height: Frame height in pixels
-            fps: Target frames per second (250 requests maximum)
+            width: Frame width in pixels (should be multiple of 32 for optimal performance)
+            height: Frame height in pixels (should be multiple of 16 for optimal performance)
+            fps: Target frames per second
         """
         self.width: int = width
         self.height: int = height
         self.fps: int = fps
-        self.bytes_per_frame: int = width * height
-        self.process: Optional[sp.Popen] = None
+        self.picam2: Optional[Picamera2] = None
         self.frames: List[np.ndarray] = []
         self._recording: bool = False
         
@@ -61,63 +63,44 @@ class RaspividyuvCapture:
         Returns:
             True if capture started successfully, False otherwise
         """
-        if self.process is not None:
+        if self.picam2 is not None:
             logger.warning("Capture already started")
             return False
         
-        # Check if raspividyuv is available
         try:
-            sp.run(["raspividyuv", "--help"], 
-                   stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=2)
-        except (FileNotFoundError, sp.TimeoutExpired):
-            logger.error("raspividyuv command not found. Please install Raspberry Pi camera tools.")
-            return False
-        
-        # Build raspividyuv command
-        # --luma discards chroma channels, only luminance is sent
-        # --output - sends output to stdout
-        # --timeout 0 specifies continuous video
-        # --nopreview disables preview window
-        video_cmd = [
-            "raspividyuv",
-            "-w", str(self.width),
-            "-h", str(self.height),
-            "--output", "-",
-            "--timeout", "0",
-            "--framerate", str(self.fps),
-            "--luma",
-            "--nopreview"
-        ]
-        
-        try:
-            # Start subprocess with unbuffered output
-            self.process = sp.Popen(
-                video_cmd,
-                stdout=sp.PIPE,
-                bufsize=1  # Line buffered
+            # Create Picamera2 instance
+            self.picam2 = Picamera2()
+            
+            # Create video configuration with YUV420 format
+            # YUV420: Y (luminance) channel is h rows, U and V are h/2 rows each
+            # Total height is h*3/2, width is w
+            config = self.picam2.create_video_configuration(
+                main={"format": "YUV420", "size": (self.width, self.height)},
+                controls={"FrameRate": self.fps}
             )
+            
+            self.picam2.configure(config)
+            self.picam2.start()
             
             # Register cleanup on exit
             atexit.register(self.stop_capture)
             
             # Wait for first frame and discard it (warmup)
             try:
-                raw_stream = self.process.stdout.read(self.bytes_per_frame)
-                if len(raw_stream) != self.bytes_per_frame:
-                    logger.error("Failed to read initial frame")
-                    self.stop_capture()
-                    return False
+                # Capture a frame to warm up
+                _ = self.picam2.capture_array("main")
+                # Discard warmup frame
             except Exception as e:
-                logger.error(f"Error reading initial frame: {e}")
+                logger.error(f"Error during warmup: {e}")
                 self.stop_capture()
                 return False
             
-            logger.info(f"Raspividyuv capture started: {self.width}x{self.height} @ {self.fps} FPS")
+            logger.info(f"Picamera2 high-FPS capture started: {self.width}x{self.height} @ {self.fps} FPS")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to start raspividyuv: {e}")
-            self.process = None
+            logger.error(f"Failed to start Picamera2 capture: {e}")
+            self.stop_capture()
             return False
     
     def read_frame(self) -> Optional[np.ndarray]:
@@ -127,27 +110,36 @@ class RaspividyuvCapture:
         Returns:
             Grayscale frame as numpy array (height, width), or None if error
         """
-        if self.process is None:
+        if self.picam2 is None:
             logger.error("Capture not started")
             return None
         
         try:
-            # Flush any buffered frames to get latest
-            self.process.stdout.flush()
+            # Capture YUV420 frame
+            # YUV420 format: Y channel is first h rows, U and V follow
+            yuv = self.picam2.capture_array("main")
             
-            # Read raw bytes
-            frame_bytes = self.process.stdout.read(self.bytes_per_frame)
-            
-            if len(frame_bytes) != self.bytes_per_frame:
-                logger.warning(f"Read incomplete frame: {len(frame_bytes)}/{self.bytes_per_frame} bytes")
+            # YUV420 frame shape: (h*3/2, w) - first h rows are Y (luminance) channel
+            # Extract Y channel for grayscale
+            if yuv.ndim == 2:
+                # If already 2D, check if it's the full YUV frame or just Y
+                if yuv.shape[0] == self.height:
+                    # Already grayscale (just Y channel)
+                    return yuv
+                elif yuv.shape[0] == self.height * 3 // 2:
+                    # Full YUV420 frame - extract Y channel (first h rows)
+                    gray = yuv[:self.height, :self.width].copy()
+                    return gray
+                else:
+                    logger.warning(f"Unexpected frame shape: {yuv.shape}")
+                    return None
+            elif yuv.ndim == 3:
+                # 3D array - extract Y channel (first channel)
+                return yuv[:, :, 0].copy()
+            else:
+                logger.warning(f"Unexpected frame dimensions: {yuv.ndim}")
                 return None
-            
-            # Convert to numpy array
-            frame = np.frombuffer(frame_bytes, dtype=np.uint8)
-            frame = frame.reshape((self.height, self.width))
-            
-            return frame
-            
+                
         except Exception as e:
             logger.error(f"Error reading frame: {e}")
             return None
@@ -298,18 +290,14 @@ class RaspividyuvCapture:
         return True
     
     def stop_capture(self) -> None:
-        """Stop capturing and clean up subprocess."""
-        if self.process is not None:
+        """Stop capturing and clean up Picamera2 instance."""
+        if self.picam2 is not None:
             try:
-                self.process.terminate()
-                self.process.wait(timeout=2)
-            except sp.TimeoutExpired:
-                self.process.kill()
-                self.process.wait()
+                self.picam2.stop()
             except Exception as e:
-                logger.warning(f"Error stopping process: {e}")
+                logger.warning(f"Error stopping Picamera2: {e}")
             finally:
-                self.process = None
+                self.picam2 = None
                 self._recording = False
-                logger.info("Raspividyuv capture stopped")
+                logger.info("Picamera2 high-FPS capture stopped")
 

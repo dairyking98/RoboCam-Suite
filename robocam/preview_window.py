@@ -641,7 +641,7 @@ class PreviewWindow:
             logger.error(f"Quick capture error: {e}")
     
     def on_measure_fps(self) -> None:
-        """Measure maximum grayscale capture FPS using raspividyuv method."""
+        """Measure maximum capture FPS using method matching current capture type."""
         if self._simulate_cam:
             self.status_label.config(text="Camera not available", fg="orange")
             return
@@ -651,10 +651,9 @@ class PreviewWindow:
             return
         
         def measure_fps_thread():
-            """Measure grayscale capture FPS using raspividyuv method in a separate thread."""
+            """Measure capture FPS using method matching capture type in a separate thread."""
             self._measuring_fps = True
             self.measure_fps_btn.config(state="disabled", text="Measuring...")
-            self.status_label.config(text="Stopping preview and measuring FPS using raspividyuv...", fg="orange")
             
             # Store current preview state
             was_preview_active = self._native_preview_active
@@ -673,157 +672,20 @@ class PreviewWindow:
                     res_x, res_y = 640, 480
                     target_fps = 250.0  # Use 250 for maximum FPS like in gist
                 
-                # Stop camera if running
-                if self.picam2 is not None:
-                    try:
-                        if hasattr(self.picam2, 'started') and self.picam2.started:
-                            self.picam2.stop()
-                    except:
-                        pass
+                # Get current capture type
+                current_capture_type = self.capture_type_var.get()
                 
-                # Use raspividyuv method from gist
-                # https://gist.github.com/CarlosGS/b8462a8a1cb69f55d8356cbb0f3a4d63
+                # Determine which method to use based on capture type
+                use_high_fps = "High FPS" in current_capture_type
                 
-                # Video capture parameters
-                w, h = res_x, res_y
-                bytes_per_frame = w * h
-                fps = int(target_fps)  # Use target FPS or 250 for maximum
-                
-                # Check if raspividyuv is available
-                try:
-                    sp.run(["raspividyuv", "--help"], 
-                           stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=2)
-                except (FileNotFoundError, sp.TimeoutExpired):
-                    self.status_label.config(text="raspividyuv not found. Using Picamera2 method instead.", fg="orange")
-                    logger.warning("raspividyuv not found, falling back to Picamera2 method")
-                    # Fall back to Picamera2 method (keep existing implementation)
-                    self._measure_fps_picamera2(w, h, target_fps, was_preview_active)
-                    return
-                
-                # Build raspividyuv command (from gist)
-                # --luma discards chroma channels, only luminance is sent
-                # --output - sends output to stdout
-                # --timeout 0 specifies continuous video
-                # --nopreview disables preview window
-                video_cmd = [
-                    "raspividyuv",
-                    "-w", str(w),
-                    "-h", str(h),
-                    "--output", "-",
-                    "--timeout", "0",
-                    "--framerate", str(fps),
-                    "--luma",
-                    "--nopreview"
-                ]
-                
-                self.status_label.config(text="Starting raspividyuv and measuring FPS (5 seconds)...", fg="orange")
-                
-                # Start raspividyuv subprocess
-                camera_process = None
-                try:
-                    camera_process = sp.Popen(
-                        video_cmd,
-                        stdout=sp.PIPE,
-                        bufsize=1  # Line buffered (fix from gist comments)
-                    )
-                    atexit.register(camera_process.terminate)
-                    
-                    # Wait for first frame and discard it (warmup)
-                    raw_stream = camera_process.stdout.read(bytes_per_frame)
-                    if len(raw_stream) != bytes_per_frame:
-                        logger.error("Failed to read initial frame from raspividyuv")
-                        raise RuntimeError("Failed to read initial frame")
-                    
-                    logger.info(f"Raspividyuv started: {w}x{h} @ {fps} FPS")
-                    
-                    # Measure FPS by reading frames as fast as possible
-                    self.status_label.config(text="Measuring FPS (5 seconds)...", fg="orange")
-                    
-                    start_time = time.time()
-                    frame_count = 0
-                    measurement_duration = 5.0
-                    
-                    while time.time() - start_time < measurement_duration:
-                        try:
-                            # Flush any buffered frames to get latest (from gist)
-                            camera_process.stdout.flush()
-                            
-                            # Read raw bytes (from gist - using frombuffer instead of fromfile)
-                            frame_bytes = camera_process.stdout.read(bytes_per_frame)
-                            
-                            if len(frame_bytes) != bytes_per_frame:
-                                logger.warning(f"Incomplete frame read: {len(frame_bytes)}/{bytes_per_frame} bytes")
-                                break
-                            
-                            # Parse frame (from gist - using frombuffer)
-                            frame = np.frombuffer(frame_bytes, dtype=np.uint8)
-                            if frame.size != bytes_per_frame:
-                                logger.warning("Frame size mismatch")
-                                break
-                            
-                            # Reshape frame
-                            frame.shape = (h, w)
-                            
-                            # Frame read successfully
-                            frame_count += 1
-                            
-                        except Exception as e:
-                            logger.warning(f"Frame read error during FPS measurement: {e}")
-                            # Continue measuring even if some frames fail
-                            time.sleep(0.01)  # Small delay to prevent busy loop
-                    
-                    end_time = time.time()
-                    elapsed_seconds = end_time - start_time
-                    
-                    if elapsed_seconds > 0:
-                        measured_fps = frame_count / elapsed_seconds
-                    else:
-                        measured_fps = 0.0
-                    
-                    logger.info(f"Raspividyuv FPS test: {frame_count} frames in {elapsed_seconds:.2f}s = {measured_fps:.1f} FPS")
-                    
-                    # Stop raspividyuv
-                    if camera_process is not None:
-                        try:
-                            camera_process.terminate()
-                            camera_process.wait(timeout=2)
-                        except:
-                            try:
-                                camera_process.kill()
-                                camera_process.wait()
-                            except:
-                                pass
-                        atexit.unregister(camera_process.terminate)
-                        camera_process = None
-                    
-                except Exception as e:
-                    logger.error(f"Error with raspividyuv method: {e}", exc_info=True)
-                    self.status_label.config(text=f"Raspividyuv error: {e}. Falling back to Picamera2.", fg="orange")
-                    # Clean up
-                    if camera_process is not None:
-                        try:
-                            camera_process.terminate()
-                            camera_process.wait(timeout=1)
-                        except:
-                            try:
-                                camera_process.kill()
-                            except:
-                                pass
-                        atexit.unregister(camera_process.terminate)
-                    
-                    # Fall back to Picamera2 method
-                    self._measure_fps_picamera2(w, h, target_fps, was_preview_active)
-                    return
-                
-                # Restore preview configuration
-                self._restore_preview_config(res_x, res_y, target_fps, was_preview_active)
-                
-                # Update status with measured FPS
-                self.status_label.config(
-                    text=f"FPS: {measured_fps:.1f} at {res_x}x{res_y} ({frame_count} frames in {elapsed_seconds:.2f}s)",
-                    fg="green"
-                )
-                logger.info(f"Measured FPS using raspividyuv: {measured_fps:.1f} at {res_x}x{res_y}")
+                if use_high_fps:
+                    # Use high-FPS method for Picamera2 (Grayscale - High FPS) or rpicam-vid (Grayscale - High FPS)
+                    self.status_label.config(text="Stopping preview and measuring FPS using high-FPS method...", fg="orange")
+                    self._measure_fps_highfps(res_x, res_y, target_fps, was_preview_active, current_capture_type)
+                else:
+                    # Use Picamera2 method for Picamera2 (Color) or Picamera2 (Grayscale)
+                    self.status_label.config(text="Stopping preview and measuring FPS using Picamera2...", fg="orange")
+                    self._measure_fps_picamera2(res_x, res_y, target_fps, was_preview_active)
                 
             except Exception as e:
                 logger.error(f"Error measuring FPS: {e}", exc_info=True)
@@ -848,23 +710,142 @@ class PreviewWindow:
         thread = threading.Thread(target=measure_fps_thread, daemon=True)
         thread.start()
     
+    def _measure_fps_highfps(self, w: int, h: int, target_fps: float, was_preview_active: bool, capture_type: str) -> None:
+        """Measure FPS using high-FPS capture methods (Picamera2 or rpicam-vid)."""
+        # Stop camera if running
+        if self.picam2 is not None:
+            try:
+                if hasattr(self.picam2, 'started') and self.picam2.started:
+                    self.picam2.stop()
+            except:
+                pass
+        
+        # Video capture parameters
+        res_x, res_y = w, h
+        fps = int(target_fps)  # Use target FPS
+        
+        # Determine which implementation to use
+        use_picamera2 = "Picamera2 (Grayscale - High FPS)" in capture_type
+        use_rpicam_vid = "rpicam-vid (Grayscale - High FPS)" in capture_type
+        
+        self.status_label.config(text="Starting high-FPS capture and measuring FPS (5 seconds)...", fg="orange")
+        
+        capture_instance = None
+        try:
+            if use_picamera2:
+                # Use Picamera2 high-FPS implementation
+                from robocam.picamera2_highfps_capture import Picamera2HighFpsCapture
+                capture_instance = Picamera2HighFpsCapture(width=w, height=h, fps=fps)
+                if not capture_instance.start_capture():
+                    raise RuntimeError("Failed to start Picamera2 high-FPS capture")
+                logger.info(f"Picamera2 high-FPS started: {w}x{h} @ {fps} FPS")
+            elif use_rpicam_vid:
+                # Use rpicam-vid subprocess implementation
+                from robocam.rpicam_vid_capture import RpicamVidCapture
+                capture_instance = RpicamVidCapture(width=w, height=h, fps=fps)
+                if not capture_instance.start_capture():
+                    raise RuntimeError("Failed to start rpicam-vid capture")
+                logger.info(f"Rpicam-vid started: {w}x{h} @ {fps} FPS")
+            else:
+                raise ValueError(f"Unknown high-FPS capture type: {capture_type}")
+            
+            # Measure FPS by reading frames as fast as possible
+            self.status_label.config(text="Measuring FPS (5 seconds)...", fg="orange")
+            
+            start_time = time.time()
+            frame_count = 0
+            measurement_duration = 5.0
+            
+            while time.time() - start_time < measurement_duration:
+                try:
+                    frame = capture_instance.read_frame()
+                    if frame is not None:
+                        frame_count += 1
+                    else:
+                        logger.warning("Failed to read frame during FPS measurement")
+                        time.sleep(0.01)  # Small delay to prevent busy loop
+                except Exception as e:
+                    logger.warning(f"Frame read error during FPS measurement: {e}")
+                    # Continue measuring even if some frames fail
+                    time.sleep(0.01)  # Small delay to prevent busy loop
+            
+            end_time = time.time()
+            elapsed_seconds = end_time - start_time
+            
+            if elapsed_seconds > 0:
+                measured_fps = frame_count / elapsed_seconds
+            else:
+                measured_fps = 0.0
+            
+            method_name = "Picamera2 high-FPS" if use_picamera2 else "rpicam-vid"
+            logger.info(f"{method_name} FPS test: {frame_count} frames in {elapsed_seconds:.2f}s = {measured_fps:.1f} FPS")
+            
+            # Stop capture
+            if capture_instance is not None:
+                try:
+                    capture_instance.stop_capture()
+                except Exception as e:
+                    logger.warning(f"Error stopping capture: {e}")
+                capture_instance = None
+            
+            # Restore preview configuration
+            self._restore_preview_config(res_x, res_y, target_fps, was_preview_active)
+            
+            # Update status with measured FPS
+            self.status_label.config(
+                text=f"FPS: {measured_fps:.1f} at {res_x}x{res_y} ({frame_count} frames in {elapsed_seconds:.2f}s)",
+                fg="green"
+            )
+            logger.info(f"Measured FPS using {method_name}: {measured_fps:.1f} at {res_x}x{res_y}")
+            
+        except Exception as e:
+            logger.error(f"Error with high-FPS method: {e}", exc_info=True)
+            method_name = "Picamera2 high-FPS" if use_picamera2 else "rpicam-vid" if use_rpicam_vid else "high-FPS"
+            self.status_label.config(text=f"{method_name} error: {e}", fg="red")
+            # Clean up
+            if capture_instance is not None:
+                try:
+                    capture_instance.stop_capture()
+                except Exception as cleanup_error:
+                    logger.warning(f"Error during cleanup: {cleanup_error}")
+                capture_instance = None
+            
+            # Restore preview even on error
+            self._restore_preview_config(res_x, res_y, target_fps, was_preview_active)
+    
     def _measure_fps_picamera2(self, w: int, h: int, target_fps: float, was_preview_active: bool) -> None:
-        """Fallback FPS measurement using Picamera2 (old method)."""
+        """Measure FPS using Picamera2 method (for Picamera2 Color or Grayscale)."""
         if self.picam2 is None:
+            self.status_label.config(text="Camera not available", fg="red")
             return
         
+        res_x, res_y = w, h
+        
         try:
-            # Configure for grayscale capture (YUV420 format)
-            grayscale_config = self.picam2.create_video_configuration(
-                main={"size": (w, h), "format": "YUV420"},
-                controls={"FrameRate": target_fps},
-                buffer_count=2
-            )
-            self.picam2.configure(grayscale_config)
+            # Check if grayscale mode
+            current_capture_type = self.capture_type_var.get()
+            is_grayscale = "Grayscale" in current_capture_type
+            
+            # Configure for capture (YUV420 format for grayscale, default for color)
+            if is_grayscale:
+                config = self.picam2.create_video_configuration(
+                    main={"size": (w, h), "format": "YUV420"},
+                    controls={"FrameRate": target_fps},
+                    buffer_count=2
+                )
+            else:
+                config = self.picam2.create_video_configuration(
+                    main={"size": (w, h)},
+                    controls={"FrameRate": target_fps},
+                    buffer_count=2
+                )
+            
+            self.picam2.configure(config)
             self.picam2.start()
             time.sleep(0.5)
             
             # Measure FPS
+            self.status_label.config(text="Measuring FPS (5 seconds)...", fg="orange")
             fps_tracker = FPSTracker()
             start_time = time.time()
             frame_count = 0
@@ -873,12 +854,19 @@ class PreviewWindow:
             while time.time() - start_time < measurement_duration:
                 try:
                     array = self.picam2.capture_array("main")
-                    if array.ndim == 3:
-                        gray_frame = array[:, :, 0] if array.shape[2] >= 1 else array
-                    elif array.ndim == 2:
-                        gray_frame = array
+                    
+                    # Process frame based on format
+                    if is_grayscale:
+                        # Extract Y channel from YUV420
+                        if array.ndim == 3:
+                            gray_frame = array[:, :, 0] if array.shape[2] >= 1 else array
+                        elif array.ndim == 2:
+                            gray_frame = array
+                        else:
+                            gray_frame = array
                     else:
-                        gray_frame = array
+                        # Color frame - just process it
+                        pass
                     
                     fps_tracker.update()
                     frame_count += 1
@@ -891,10 +879,24 @@ class PreviewWindow:
             
             logger.info(f"Picamera2 FPS test: {frame_count} frames in {actual_duration:.2f}s = {measured_fps:.1f} FPS")
             
+            # Stop camera
             self.picam2.stop()
             
+            # Restore preview configuration
+            self._restore_preview_config(res_x, res_y, target_fps, was_preview_active)
+            
+            # Update status with measured FPS
+            self.status_label.config(
+                text=f"FPS: {measured_fps:.1f} at {res_x}x{res_y} ({frame_count} frames in {actual_duration:.2f}s)",
+                fg="green"
+            )
+            logger.info(f"Measured FPS using Picamera2: {measured_fps:.1f} at {res_x}x{res_y}")
+            
         except Exception as e:
-            logger.error(f"Error in Picamera2 FPS measurement: {e}")
+            logger.error(f"Error in Picamera2 FPS measurement: {e}", exc_info=True)
+            self.status_label.config(text=f"Picamera2 FPS measurement error: {e}", fg="red")
+            # Restore preview even on error
+            self._restore_preview_config(res_x, res_y, target_fps, was_preview_active)
     
     def _restore_preview_config(self, res_x: int, res_y: int, fps: float, was_preview_active: bool) -> None:
         """Restore preview configuration after FPS test."""

@@ -32,6 +32,7 @@ echo ""
 # Check for and install system dependencies
 echo "Checking for system dependencies..."
 MISSING_DEPS=()
+OPTIONAL_DEPS=()
 
 # Check for python3-libcamera (required for picamera2)
 if ! dpkg -l | grep -q "^ii.*python3-libcamera"; then
@@ -55,6 +56,34 @@ fi
 # Check for python3-rpi.gpio (required for GPIO control)
 if ! dpkg -l | grep -q "^ii.*python3-rpi.gpio"; then
     MISSING_DEPS+=("python3-rpi.gpio")
+fi
+
+# Check for libcamera-apps (contains rpicam-vid command-line tool)
+# rpicam-vid is optional for high-FPS grayscale capture mode (alternative to Picamera2)
+# Note: This is checked separately because it's a command-line tool, not a Python package
+RPICAM_VID_AVAILABLE=false
+RPICAM_VID_PACKAGE_AVAILABLE=false
+RPICAM_VID_ATTEMPT_INSTALL=false
+
+if command -v rpicam-vid &> /dev/null; then
+    RPICAM_VID_AVAILABLE=true
+    echo "rpicam-vid command found."
+else
+    echo "rpicam-vid command not found. Checking for installation package..."
+    # Check if package is available in repositories
+    if apt-cache show libcamera-apps &>/dev/null 2>&1; then
+        RPICAM_VID_PACKAGE_AVAILABLE=true
+        # Note: libcamera-apps is optional - don't add to MISSING_DEPS automatically
+        # User can install it if they want to use rpicam-vid mode
+        echo "libcamera-apps package is available in repositories (optional)."
+    else
+        RPICAM_VID_ATTEMPT_INSTALL=false
+        echo ""
+        echo "Note: libcamera-apps package is not available in repositories."
+        echo "The 'rpicam-vid (Grayscale - High FPS)' capture mode will not be available."
+        echo "Alternative: Use 'Picamera2 (Grayscale - High FPS)' capture mode (recommended)."
+        echo ""
+    fi
 fi
 
 # Check for python3-pil.imagetk (required for tkinter preview ImageTk support)
@@ -88,8 +117,19 @@ if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
         echo "Then re-run this setup script."
         exit 1
     fi
-else
-    echo "System dependencies check passed."
+    else
+        echo "System dependencies check passed."
+fi
+
+# Note about optional rpicam-vid installation
+if [ "$RPICAM_VID_AVAILABLE" = false ] && [ "$RPICAM_VID_PACKAGE_AVAILABLE" = true ]; then
+    echo ""
+    echo "Note: rpicam-vid command is not available, but libcamera-apps package is available."
+    echo "To enable 'rpicam-vid (Grayscale - High FPS)' capture mode, install:"
+    echo "  sudo apt-get install -y libcamera-apps"
+    echo ""
+    echo "Alternative: Use 'Picamera2 (Grayscale - High FPS)' capture mode (recommended, no additional installation needed)."
+    echo ""
 fi
 
 # Install optional dependencies (won't fail if unavailable)

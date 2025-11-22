@@ -1665,10 +1665,10 @@ class ExperimentWindow:
         # Get capture type
         capture_type = self.capture_type_var.get()
         
-        # Initialize capture manager if using raspividyuv or if user wants unified interface
+        # Initialize capture manager if using high-FPS modes
         self.capture_manager: Optional[CaptureManager] = None
-        if "raspividyuv" in capture_type:
-            # Use capture manager for raspividyuv
+        if "High FPS" in capture_type:
+            # Use capture manager for high-FPS modes
             try:
                 self.capture_manager = CaptureManager(
                     capture_type=capture_type,
@@ -1859,16 +1859,16 @@ class ExperimentWindow:
                     
                     recording_start_time = time.time()
                     
-                    # Check if using raspividyuv capture manager
-                    if self.capture_manager is not None and "raspividyuv" in self.capture_manager.get_capture_type():
-                        # Use raspividyuv capture manager
+                    # Check if using high-FPS capture manager
+                    if self.capture_manager is not None and "High FPS" in self.capture_manager.get_capture_type():
+                        # Use high-FPS capture manager
                         # Use FFV1 lossless codec for maximum quality
                         codec = "FFV1"
                         
                         # Start recording with capture manager
                         success = self.capture_manager.start_video_recording(path, codec=codec)
                         if not success:
-                            logger.error("Failed to start raspividyuv recording")
+                            logger.error("Failed to start high-FPS recording")
                             self.status_lbl.config(text="Recording failed", fg="red")
                             continue
                         
@@ -1903,7 +1903,7 @@ class ExperimentWindow:
                         # Stop recording and encode to video
                         output_path = self.capture_manager.stop_video_recording(codec=codec)
                         if output_path is None:
-                            logger.error("Failed to save raspividyuv video")
+                            logger.error("Failed to save high-FPS video")
                             self.recording = False
                             self.stop_recording_flash()
                             continue
@@ -1959,8 +1959,8 @@ class ExperimentWindow:
                     # Save metadata file with FPS and recording information
                     well_label = f"{y_lbl}{x_lbl}"
                     timestamp_str = f"{ds}_{ts}"
-                    # Use output_path if raspividyuv was used, otherwise use path
-                    video_path_for_metadata = output_path if (self.capture_manager is not None and "raspividyuv" in self.capture_manager.get_capture_type()) else path
+                    # Use output_path if high-FPS mode was used, otherwise use path
+                    video_path_for_metadata = output_path if (self.capture_manager is not None and "High FPS" in self.capture_manager.get_capture_type()) else path
                     save_video_metadata(
                         video_path=video_path_for_metadata,
                         target_fps=fps,
@@ -2038,8 +2038,8 @@ class ExperimentWindow:
             self.laser_on = False
         if self.recording:
             try:
-                if self.capture_manager is not None and "raspividyuv" in self.capture_manager.get_capture_type():
-                    # Stop raspividyuv recording
+                if self.capture_manager is not None and "High FPS" in self.capture_manager.get_capture_type():
+                    # Stop high-FPS recording
                     self.capture_manager.stop_video_recording(codec="FFV1")
                 elif self.picam2 is not None:
                     self.picam2.stop_recording()

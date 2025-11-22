@@ -59,6 +59,7 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 - Raspberry Pi OS (required - not compatible with Windows/macOS)
 - System dependencies (installed via apt):
   - `python3-libcamera` (required for picamera2)
+  - `raspberrypi-userland` (contains `raspividyuv` command-line tool for high-FPS grayscale capture)
   - `libcap-dev` (required to build python-prctl)
   - `python3-dev` (required to build Python packages)
   - `build-essential` (required to build Python packages)
@@ -87,7 +88,8 @@ chmod +x setup.sh
 
 3. The setup script will:
    - Check for Python 3.x
-   - Check for and install required system dependencies (`python3-libcamera`, `libcap-dev`, `python3-dev`, `build-essential`)
+   - Check for and install required system dependencies (`python3-libcamera`, `raspberrypi-userland`, `libcap-dev`, `python3-dev`, `build-essential`)
+   - Verify `raspividyuv` command is available (for high-FPS grayscale capture mode)
    - Create a virtual environment in `venv/` with system site packages enabled (to access system-installed packages like `python3-libcamera`)
    - Install all required Python dependencies
    - Create configuration directories
@@ -98,8 +100,24 @@ chmod +x setup.sh
 1. Install system dependencies:
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3-libcamera libcap-dev python3-dev build-essential
+sudo apt-get install -y python3-libcamera raspberrypi-userland libcap-dev python3-dev build-essential
 ```
+
+**Note**: The `raspberrypi-userland` package contains the `raspividyuv` command-line tool, which is required for the "raspividyuv (Grayscale - High FPS)" capture mode. 
+
+**Important**: On newer Raspberry Pi OS versions (using libcamera), the `raspberrypi-userland` package may not be available in repositories. In this case:
+- The setup script will detect this and provide instructions
+- You can build from source if you need the legacy camera tools:
+  ```bash
+  git clone https://github.com/raspberrypi/userland.git
+  cd userland
+  ./buildme
+  ```
+- Alternatively, use "Picamera2 (Grayscale)" capture mode, which works on all systems
+- If the command is installed but not in PATH, it may be at `/opt/vc/bin/raspividyuv`. Create a symlink:
+  ```bash
+  sudo ln -s /opt/vc/bin/raspividyuv /usr/local/bin/raspividyuv
+  ```
 
 2. Create a virtual environment with system site packages (required to access `python3-libcamera`):
 ```bash
@@ -535,6 +553,26 @@ export ROBOCAM_BAUDRATE=9600
   - Ensure camera is enabled: `sudo raspi-config` → Interface Options → Camera
   - Check camera connection
   - Verify Picamera2 is installed correctly
+
+### raspividyuv Not Found
+
+- **Problem**: "raspividyuv command not found" error when using high-FPS capture mode
+- **Solution**:
+  - **On systems with package available**: Install `raspberrypi-userland`: `sudo apt-get install -y raspberrypi-userland`
+  - **On newer Raspberry Pi OS (libcamera)**: The package may not be available. You can:
+    - Build from source:
+      ```bash
+      git clone https://github.com/raspberrypi/userland.git
+      cd userland
+      ./buildme
+      ```
+    - Use "Picamera2 (Grayscale)" capture mode instead (works on all systems)
+  - **If command exists but not in PATH**: Check `/opt/vc/bin/raspividyuv` and create symlink:
+    ```bash
+    sudo ln -s /opt/vc/bin/raspividyuv /usr/local/bin/raspividyuv
+    ```
+  - Verify installation: `raspividyuv --help`
+  - **Note**: `raspividyuv` requires legacy camera support. On newer Raspberry Pi OS versions using libcamera, the package may not be available, and you may need to build from source or use Picamera2 instead.
 
 ### GPIO Permission Issues
 

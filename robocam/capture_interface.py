@@ -4,7 +4,8 @@ Unified Capture Interface - Multi-Capture Type Manager
 Provides a unified interface for different capture types:
 - Picamera2 (Color)
 - Picamera2 (Grayscale)
-- raspividyuv (Grayscale - High FPS)
+- Picamera2 (Grayscale - High FPS) - using Picamera2 directly
+- rpicam-vid (Grayscale - High FPS) - using rpicam-vid subprocess
 
 Author: RoboCam-Suite
 """
@@ -18,7 +19,8 @@ from picamera2 import Picamera2
 from picamera2.encoders import H264Encoder
 from picamera2.outputs import FileOutput
 from robocam.pihqcamera import PiHQCamera
-from robocam.raspividyuv_capture import RaspividyuvCapture
+from robocam.picamera2_highfps_capture import Picamera2HighFpsCapture
+from robocam.rpicam_vid_capture import RpicamVidCapture
 from robocam.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -28,10 +30,11 @@ class CaptureManager:
     """
     Unified interface for multiple capture types.
     
-    Supports three capture modes:
+    Supports four capture modes:
     - "Picamera2 (Color)": Standard color capture using Picamera2
     - "Picamera2 (Grayscale)": Grayscale capture using Picamera2 with YUV420
-    - "raspividyuv (Grayscale - High FPS)": High-FPS grayscale using raspividyuv
+    - "Picamera2 (Grayscale - High FPS)": High-FPS grayscale using Picamera2 directly (recommended)
+    - "rpicam-vid (Grayscale - High FPS)": High-FPS grayscale using rpicam-vid subprocess
     
     Attributes:
         capture_type (str): Current capture type
@@ -39,15 +42,17 @@ class CaptureManager:
         fps (float): Target frames per second
         picam2 (Optional[Picamera2]): Picamera2 instance (for Picamera2 modes)
         pihq_camera (Optional[PiHQCamera]): PiHQCamera wrapper (for Picamera2 modes)
-        raspividyuv (Optional[RaspividyuvCapture]): Raspividyuv instance (for high-FPS mode)
+        picamera2_highfps (Optional[Picamera2HighFpsCapture]): Picamera2 high-FPS instance
+        rpicam_vid (Optional[RpicamVidCapture]): Rpicam-vid instance (for subprocess high-FPS mode)
         _recording (bool): Whether currently recording video
-        _recorded_frames (List): Buffer for recorded frames (raspividyuv mode)
+        _recorded_frames (List): Buffer for recorded frames (high-FPS modes)
     """
     
     CAPTURE_TYPES = [
         "Picamera2 (Color)",
         "Picamera2 (Grayscale)",
-        "raspividyuv (Grayscale - High FPS)"
+        "Picamera2 (Grayscale - High FPS)",
+        "rpicam-vid (Grayscale - High FPS)"
     ]
     
     def __init__(self, capture_type: str = "Picamera2 (Color)",
@@ -74,7 +79,8 @@ class CaptureManager:
         # Initialize capture instances based on type
         self.picam2: Optional[Picamera2] = picam2  # Use provided instance or create new one
         self.pihq_camera: Optional[PiHQCamera] = None
-        self.raspividyuv: Optional[RaspividyuvCapture] = None
+        self.picamera2_highfps: Optional[Picamera2HighFpsCapture] = None
+        self.rpicam_vid: Optional[RpicamVidCapture] = None
         
         self._recording: bool = False
         self._recorded_frames: List[np.ndarray] = []
@@ -85,16 +91,26 @@ class CaptureManager:
     
     def _initialize_capture(self) -> None:
         """Initialize the appropriate capture instance based on capture_type."""
-        if "raspividyuv" in self.capture_type:
-            # High-FPS grayscale mode
-            self.raspividyuv = RaspividyuvCapture(
+        if "Picamera2 (Grayscale - High FPS)" in self.capture_type:
+            # High-FPS grayscale mode using Picamera2 directly
+            self.picamera2_highfps = Picamera2HighFpsCapture(
                 width=self.width,
                 height=self.height,
                 fps=int(self.fps)
             )
-            if not self.raspividyuv.start_capture():
-                logger.error("Failed to start raspividyuv capture")
-                raise RuntimeError("raspividyuv capture failed to start")
+            if not self.picamera2_highfps.start_capture():
+                logger.error("Failed to start Picamera2 high-FPS capture")
+                raise RuntimeError("Picamera2 high-FPS capture failed to start")
+        elif "rpicam-vid (Grayscale - High FPS)" in self.capture_type:
+            # High-FPS grayscale mode using rpicam-vid subprocess
+            self.rpicam_vid = RpicamVidCapture(
+                width=self.width,
+                height=self.height,
+                fps=int(self.fps)
+            )
+            if not self.rpicam_vid.start_capture():
+                logger.error("Failed to start rpicam-vid capture")
+                raise RuntimeError("rpicam-vid capture failed to start")
         else:
             # Picamera2 modes (Color or Grayscale)
             grayscale = "Grayscale" in self.capture_type
@@ -145,13 +161,27 @@ class CaptureManager:
             ext = os.path.splitext(output_path)[1].lower()
             is_jpeg = ext in ['.jpg', '.jpeg']
             
-            if "raspividyuv" in self.capture_type:
-                # Capture single frame from raspividyuv
-                frame = self.raspividyuv.read_frame()
+            if self.picamera2_highfps is not None:
+                # Capture single frame from Picamera2 high-FPS
+                frame = self.picamera2_highfps.read_frame()
                 if frame is None:
-                    logger.error("Failed to read frame from raspividyuv")
+                    logger.error("Failed to read frame from Picamera2 high-FPS")
                     return False
-                
+                # Save with appropriate format
+                if is_jpeg:
+                    # JPEG with quality 95
+                    cv2.imwrite(output_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                else:
+                    # PNG (default)
+                    cv2.imwrite(output_path, frame)
+                logger.info(f"Saved image: {output_path}")
+                return True
+            elif self.rpicam_vid is not None:
+                # Capture single frame from rpicam-vid
+                frame = self.rpicam_vid.read_frame()
+                if frame is None:
+                    logger.error("Failed to read frame from rpicam-vid")
+                    return False
                 # Save with appropriate format
                 if is_jpeg:
                     # JPEG with quality 95
@@ -206,11 +236,17 @@ class CaptureManager:
         self._recording = True
         
         try:
-            if "raspividyuv" in self.capture_type:
-                # Start frame buffering
+            if self.picamera2_highfps is not None:
+                # Start frame buffering for Picamera2 high-FPS
                 self._recorded_frames = []
-                self.raspividyuv.start_recording()
-                logger.info(f"Started raspividyuv recording: {output_path}")
+                self.picamera2_highfps.start_recording()
+                logger.info(f"Started Picamera2 high-FPS recording: {output_path}")
+                return True
+            elif self.rpicam_vid is not None:
+                # Start frame buffering for rpicam-vid
+                self._recorded_frames = []
+                self.rpicam_vid.start_recording()
+                logger.info(f"Started rpicam-vid recording: {output_path}")
                 return True
             else:
                 # Use Picamera2
@@ -244,8 +280,14 @@ class CaptureManager:
         if not self._recording:
             return False
         
-        if "raspividyuv" in self.capture_type:
-            frame = self.raspividyuv.read_frame()
+        if self.picamera2_highfps is not None:
+            frame = self.picamera2_highfps.read_frame()
+            if frame is not None:
+                self._recorded_frames.append(frame.copy())
+                return True
+            return False
+        elif self.rpicam_vid is not None:
+            frame = self.rpicam_vid.read_frame()
             if frame is not None:
                 self._recorded_frames.append(frame.copy())
                 return True
@@ -270,16 +312,43 @@ class CaptureManager:
         self._recording = False
         
         try:
-            if "raspividyuv" in self.capture_type:
-                # Stop recording and encode frames to video
-                self.raspividyuv.stop_recording()
+            if self.picamera2_highfps is not None:
+                # Stop recording and encode frames to video (Picamera2 high-FPS)
+                self.picamera2_highfps.stop_recording()
                 
                 if not self._recorded_frames:
                     logger.warning("No frames recorded")
                     return None
                 
+                # Use frames from buffer
+                self.picamera2_highfps.frames = self._recorded_frames.copy()
+                
                 # Save frames to video
-                success = self.raspividyuv.save_frames_to_video(
+                success = self.picamera2_highfps.save_frames_to_video(
+                    self._video_output_path,
+                    fps=self.fps,
+                    codec=codec
+                )
+                
+                if success:
+                    logger.info(f"Saved video: {self._video_output_path}")
+                    return self._video_output_path
+                else:
+                    logger.error("Failed to save video")
+                    return None
+            elif self.rpicam_vid is not None:
+                # Stop recording and encode frames to video (rpicam-vid)
+                self.rpicam_vid.stop_recording()
+                
+                if not self._recorded_frames:
+                    logger.warning("No frames recorded")
+                    return None
+                
+                # Use frames from buffer
+                self.rpicam_vid.frames = self._recorded_frames.copy()
+                
+                # Save frames to video
+                success = self.rpicam_vid.save_frames_to_video(
                     self._video_output_path,
                     fps=self.fps,
                     codec=codec
@@ -381,17 +450,21 @@ class CaptureManager:
             fps: Target FPS
         """
         self.fps = fps
-        # Note: For raspividyuv, FPS is set at initialization
-        # For Picamera2, FPS can be set in video configuration
+        # Note: For high-FPS modes, FPS is set at initialization
+        # For Picamera2 standard modes, FPS can be set in video configuration
     
     def cleanup(self) -> None:
         """Clean up capture resources."""
         if self._recording:
             self.stop_video_recording()
         
-        if self.raspividyuv is not None:
-            self.raspividyuv.stop_capture()
-            self.raspividyuv = None
+        if self.picamera2_highfps is not None:
+            self.picamera2_highfps.stop_capture()
+            self.picamera2_highfps = None
+        
+        if self.rpicam_vid is not None:
+            self.rpicam_vid.stop_capture()
+            self.rpicam_vid = None
         
         if self.pihq_camera is not None:
             try:
