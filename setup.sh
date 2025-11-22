@@ -57,6 +57,13 @@ if ! dpkg -l | grep -q "^ii.*python3-rpi.gpio"; then
     MISSING_DEPS+=("python3-rpi.gpio")
 fi
 
+# Check for python3-pil.imagetk (required for tkinter preview ImageTk support)
+# Note: This is optional - Pillow in venv should work, but system package ensures compatibility
+if ! dpkg -l | grep -q "^ii.*python3-pil.imagetk"; then
+    # Don't add to MISSING_DEPS - it's optional, we'll try to install it but won't fail if unavailable
+    OPTIONAL_DEPS+=("python3-pil.imagetk")
+fi
+
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     echo "Missing system dependencies detected: ${MISSING_DEPS[*]}"
     echo "These are required for:"
@@ -83,6 +90,23 @@ if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     fi
 else
     echo "System dependencies check passed."
+fi
+
+# Install optional dependencies (won't fail if unavailable)
+if [ ${#OPTIONAL_DEPS[@]} -gt 0 ]; then
+    echo ""
+    echo "Installing optional system dependencies..."
+    echo "These improve compatibility but are not strictly required:"
+    echo "  ${OPTIONAL_DEPS[*]}"
+    echo ""
+    echo "Attempting to install (requires sudo)..."
+    if sudo apt-get update && sudo apt-get install -y "${OPTIONAL_DEPS[@]}" 2>/dev/null; then
+        echo "Optional dependencies installed successfully."
+    else
+        echo "Warning: Could not install optional dependencies. This is usually fine."
+        echo "Pillow in venv should work, but if you see ImageTk import errors, try:"
+        echo "  sudo apt-get install python3-pil.imagetk"
+    fi
 fi
 
 echo ""
@@ -158,6 +182,17 @@ pip uninstall -y opencv-python 2>/dev/null || true
 # Install opencv-python-headless in venv
 pip install opencv-python-headless 2>&1 | grep -v "WARNING: Error parsing dependencies of send2trash" || true
 echo "opencv-python-headless installed (no Qt/GUI dependencies)"
+
+echo ""
+
+# Ensure Pillow is installed in venv (required for tkinter preview)
+# System PIL may not have ImageTk support, so we need Pillow in venv
+echo "Ensuring Pillow is installed in venv (required for tkinter preview)..."
+# Uninstall any existing Pillow/PIL (system or venv) to avoid conflicts
+pip uninstall -y Pillow PIL 2>/dev/null || true
+# Install Pillow in venv (will compile with tkinter support if available)
+pip install Pillow 2>&1 | grep -v "WARNING: Error parsing dependencies of send2trash" || true
+echo "Pillow installed in venv"
 
 echo ""
 

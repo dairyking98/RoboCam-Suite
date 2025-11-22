@@ -10,12 +10,25 @@ Author: RoboCam-Suite
 import threading
 import time
 from typing import Optional, Tuple
-from PIL import Image, ImageTk
 import numpy as np
 from picamera2 import Picamera2
 from robocam.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Try to import PIL Image and ImageTk
+try:
+    from PIL import Image, ImageTk
+except ImportError as e:
+    logger.error(f"Failed to import PIL ImageTk: {e}")
+    logger.error("Pillow with tkinter support is required. Please install:")
+    logger.error("  pip install Pillow")
+    logger.error("Or on Debian/Ubuntu: sudo apt-get install python3-pil.imagetk")
+    raise ImportError(
+        "PIL.ImageTk is not available. Please install Pillow with tkinter support:\n"
+        "  pip install Pillow\n"
+        "Or on Debian/Ubuntu: sudo apt-get install python3-pil.imagetk"
+    ) from e
 
 
 class TkinterPreviewWidget:
