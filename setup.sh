@@ -86,6 +86,29 @@ else
     fi
 fi
 
+# Check for ffmpeg (required for Picamera2 high-FPS capture with hardware encoding)
+# ffmpeg is used by picamera2_highfps_capture.py for hardware-accelerated video encoding
+# Note: ffmpeg is often already installed on Raspberry Pi OS
+FFMPEG_AVAILABLE=false
+if command -v ffmpeg &> /dev/null; then
+    FFMPEG_AVAILABLE=true
+    echo "ffmpeg command found (already installed)."
+else
+    echo "ffmpeg command not found. Checking for installation package..."
+    # Check if package is available in repositories
+    if apt-cache show ffmpeg &>/dev/null 2>&1; then
+        # ffmpeg is required for high-FPS capture mode, so add to MISSING_DEPS
+        MISSING_DEPS+=("ffmpeg")
+        echo "ffmpeg package is available in repositories (required for high-FPS capture)."
+    else
+        echo ""
+        echo "WARNING: ffmpeg package is not available in repositories."
+        echo "The 'Picamera2 (Grayscale - High FPS)' capture mode with hardware encoding will not work."
+        echo "You may need to install ffmpeg manually or use alternative capture modes."
+        echo ""
+    fi
+fi
+
 # Check for python3-pil.imagetk (required for tkinter preview ImageTk support)
 # Note: This is optional - Pillow in venv should work, but system package ensures compatibility
 if ! dpkg -l | grep -q "^ii.*python3-pil.imagetk"; then
@@ -98,6 +121,7 @@ if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     echo "These are required for:"
     echo "  - python3-libcamera: Required for picamera2 (Raspberry Pi camera support)"
     echo "  - python3-rpi.gpio: Required for GPIO control (laser control)"
+    echo "  - ffmpeg: Required for Picamera2 high-FPS capture with hardware encoding"
     echo "  - libcap-dev, python3-dev, build-essential: Required to build Python packages"
     echo ""
     echo "Please install them before continuing:"
@@ -128,7 +152,25 @@ if [ "$RPICAM_VID_AVAILABLE" = false ] && [ "$RPICAM_VID_PACKAGE_AVAILABLE" = tr
     echo "To enable 'rpicam-vid (Grayscale - High FPS)' capture mode, install:"
     echo "  sudo apt-get install -y libcamera-apps"
     echo ""
-    echo "Alternative: Use 'Picamera2 (Grayscale - High FPS)' capture mode (recommended, no additional installation needed)."
+    echo "Alternative: Use 'Picamera2 (Grayscale - High FPS)' capture mode (recommended, requires ffmpeg)."
+    echo ""
+fi
+
+# Note about ffmpeg installation
+if [ "$FFMPEG_AVAILABLE" = false ]; then
+    echo ""
+    echo "WARNING: ffmpeg is not installed."
+    echo "The 'Picamera2 (Grayscale - High FPS)' capture mode with hardware encoding requires ffmpeg."
+    echo ""
+    echo "Installation:"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install -y ffmpeg"
+    echo ""
+    echo "Verify installation:"
+    echo "  ffmpeg -version"
+    echo "  ffmpeg -encoders | grep v4l2m2m  # Check hardware encoder support"
+    echo ""
+    echo "For detailed installation guide, see: docs/FFMPEG_INSTALLATION.md"
     echo ""
 fi
 

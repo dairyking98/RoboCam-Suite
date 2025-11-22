@@ -201,14 +201,24 @@ class RpicamVidCapture:
         try:
             # Read raw YUV420 frame (w*h*3/2 bytes total) with a short timeout to avoid blocking forever
             import select, os
-            rlist, _, _ = select.select([self.process.stdout], [], [], 0.25)
+            # Use shorter timeout (0.1s) to allow more frequent checks and faster failure detection
+            timeout_seconds = 0.1
+            rlist, _, _ = select.select([self.process.stdout], [], [], timeout_seconds)
             if not rlist:
                 # Check again if process is still alive after timeout
                 if self.process.poll() is not None:
                     logger.error("rpicam-vid process terminated during read timeout")
                     return None
-                logger.warning("rpicam-vid read timeout")
+                logger.debug("rpicam-vid read timeout (no data available)")
                 return None
+            
+            # Check process status one more time before reading
+            if self.process.poll() is not None:
+                logger.error("rpicam-vid process terminated before read")
+                return None
+            
+            # Read with a limit to prevent blocking too long
+            # Use os.read with the exact number of bytes needed
             frame_bytes = os.read(self.process.stdout.fileno(), self.bytes_per_frame)
             
             if len(frame_bytes) != self.bytes_per_frame:

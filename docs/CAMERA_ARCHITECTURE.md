@@ -34,25 +34,31 @@ RoboCam-Suite supports three capture types, each with different architectures:
 - **Performance**: ~50-80 FPS at 1920x1080
 - **Use Case**: Grayscale imaging with standard FPS
 
-### 3. raspividyuv (Grayscale - High FPS)
-- **Implementation**: `robocam/raspividyuv_capture.py` → `RaspividyuvCapture` class
+### 3. Picamera2 (Grayscale - High FPS)
+- **Implementation**: `robocam/picamera2_highfps_capture.py` → `Picamera2HighFpsCapture` class
+- **Format**: YUV420 → Y channel (luminance), or direct Y format
+- **Performance**: 100-250+ FPS (depends on resolution)
+- **Use Case**: High-speed imaging, scientific velocity measurements
+- **Architecture**: Direct Picamera2 capture with FFmpeg hardware encoding
+- **Frame Capture**: Direct frame reading from Picamera2 using `capture_array()`
+- **Video Encoding**: FFmpeg hardware-accelerated encoding (h264_v4l2m2m or hevc_v4l2m2m codecs)
+- **Installation**: Requires `ffmpeg` package
+  - Install via: `sudo apt-get install -y ffmpeg`
+  - Verify: `ffmpeg -version`
+  - **Note**: ffmpeg is required for hardware-accelerated video encoding. The `record_with_ffmpeg()` method pipes raw grayscale frames to ffmpeg for efficient encoding.
+
+### 4. rpicam-vid (Grayscale - High FPS)
+- **Implementation**: `robocam/rpicam_vid_capture.py` → `RpicamVidCapture` class
 - **Format**: Raw YUV → Luma channel (grayscale)
 - **Performance**: 100-250+ FPS (depends on resolution)
 - **Use Case**: High-speed imaging, scientific velocity measurements
-- **Architecture**: Subprocess-based (`raspividyuv` command-line tool)
+- **Architecture**: Subprocess-based (`rpicam-vid` command-line tool)
 - **Frame Capture**: Direct byte reading from subprocess stdout
 - **Video Encoding**: OpenCV VideoWriter with FFV1/MJPG codecs
-- **Installation**: Requires `raspberrypi-userland` package (contains `raspividyuv` command)
-  - **On systems with package available**: Install via: `sudo apt-get install -y raspberrypi-userland`
-  - **On newer Raspberry Pi OS (libcamera)**: Package may not be available. Build from source:
-    ```bash
-    git clone https://github.com/raspberrypi/userland.git
-    cd userland
-    ./buildme
-    ```
-  - Command may be at `/opt/vc/bin/raspividyuv` - create symlink if needed: `sudo ln -s /opt/vc/bin/raspividyuv /usr/local/bin/raspividyuv`
-  - Verify: `raspividyuv --help`
-  - **Note**: Requires legacy camera support. May not be available on newer Raspberry Pi OS versions. Use Picamera2 (Grayscale) as alternative.
+- **Installation**: Requires `libcamera-apps` package (contains `rpicam-vid` command)
+  - Install via: `sudo apt-get install -y libcamera-apps`
+  - Verify: `rpicam-vid --help`
+  - **Note**: rpicam-vid is optional. Picamera2 (Grayscale - High FPS) is the recommended approach.
 
 ### Unified Capture Interface
 
@@ -62,7 +68,8 @@ The `CaptureManager` class (`robocam/capture_interface.py`) provides a unified i
 CaptureManager
   ├── Picamera2 (Color) → PiHQCamera(grayscale=False)
   ├── Picamera2 (Grayscale) → PiHQCamera(grayscale=True)
-  └── raspividyuv (High FPS) → RaspividyuvCapture
+  ├── Picamera2 (Grayscale - High FPS) → Picamera2HighFpsCapture (requires ffmpeg)
+  └── rpicam-vid (Grayscale - High FPS) → RpicamVidCapture
 ```
 
 **Benefits**:

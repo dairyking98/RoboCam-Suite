@@ -19,10 +19,11 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 - **4-Corner Path Calibration**: Guided calibration procedure to account for angled well plates with automatic bilinear interpolation (properly handles rotation and skew)
 - **Go to Coordinate**: Direct navigation to specific X, Y, Z coordinates in calibration mode
 - **Video/Still Capture**: Record videos or capture still images at each well
-  - **Multiple Capture Types**: Choose from three capture modes:
+  - **Multiple Capture Types**: Choose from multiple capture modes:
     - **Picamera2 (Color)**: Standard color capture using Picamera2 API
     - **Picamera2 (Grayscale)**: Grayscale capture using Picamera2 with YUV420 format
-    - **raspividyuv (Grayscale - High FPS)**: High-FPS grayscale capture (100+ FPS) using raspividyuv command-line tool
+    - **Picamera2 (Grayscale - High FPS)**: High-FPS grayscale capture (100+ FPS) using Picamera2 with FFmpeg hardware encoding (requires ffmpeg)
+    - **rpicam-vid (Grayscale - High FPS)**: High-FPS grayscale capture using rpicam-vid command-line tool (optional)
   - **Quick Capture**: Instant image or video capture in calibrate.py and preview.py
   - **Minimal Compression**: Video saved with lossless FFV1 codec for maximum data preservation
   - **Accurate FPS Recording**: FPS metadata embedded in H264 videos and saved in JSON metadata files
@@ -59,7 +60,8 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 - Raspberry Pi OS (required - not compatible with Windows/macOS)
 - System dependencies (installed via apt):
   - `python3-libcamera` (required for picamera2)
-  - `raspberrypi-userland` (contains `raspividyuv` command-line tool for high-FPS grayscale capture)
+  - `ffmpeg` (required for Picamera2 high-FPS capture with hardware encoding)
+  - `raspberrypi-userland` (contains `raspividyuv` command-line tool for high-FPS grayscale capture, optional)
   - `libcap-dev` (required to build python-prctl)
   - `python3-dev` (required to build Python packages)
   - `build-essential` (required to build Python packages)
@@ -88,8 +90,9 @@ chmod +x setup.sh
 
 3. The setup script will:
    - Check for Python 3.x
-   - Check for and install required system dependencies (`python3-libcamera`, `raspberrypi-userland`, `libcap-dev`, `python3-dev`, `build-essential`)
-   - Verify `raspividyuv` command is available (for high-FPS grayscale capture mode)
+   - Check for and install required system dependencies (`python3-libcamera`, `ffmpeg`, `raspberrypi-userland`, `libcap-dev`, `python3-dev`, `build-essential`)
+   - Verify `ffmpeg` command is available (for Picamera2 high-FPS capture with hardware encoding)
+   - Verify `raspividyuv` command is available (for high-FPS grayscale capture mode, optional)
    - Create a virtual environment in `venv/` with system site packages enabled (to access system-installed packages like `python3-libcamera`)
    - Install all required Python dependencies
    - Create configuration directories
@@ -100,7 +103,7 @@ chmod +x setup.sh
 1. Install system dependencies:
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3-libcamera raspberrypi-userland libcap-dev python3-dev build-essential
+sudo apt-get install -y python3-libcamera ffmpeg raspberrypi-userland libcap-dev python3-dev build-essential
 ```
 
 **Note**: The `raspberrypi-userland` package contains the `raspividyuv` command-line tool, which is required for the "raspividyuv (Grayscale - High FPS)" capture mode. 
@@ -554,25 +557,31 @@ export ROBOCAM_BAUDRATE=9600
   - Check camera connection
   - Verify Picamera2 is installed correctly
 
-### raspividyuv Not Found
+### ffmpeg Not Found
 
-- **Problem**: "raspividyuv command not found" error when using high-FPS capture mode
+- **Problem**: "FFmpeg executable not found" error when using Picamera2 (Grayscale - High FPS) capture mode
+- **Note**: FFmpeg is often **already installed** on Raspberry Pi OS. Check first: `ffmpeg -version`
 - **Solution**:
-  - **On systems with package available**: Install `raspberrypi-userland`: `sudo apt-get install -y raspberrypi-userland`
-  - **On newer Raspberry Pi OS (libcamera)**: The package may not be available. You can:
-    - Build from source:
-      ```bash
-      git clone https://github.com/raspberrypi/userland.git
-      cd userland
-      ./buildme
-      ```
-    - Use "Picamera2 (Grayscale)" capture mode instead (works on all systems)
-  - **If command exists but not in PATH**: Check `/opt/vc/bin/raspividyuv` and create symlink:
+  - **Check if already installed**: `ffmpeg -version` (if it works, you're all set!)
+  - **Automatic**: The setup script (`./setup.sh`) automatically detects and installs ffmpeg if missing
+  - **Manual installation** (if needed): 
     ```bash
-    sudo ln -s /opt/vc/bin/raspividyuv /usr/local/bin/raspividyuv
+    sudo apt-get update
+    sudo apt-get install -y ffmpeg
     ```
-  - Verify installation: `raspividyuv --help`
-  - **Note**: `raspividyuv` requires legacy camera support. On newer Raspberry Pi OS versions using libcamera, the package may not be available, and you may need to build from source or use Picamera2 instead.
+  - **Verify installation**: `ffmpeg -version`
+  - **Check hardware encoder**: `ffmpeg -encoders | grep v4l2m2m` (should show h264_v4l2m2m)
+  - **Note**: ffmpeg is required for hardware-accelerated video encoding in high-FPS capture mode. Without it, the `record_with_ffmpeg()` method will fail.
+  - **Detailed guide**: See [FFMPEG_INSTALLATION.md](docs/FFMPEG_INSTALLATION.md) for complete installation and troubleshooting guide
+
+### rpicam-vid Not Found
+
+- **Problem**: "rpicam-vid command not found" error when using high-FPS capture mode
+- **Solution**:
+  - Install `libcamera-apps`: `sudo apt-get install -y libcamera-apps`
+  - Verify installation: `rpicam-vid --help`
+  - **Alternative**: Use "Picamera2 (Grayscale - High FPS)" capture mode instead (recommended, requires ffmpeg)
+  - **Note**: rpicam-vid is optional. Picamera2 high-FPS mode is the recommended approach.
 
 ### GPIO Permission Issues
 
@@ -695,6 +704,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[EXPERIMENT_PY_README.md](docs/EXPERIMENT_PY_README.md)**: Detailed documentation for experiment.py
 - **[DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)**: Development guidelines and architecture
 - **[CAMERA_ARCHITECTURE.md](docs/CAMERA_ARCHITECTURE.md)**: Camera system technical details
+- **[FFMPEG_INSTALLATION.md](docs/FFMPEG_INSTALLATION.md)**: Complete FFmpeg installation and troubleshooting guide
 - **[PLANNED_CHANGES.md](PLANNED_CHANGES.md)**: Implementation roadmap
 - **[ROOM_FOR_IMPROVEMENT.md](ROOM_FOR_IMPROVEMENT.md)**: Improvement opportunities
 

@@ -54,21 +54,13 @@ Complete guide for using the RoboCam-Suite calibration and experiment applicatio
    The setup script will automatically check for and install required dependencies, including:
    - Python packages (see `requirements.txt`)
    - System packages: `python3-libcamera`, `raspberrypi-userland`, `libcap-dev`, etc.
-   - Verifies `raspividyuv` command is available (for high-FPS grayscale capture mode)
+   - Verifies `ffmpeg` command is available (for Picamera2 high-FPS capture with hardware encoding)
+   - Verifies `rpicam-vid` command is available (optional, for rpicam-vid high-FPS capture mode)
    
-   **Note**: If `raspividyuv` is not available after setup:
-   - **If package is available**: Install via `sudo apt-get install -y raspberrypi-userland`
-   - **On newer Raspberry Pi OS (libcamera)**: Package may not be available. Build from source:
-     ```bash
-     git clone https://github.com/raspberrypi/userland.git
-     cd userland
-     ./buildme
-     ```
-   - **If command exists but not in PATH**: Check `/opt/vc/bin/raspividyuv` and create symlink:
-     ```bash
-     sudo ln -s /opt/vc/bin/raspividyuv /usr/local/bin/raspividyuv
-     ```
-   - **Alternative**: Use "Picamera2 (Grayscale)" capture mode instead, which works on all systems
+   **Note**: If `ffmpeg` is not available after setup:
+   - **Install ffmpeg**: `sudo apt-get install -y ffmpeg`
+   - **Verify installation**: `ffmpeg -version`
+   - **Alternative**: Use "Picamera2 (Grayscale)" capture mode instead (does not require ffmpeg, but lower FPS)
 
 ## Calibration Procedure
 
@@ -382,31 +374,35 @@ RoboCam-Suite supports multiple capture types for different use cases. All three
    - Performance: ~50-80 FPS at 1920x1080
    - Format: Grayscale (Y channel from YUV420)
 
-3. **raspividyuv (Grayscale - High FPS)**
-   - High-FPS grayscale capture using raspividyuv command-line tool
+3. **Picamera2 (Grayscale - High FPS)**
+   - High-FPS grayscale capture using Picamera2 with FFmpeg hardware encoding
+   - Best for: High-speed imaging, fast motion capture, scientific velocity measurements
+   - Performance: 100-250+ FPS (depends on resolution)
+   - Format: Grayscale (Y channel from YUV420 or direct Y format)
+   - **Note**: Requires `ffmpeg` to be installed (for hardware-accelerated video encoding)
+   - **Installation**: 
+     - The setup script checks for `ffmpeg` and installs it automatically if missing
+     - **Manual installation**: `sudo apt-get install -y ffmpeg`
+     - **Verify**: `ffmpeg -version`
+   - **Recommended**: This is the recommended high-FPS capture mode for modern Raspberry Pi OS
+
+4. **rpicam-vid (Grayscale - High FPS)**
+   - High-FPS grayscale capture using rpicam-vid command-line tool
    - Best for: High-speed imaging, fast motion capture, scientific velocity measurements
    - Performance: 100-250+ FPS (depends on resolution)
    - Format: Grayscale (luminance only)
-   - **Note**: Requires `raspividyuv` command to be available (part of `raspberrypi-userland` package)
+   - **Note**: Requires `rpicam-vid` command to be available (part of `libcamera-apps` package)
    - **Installation**: 
-     - The setup script checks for `raspividyuv`. 
-     - **If package is available**: Install via `sudo apt-get install -y raspberrypi-userland`
-     - **On newer Raspberry Pi OS (libcamera)**: Package may not be available. Build from source:
-       ```bash
-       git clone https://github.com/raspberrypi/userland.git
-       cd userland && ./buildme
-       ```
-   - **Troubleshooting**: 
-     - If command not found after installation, check `/opt/vc/bin/raspividyuv`
-     - Create symlink if needed: `sudo ln -s /opt/vc/bin/raspividyuv /usr/local/bin/raspividyuv`
-     - **Alternative**: Use "Picamera2 (Grayscale)" capture mode instead (works on all systems)
+     - Install via `sudo apt-get install -y libcamera-apps`
+     - **Verify**: `rpicam-vid --help`
+   - **Alternative**: Use "Picamera2 (Grayscale - High FPS)" capture mode instead (recommended)
 
 ### Quick Capture Feature (calibrate.py and preview.py)
 
 Both calibrate.py and preview.py include a "Quick Capture" feature for instant image or video capture:
 
 1. **Capture Settings Section**:
-   - **Capture Type**: Dropdown to select capture type (Picamera2 Color, Picamera2 Grayscale, or raspividyuv High FPS)
+   - **Capture Type**: Dropdown to select capture type (Picamera2 Color, Picamera2 Grayscale, Picamera2 Grayscale - High FPS, or rpicam-vid High FPS)
    - **Mode**: Dropdown to select "Image" or "Video"
    - **Quick Capture Button**: 
      - In Image mode: Captures and saves a single image
@@ -429,13 +425,14 @@ In experiment.py, the capture type is selected in the Camera Settings section:
 
 1. **Capture Type Dropdown**: Located in Camera Settings section
 2. **Automatic Integration**: The selected capture type is automatically used during experiment recording
-3. **raspividyuv Mode**: When selected, frames are captured continuously during recording and encoded to video with minimal compression
+3. **High-FPS Modes**: When selected (Picamera2 Grayscale - High FPS or rpicam-vid High FPS), frames are captured continuously during recording and encoded to video with hardware acceleration (ffmpeg) or minimal compression
 
 ### Video Compression and Quality
 
 For maximum data preservation, videos are saved with minimal compression:
 
-- **FFV1 Codec**: Lossless compression (default for raspividyuv mode)
+- **FFV1 Codec**: Lossless compression (default for high-FPS modes)
+- **FFmpeg Hardware Encoding**: Hardware-accelerated H.264/HEVC encoding (for Picamera2 High FPS mode)
 - **PNG Sequence**: Option to save individual frames as PNG files (best quality, largest files)
 
 Video metadata (FPS, resolution, duration) is always saved in JSON files alongside video files for accurate playback and analysis.
@@ -444,8 +441,8 @@ Video metadata (FPS, resolution, duration) is always saved in JSON files alongsi
 
 - **For color imaging**: Use "Picamera2 (Color)"
 - **For grayscale with standard FPS**: Use "Picamera2 (Grayscale)"
-- **For high-speed capture (>60 FPS)**: Use "raspividyuv (Grayscale - High FPS)"
-- **For scientific velocity measurements**: Use "raspividyuv (Grayscale - High FPS)" for accurate frame timing
+- **For high-speed capture (>60 FPS)**: Use "Picamera2 (Grayscale - High FPS)" (recommended, requires ffmpeg) or "rpicam-vid (Grayscale - High FPS)"
+- **For scientific velocity measurements**: Use "Picamera2 (Grayscale - High FPS)" or "rpicam-vid (Grayscale - High FPS)" for accurate frame timing
 
 ## Experiment Setup
 

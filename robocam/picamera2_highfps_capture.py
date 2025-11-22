@@ -7,6 +7,16 @@ Allows grayscale video capture at very high frame rates (100+ FPS) using modern 
 This is the recommended approach for Raspberry Pi OS (Bullseye/Bookworm) using libcamera.
 Replaces the legacy raspividyuv command-line tool.
 
+Option A (hardware encoder) quick start:
+    capture = Picamera2HighFpsCapture(width=1920, height=1080, fps=30)
+    frames = capture.record_with_ffmpeg(
+        output_path="output.mp4",
+        codec="h264_v4l2m2m",
+        bitrate="12M",
+        duration_seconds=10
+    )
+    capture.stop_capture()
+
 Based on: https://gist.github.com/CarlosGS/b8462a8a1cb69f55d8356cbb0f3a4d63
 
 Author: RoboCam-Suite
@@ -17,6 +27,7 @@ import cv2
 import atexit
 import time
 import os
+import subprocess
 from typing import Optional, List
 from picamera2 import Picamera2
 from robocam.logging_config import get_logger
@@ -58,6 +69,8 @@ class Picamera2HighFpsCapture:
         self.frames: List[np.ndarray] = []
         self._recording: bool = False
         self.last_error: Optional[str] = None
+        self._ffmpeg_process: Optional[subprocess.Popen] = None
+        self._ffmpeg_cmd: Optional[List[str]] = None
         # Precompute frame duration limit (microseconds) to nudge libcamera toward target FPS
         self._frame_duration_us: int = max(1, int(1_000_000 / max(1, fps)))
         
@@ -369,9 +382,164 @@ class Picamera2HighFpsCapture:
             except Exception as e:
                 logger.warning(f"Error stopping Picamera2: {e}")
             finally:
+                self.stop_ffmpeg_encoder()
                 # Only set to None if we created it (not if it was provided)
                 if not self._picam2_provided:
                     self.picam2 = None
                 self._recording = False
                 logger.info("Picamera2 high-FPS capture stopped")
+
+    def start_ffmpeg_encoder(self,
+                             output_path: str,
+                             codec: str = "h264_v4l2m2m",
+                             ffmpeg_path: str = "ffmpeg",
+                             bitrate: Optional[str] = None,
+                             extra_args: Optional[List[str]] = None,
+                             overwrite: bool = True) -> bool:
+        """
+        Start an FFmpeg hardware-accelerated encoder that accepts raw grayscale frames via stdin.
+
+        Args:
+            output_path: Output file path (e.g., .mp4, .mkv)
+            codec: FFmpeg video codec (h264_v4l2m2m or hevc_v4l2m2m)
+            ffmpeg_path: Path to FFmpeg executable
+            bitrate: Optional target bitrate string (e.g., "10M")
+            extra_args: Additional FFmpeg arguments to append before output_path
+            overwrite: Whether to overwrite an existing file
+
+        Returns:
+            True if the encoder started successfully, False otherwise
+        """
+        if self._ffmpeg_process is not None:
+            logger.info("Stopping existing FFmpeg encoder before starting new one")
+            self.stop_ffmpeg_encoder()
+
+        cmd: List[str] = [ffmpeg_path]
+        if overwrite:
+            cmd.append("-y")
+        cmd += [
+            "-f", "rawvideo",
+            "-pix_fmt", "gray",
+            "-s", f"{self.width}x{self.height}",
+            "-r", str(self.fps),
+            "-i", "-",
+            "-c:v", codec
+        ]
+        if bitrate:
+            cmd += ["-b:v", bitrate]
+        cmd += ["-pix_fmt", "gray"]
+        if extra_args:
+            cmd.extend(extra_args)
+        cmd.append(output_path)
+
+        try:
+            self._ffmpeg_process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            self._ffmpeg_cmd = cmd
+            logger.info(f"Started FFmpeg encoder: {' '.join(cmd)}")
+            return True
+        except FileNotFoundError:
+            logger.error(f"FFmpeg executable not found: {ffmpeg_path}")
+        except Exception as e:
+            logger.error(f"Failed to start FFmpeg encoder: {e}")
+
+        self._ffmpeg_process = None
+        self._ffmpeg_cmd = None
+        return False
+
+    def stop_ffmpeg_encoder(self) -> None:
+        """Stop FFmpeg encoder if running."""
+        if self._ffmpeg_process is None:
+            return
+
+        try:
+            if self._ffmpeg_process.stdin:
+                self._ffmpeg_process.stdin.flush()
+                self._ffmpeg_process.stdin.close()
+            self._ffmpeg_process.wait(timeout=5)
+        except Exception as e:
+            logger.warning(f"Error stopping FFmpeg encoder: {e}")
+        finally:
+            self._ffmpeg_process = None
+            self._ffmpeg_cmd = None
+            logger.info("Stopped FFmpeg encoder")
+
+    def record_with_ffmpeg(self,
+                           output_path: str,
+                           codec: str = "h264_v4l2m2m",
+                           ffmpeg_path: str = "ffmpeg",
+                           bitrate: Optional[str] = None,
+                           duration_seconds: Optional[float] = None,
+                           frame_limit: Optional[int] = None,
+                           extra_args: Optional[List[str]] = None) -> int:
+        """
+        Record high-FPS grayscale video by piping raw Y-plane frames to FFmpeg hardware encoder.
+
+        Args:
+            output_path: Destination video file
+            codec: FFmpeg codec (h264_v4l2m2m or hevc_v4l2m2m recommended)
+            ffmpeg_path: Path to FFmpeg executable
+            bitrate: Optional target bitrate (e.g., "20M")
+            duration_seconds: Optional max duration in seconds
+            frame_limit: Optional max number of frames to record
+            extra_args: Extra FFmpeg CLI args (e.g., ["-g", "30"])
+
+        Returns:
+            Number of frames successfully written
+        """
+        if self.picam2 is None:
+            started = self.start_capture()
+            if not started:
+                logger.error("Failed to start Picamera2 before recording")
+                return 0
+
+        if not self.start_ffmpeg_encoder(output_path=output_path,
+                                         codec=codec,
+                                         ffmpeg_path=ffmpeg_path,
+                                         bitrate=bitrate,
+                                         extra_args=extra_args):
+            return 0
+
+        if self._ffmpeg_process is None or self._ffmpeg_process.stdin is None:
+            logger.error("FFmpeg process failed to initialize")
+            return 0
+
+        frames_written = 0
+        start_time = time.perf_counter()
+
+        try:
+            while True:
+                if duration_seconds is not None and (time.perf_counter() - start_time) >= duration_seconds:
+                    break
+                if frame_limit is not None and frames_written >= frame_limit:
+                    break
+
+                frame = self.read_frame()
+                if frame is None:
+                    logger.warning("Skipping empty frame during FFmpeg recording")
+                    continue
+
+                # Ensure contiguous buffer before writing to pipe
+                gray_plane = np.ascontiguousarray(frame)
+                try:
+                    self._ffmpeg_process.stdin.write(gray_plane.tobytes())
+                except BrokenPipeError:
+                    logger.error("FFmpeg pipe closed unexpectedly")
+                    break
+                frames_written += 1
+        finally:
+            self.stop_ffmpeg_encoder()
+
+        elapsed = time.perf_counter() - start_time
+        if elapsed > 0:
+            actual_fps = frames_written / elapsed
+            logger.info(f"Wrote {frames_written} frames to FFmpeg in {elapsed:.2f}s ({actual_fps:.1f} FPS)")
+        else:
+            logger.info(f"Wrote {frames_written} frames to FFmpeg")
+
+        return frames_written
 

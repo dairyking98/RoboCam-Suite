@@ -7,6 +7,10 @@ opencv-python-headless>=4.5.0  # Required for capture interface video encoding (
 Pillow>=9.0.0  # Required for converting camera frames to tkinter PhotoImage
 numpy<2.0  # Pin to <2.0 to avoid compatibility issues with system packages compiled against numpy 1.x
 
+# System dependencies (installed via apt, not pip):
+# - ffmpeg: Required for Picamera2 high-FPS capture with hardware encoding (picamera2_highfps_capture.py)
+#   Install via: sudo apt-get install -y ffmpeg
+
 # Serial Communication
 pyserial>=3.5
 

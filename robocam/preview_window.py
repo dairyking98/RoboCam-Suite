@@ -803,10 +803,31 @@ class PreviewWindow:
             consecutive_failures = 0
             max_consecutive_failures = 50  # Exit early if 50 consecutive failures (about 1.25 seconds)
             
-            while time.time() - start_time < measurement_duration:
+            # Use a flag to force exit (set by timeout thread)
+            measurement_timeout = threading.Event()
+            
+            def timeout_handler():
+                """Set timeout flag after measurement duration."""
+                time.sleep(measurement_duration)
+                measurement_timeout.set()
+                logger.info("FPS measurement timeout reached")
+            
+            # Start timeout thread
+            timeout_thread = threading.Thread(target=timeout_handler, daemon=True)
+            timeout_thread.start()
+            
+            # Maximum hard timeout (6 seconds - slightly longer than measurement duration)
+            hard_timeout = start_time + 6.0
+            max_iterations = 1000  # Absolute maximum iterations (safety net)
+            iteration_count = 0
+            
+            while not measurement_timeout.is_set() and time.time() < hard_timeout and iteration_count < max_iterations:
+                iteration_count += 1
                 # Check elapsed time at start of each iteration to ensure we can exit
-                elapsed = time.time() - start_time
-                if elapsed >= measurement_duration:
+                current_time = time.time()
+                elapsed = current_time - start_time
+                if elapsed >= measurement_duration or current_time >= hard_timeout:
+                    logger.info(f"FPS measurement time limit reached: {elapsed:.2f}s elapsed")
                     break
                 
                 # For rpicam-vid, check if subprocess is still alive
@@ -820,6 +841,7 @@ class PreviewWindow:
                         break
                 
                 try:
+                    # Read frame with timeout protection
                     frame = capture_instance.read_frame()
                     if frame is not None:
                         frame_count += 1
@@ -839,9 +861,27 @@ class PreviewWindow:
                         break
                     # Continue measuring even if some frames fail
                     time.sleep(0.01)  # Small delay to prevent busy loop
+                
+                # Additional safety check - if we've been running too long, force exit
+                if time.time() >= hard_timeout:
+                    logger.warning("FPS measurement exceeded hard timeout, forcing exit")
+                    break
             
+            # Force exit if we're still in the loop (safety net)
             end_time = time.time()
             elapsed_seconds = end_time - start_time
+            
+            # Log why we exited
+            if iteration_count >= max_iterations:
+                logger.warning(f"FPS measurement exited due to maximum iteration limit ({max_iterations} iterations)")
+            elif measurement_timeout.is_set():
+                logger.info("FPS measurement exited due to timeout event")
+            elif elapsed_seconds >= measurement_duration:
+                logger.info(f"FPS measurement exited due to duration limit ({elapsed_seconds:.2f}s >= {measurement_duration}s)")
+            elif elapsed_seconds >= 6.0:
+                logger.warning(f"FPS measurement exited due to hard timeout ({elapsed_seconds:.2f}s)")
+            else:
+                logger.info(f"FPS measurement exited early after {elapsed_seconds:.2f}s (consecutive failures or process died)")
             
             if elapsed_seconds > 0:
                 measured_fps = frame_count / elapsed_seconds
