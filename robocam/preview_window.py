@@ -624,7 +624,7 @@ class PreviewWindow:
             logger.error(f"Quick capture error: {e}")
     
     def on_measure_fps(self) -> None:
-        """Measure maximum FPS at current settings."""
+        """Measure maximum grayscale capture FPS at current settings."""
         if self.picam2 is None or self._simulate_cam:
             self.status_label.config(text="Camera not available", fg="orange")
             return
@@ -634,10 +634,14 @@ class PreviewWindow:
             return
         
         def measure_fps_thread():
-            """Measure FPS in a separate thread."""
+            """Measure grayscale capture FPS in a separate thread."""
             self._measuring_fps = True
             self.measure_fps_btn.config(state="disabled", text="Measuring...")
-            self.status_label.config(text="Stopping preview and measuring FPS...", fg="orange")
+            self.status_label.config(text="Stopping preview and measuring grayscale capture FPS...", fg="orange")
+            
+            # Store current preview state
+            was_preview_active = self._native_preview_active
+            previous_backend = self._preview_backend
             
             try:
                 # Stop native preview if active
@@ -659,31 +663,74 @@ class PreviewWindow:
                 except:
                     pass
                 
-                # Configure for video recording (max FPS)
-                video_config = self.picam2.create_video_configuration(
-                    main={"size": (res_x, res_y)},
+                # Configure for grayscale capture (YUV420 format for maximum speed)
+                # Use video configuration which allows higher FPS
+                import numpy as np
+                grayscale_config = self.picam2.create_video_configuration(
+                    main={"size": (res_x, res_y), "format": "YUV420"},
                     controls={"FrameRate": fps},
-                    buffer_count=2
+                    buffer_count=2  # Minimal buffer for maximum speed
                 )
-                self.picam2.configure(video_config)
+                self.picam2.configure(grayscale_config)
                 self.picam2.start()
                 
-                # Measure FPS
-                self.status_label.config(text="Measuring FPS (5 seconds)...", fg="orange")
+                # Give camera time to initialize
+                time.sleep(0.5)
+                
+                # Measure grayscale capture FPS by repeatedly capturing frames
+                self.status_label.config(text="Measuring grayscale capture FPS (5 seconds)...", fg="orange")
                 fps_tracker = FPSTracker()
                 
-                def frame_callback(request):
-                    fps_tracker.update()
+                # Measure for 5 seconds by capturing frames as fast as possible
+                start_time = time.time()
+                frame_count = 0
+                measurement_duration = 5.0
                 
-                self.picam2.post_callback = frame_callback
-                
-                # Measure for 5 seconds
-                time.sleep(5.0)
+                while time.time() - start_time < measurement_duration:
+                    try:
+                        # Capture a grayscale frame (YUV420 format)
+                        array = self.picam2.capture_array("main")
+                        
+                        # Extract Y channel (luminance) for grayscale
+                        if array.ndim == 3:
+                            # YUV420: Y channel is first channel or first 2/3 of data
+                            # Depending on YUV420 layout, Y is typically the first channel
+                            gray_frame = array[:, :, 0] if array.shape[2] >= 1 else array
+                        elif array.ndim == 2:
+                            # Already 2D grayscale
+                            gray_frame = array
+                        else:
+                            gray_frame = array
+                        
+                        # Frame captured successfully
+                        fps_tracker.update()
+                        frame_count += 1
+                    except Exception as e:
+                        logger.warning(f"Frame capture error during FPS measurement: {e}")
+                        # Continue measuring even if some frames fail
+                        time.sleep(0.01)  # Small delay to prevent busy loop
                 
                 measured_fps = fps_tracker.get_fps()
+                actual_duration = time.time() - start_time
+                
+                logger.info(f"Grayscale capture FPS test: {frame_count} frames in {actual_duration:.2f}s = {measured_fps:.1f} FPS")
                 
                 # Restore preview configuration
-                self.picam2.stop()
+                try:
+                    self.picam2.stop()
+                    time.sleep(0.1)
+                except:
+                    pass
+                
+                # Restore preview configuration
+                try:
+                    res_x = int(self.res_x_var.get().strip())
+                    res_y = int(self.res_y_var.get().strip())
+                    fps = float(self.fps_var.get().strip())
+                except ValueError:
+                    res_x, res_y = 800, 600
+                    fps = 30.0
+                
                 self.picam2_config = self.picam2.create_preview_configuration(
                     main={"size": (res_x, res_y)},
                     controls={"FrameRate": fps},
@@ -692,27 +739,72 @@ class PreviewWindow:
                 self.picam2.configure(self.picam2_config)
                 self.picam2.start()
                 
-                # Restore FPS tracking
+                # Restore FPS tracking callback
                 if self.fps_tracker:
                     def restore_callback(request):
                         if self.fps_tracker:
                             self.fps_tracker.update()
                     self.picam2.post_callback = restore_callback
                 
-                # Restart preview if not grayscale
-                if "Grayscale" not in self.capture_type_var.get():
-                    self._start_native_preview()
+                # Give camera time to restart
+                time.sleep(0.2)
                 
-                # Update status
+                # Restart preview window (always, regardless of grayscale mode)
+                # This ensures preview is displayed after FPS test
+                if was_preview_active:
+                    # Restore preview if it was active before
+                    if "Grayscale" not in self.capture_type_var.get():
+                        self._start_native_preview()
+                    else:
+                        # For grayscale, show the preview image
+                        self._show_grayscale_preview()
+                else:
+                    # Even if preview wasn't active, start it now
+                    if "Grayscale" not in self.capture_type_var.get():
+                        self._start_native_preview()
+                    else:
+                        self._show_grayscale_preview()
+                
+                # Update status with measured FPS
                 self.status_label.config(
-                    text=f"Max FPS: {measured_fps:.1f} at {res_x}x{res_y}",
+                    text=f"Grayscale capture FPS: {measured_fps:.1f} at {res_x}x{res_y} ({frame_count} frames in {actual_duration:.2f}s)",
                     fg="green"
                 )
-                logger.info(f"Measured max FPS: {measured_fps:.1f} at {res_x}x{res_y}")
+                logger.info(f"Measured grayscale capture FPS: {measured_fps:.1f} at {res_x}x{res_y}")
                 
             except Exception as e:
-                logger.error(f"Error measuring FPS: {e}")
+                logger.error(f"Error measuring grayscale capture FPS: {e}", exc_info=True)
                 self.status_label.config(text=f"FPS measurement error: {e}", fg="red")
+                
+                # Try to restore preview even on error
+                try:
+                    if hasattr(self.picam2, 'started') and self.picam2.started:
+                        self.picam2.stop()
+                    # Restore preview config
+                    try:
+                        res_x = int(self.res_x_var.get().strip())
+                        res_y = int(self.res_y_var.get().strip())
+                        fps = float(self.fps_var.get().strip())
+                    except ValueError:
+                        res_x, res_y = 800, 600
+                        fps = 30.0
+                    
+                    self.picam2_config = self.picam2.create_preview_configuration(
+                        main={"size": (res_x, res_y)},
+                        controls={"FrameRate": fps},
+                        buffer_count=2
+                    )
+                    self.picam2.configure(self.picam2_config)
+                    self.picam2.start()
+                    time.sleep(0.2)
+                    
+                    # Restart preview
+                    if "Grayscale" not in self.capture_type_var.get():
+                        self._start_native_preview()
+                    else:
+                        self._show_grayscale_preview()
+                except Exception as restore_error:
+                    logger.error(f"Failed to restore preview after FPS measurement error: {restore_error}")
             finally:
                 self._measuring_fps = False
                 self.measure_fps_btn.config(state="normal", text="Measure FPS")
