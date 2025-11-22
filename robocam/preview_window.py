@@ -105,6 +105,8 @@ class PreviewWindow:
         self._recording: bool = False
         self.fps_tracker: Optional[FPSTracker] = None
         self._running: bool = True
+        self._fps_checked = False  # Track if FPS has been checked
+        self._measured_fps: Optional[float] = None  # Store measured FPS value
         
         # Create window
         self.window = tk.Toplevel(parent)
@@ -244,12 +246,16 @@ class PreviewWindow:
         
         # Defer preview start to allow window to fully initialize
         # This prevents issues with preview backends that need a fully rendered window
+        # Preview will start after FPS check if user clicks "Measure FPS", otherwise starts normally
         def start_preview_after_init():
             """Start preview after window is fully initialized."""
             self.window.update_idletasks()  # Ensure window is rendered
             time.sleep(0.1)  # Brief additional wait
-            # Start native preview (if not grayscale)
-            self.update_preview()
+            # Only auto-start if FPS hasn't been checked yet
+            # If FPS check happens, preview will start after measurement completes
+            if not self._fps_checked:
+                # Start native preview (if not grayscale)
+                self.update_preview()
         
         # Schedule preview start after window initialization
         self.window.after(100, start_preview_after_init)
@@ -779,6 +785,10 @@ class PreviewWindow:
             else:
                 measured_fps = 0.0
             
+            # Store measured FPS
+            self._measured_fps = measured_fps
+            self._fps_checked = True
+            
             method_name = "Picamera2 high-FPS" if use_picamera2 else "rpicam-vid"
             logger.info(f"{method_name} FPS test: {frame_count} frames in {elapsed_seconds:.2f}s = {measured_fps:.1f} FPS")
             
@@ -824,6 +834,14 @@ class PreviewWindow:
         res_x, res_y = w, h
         
         try:
+            # Stop camera if running (required before configuring)
+            if hasattr(self.picam2, 'started') and self.picam2.started:
+                try:
+                    self.picam2.stop()
+                    time.sleep(0.2)  # Give camera time to fully stop
+                except Exception as e:
+                    logger.warning(f"Error stopping camera before FPS measurement: {e}")
+            
             # Check if grayscale mode
             current_capture_type = self.capture_type_var.get()
             is_grayscale = "Grayscale" in current_capture_type
@@ -879,6 +897,10 @@ class PreviewWindow:
             measured_fps = fps_tracker.get_fps()
             actual_duration = time.time() - start_time
             
+            # Store measured FPS
+            self._measured_fps = measured_fps
+            self._fps_checked = True
+            
             logger.info(f"Picamera2 FPS test: {frame_count} frames in {actual_duration:.2f}s = {measured_fps:.1f} FPS")
             
             # Stop camera
@@ -931,7 +953,7 @@ class PreviewWindow:
             
             time.sleep(0.2)
             
-            # Restart preview
+            # Restart preview (now that FPS check is complete)
             if "Grayscale" not in self.capture_type_var.get():
                 self._start_native_preview()
             else:
@@ -944,6 +966,31 @@ class PreviewWindow:
         """Handle window close."""
         # Stop FPS update loop
         self._running = False
+        
+        # Save measured FPS if available
+        if self._measured_fps is not None and self._measured_fps > 0:
+            try:
+                from robocam.config import get_config
+                config = get_config()
+                # Save measured FPS
+                config.set("hardware.camera.last_measured_fps", self._measured_fps)
+                # Also save the target FPS from the entry
+                try:
+                    target_fps = float(self.fps_var.get().strip())
+                    config.set("hardware.camera.last_target_fps", target_fps)
+                except ValueError:
+                    pass
+                # Save resolution if available
+                try:
+                    res_x = int(self.res_x_var.get().strip())
+                    res_y = int(self.res_y_var.get().strip())
+                    config.set("hardware.camera.last_measured_resolution", [res_x, res_y])
+                except ValueError:
+                    pass
+                config.save_config()
+                logger.info(f"Saved FPS: {self._measured_fps:.1f} FPS")
+            except Exception as e:
+                logger.warning(f"Could not save FPS to config: {e}")
         
         # Stop native preview
         self._stop_native_preview()
