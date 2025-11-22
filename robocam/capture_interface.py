@@ -52,7 +52,8 @@ class CaptureManager:
     
     def __init__(self, capture_type: str = "Picamera2 (Color)",
                  resolution: Tuple[int, int] = (1920, 1080),
-                 fps: float = 30.0) -> None:
+                 fps: float = 30.0,
+                 picam2: Optional[Picamera2] = None) -> None:
         """
         Initialize capture manager.
         
@@ -60,6 +61,7 @@ class CaptureManager:
             capture_type: Capture type from CAPTURE_TYPES
             resolution: Capture resolution (width, height)
             fps: Target frames per second
+            picam2: Optional existing Picamera2 instance to use (avoids creating duplicate instance)
         """
         if capture_type not in self.CAPTURE_TYPES:
             raise ValueError(f"Invalid capture type: {capture_type}. Must be one of {self.CAPTURE_TYPES}")
@@ -70,7 +72,7 @@ class CaptureManager:
         self.width, self.height = resolution
         
         # Initialize capture instances based on type
-        self.picam2: Optional[Picamera2] = None
+        self.picam2: Optional[Picamera2] = picam2  # Use provided instance or create new one
         self.pihq_camera: Optional[PiHQCamera] = None
         self.raspividyuv: Optional[RaspividyuvCapture] = None
         
@@ -96,12 +98,31 @@ class CaptureManager:
         else:
             # Picamera2 modes (Color or Grayscale)
             grayscale = "Grayscale" in self.capture_type
-            self.picam2 = Picamera2()
-            self.pihq_camera = PiHQCamera(
-                resolution=self.resolution,
-                grayscale=grayscale
-            )
-            self.pihq_camera.start()
+            
+            # Use existing picam2 if provided, otherwise create new one
+            if self.picam2 is None:
+                self.picam2 = Picamera2()
+                create_new_picam2 = True
+            else:
+                create_new_picam2 = False
+                logger.info(f"Using existing Picamera2 instance for {self.capture_type} capture")
+            
+            # Create PiHQCamera wrapper
+            # Note: If using existing picam2, we need to configure it for capture
+            if create_new_picam2:
+                self.pihq_camera = PiHQCamera(
+                    resolution=self.resolution,
+                    grayscale=grayscale
+                )
+                self.pihq_camera.start()
+            else:
+                # Use existing picam2 - create a minimal wrapper or use directly
+                # For now, we'll create PiHQCamera but it will use the existing picam2
+                # Actually, PiHQCamera creates its own picam2, so we need a different approach
+                # Let's just store the picam2 and use it directly for capture operations
+                self.pihq_camera = None  # We'll use picam2 directly
+                logger.info(f"Using existing Picamera2 instance for {self.capture_type} capture (no PiHQCamera wrapper)")
+            
             logger.info(f"Initialized {self.capture_type} capture")
     
     def capture_image(self, output_path: Optional[str] = None) -> bool:
@@ -131,10 +152,14 @@ class CaptureManager:
                 return True
             else:
                 # Use Picamera2
-                if self.pihq_camera is None:
+                if self.pihq_camera is not None:
+                    self.pihq_camera.take_photo_and_save(output_path)
+                elif self.picam2 is not None:
+                    # Use picam2 directly
+                    self.picam2.capture_file(output_path)
+                else:
                     logger.error("Picamera2 not initialized")
                     return False
-                self.pihq_camera.take_photo_and_save(output_path)
                 logger.info(f"Saved image: {output_path}")
                 return True
         except Exception as e:
@@ -177,14 +202,19 @@ class CaptureManager:
                 return True
             else:
                 # Use Picamera2
-                if self.pihq_camera is None:
+                if self.pihq_camera is not None:
+                    # Use PiHQCamera wrapper
+                    self.pihq_camera.start_recording_video(output_path, fps=self.fps)
+                elif self.picam2 is not None:
+                    # Use picam2 directly with H264Encoder
+                    from picamera2.encoders import H264Encoder
+                    from picamera2.outputs import FileOutput
+                    encoder = H264Encoder(bitrate=50_000_000, fps=self.fps)
+                    output = FileOutput(output_path)
+                    self.picam2.start_recording(encoder, output)
+                else:
                     logger.error("Picamera2 not initialized")
                     return False
-                
-                # For Picamera2, we'll use H264Encoder
-                # Note: For minimal compression, we might need to save frames and encode later
-                # For now, use standard Picamera2 H264 recording
-                self.pihq_camera.start_recording_video(output_path, fps=self.fps)
                 logger.info(f"Started Picamera2 recording: {output_path}")
                 return True
         except Exception as e:
@@ -251,10 +281,13 @@ class CaptureManager:
                     return None
             else:
                 # Stop Picamera2 recording
-                if self.pihq_camera is None:
+                if self.pihq_camera is not None:
+                    self.pihq_camera.stop_recording_video()
+                elif self.picam2 is not None:
+                    self.picam2.stop_recording()
+                else:
                     logger.error("Picamera2 not initialized")
                     return None
-                self.pihq_camera.stop_recording_video()
                 logger.info(f"Stopped recording: {self._video_output_path}")
                 return self._video_output_path
         except Exception as e:

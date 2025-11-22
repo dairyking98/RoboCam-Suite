@@ -130,7 +130,8 @@ class PreviewApp:
                 self.capture_manager = CaptureManager(
                     capture_type="Picamera2 (Color)",
                     resolution=preview_resolution,
-                    fps=default_fps
+                    fps=default_fps,
+                    picam2=self.picam2  # Pass existing picam2 instance
                 )
             except Exception as e:
                 print(f"Warning: Failed to initialize capture manager: {e}")
@@ -293,9 +294,6 @@ class PreviewApp:
         self.current_well_label = tk.Label(self.root, text="None", font=("Courier", 10))
         self.current_well_label.grid(row=9, column=1, sticky="w", padx=5)
 
-        tk.Label(self.root, text="Preview FPS:").grid(row=10, column=0, sticky="e", padx=5, pady=5)
-        self.fps_label = tk.Label(self.root, text="0.0", font=("Courier", 10))
-        self.fps_label.grid(row=10, column=1, sticky="w", padx=5)
 
         tk.Label(self.root, text="Status:").grid(row=11, column=0, sticky="e", padx=5, pady=5)
         self.status_label = tk.Label(self.root, text="Ready", fg="green", font=("Arial", 9))
@@ -925,19 +923,10 @@ class PreviewApp:
             print(f"Homing error: {e}")
 
     def update_status(self) -> None:
-        """Update position and FPS display."""
+        """Update position display."""
         if self.running:
             self.update_position()
-            
-            if self._simulate_cam:
-                # In camera simulation mode, show "SIM" instead of FPS
-                self.fps_label.config(text="SIM")
-            elif self.picam2 and self.fps_tracker is not None:
-                fps = self.fps_tracker.get_fps()
-                self.fps_label.config(text=f"{fps:.1f}")
-            else:
-                self.fps_label.config(text="N/A")
-            
+            # FPS is displayed in the preview window
             self.root.after(200, self.update_status)
     
     def update_position(self) -> None:

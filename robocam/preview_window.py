@@ -14,6 +14,7 @@ from datetime import datetime
 import os
 from robocam.tkinter_preview import TkinterPreviewWidget
 from robocam.capture_interface import CaptureManager
+from robocam.camera_preview import FPSTracker
 from robocam.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -37,7 +38,7 @@ class PreviewWindow:
     def __init__(
         self,
         parent: tk.Tk,
-        picam2,
+        picam2=None,
         capture_manager: Optional[CaptureManager] = None,
         initial_resolution: Tuple[int, int] = (800, 600),
         initial_fps: float = 30.0,
@@ -48,16 +49,53 @@ class PreviewWindow:
         
         Args:
             parent: Parent tkinter window
-            picam2: Picamera2 camera instance (must be configured and started)
-            capture_manager: Optional CaptureManager instance
+            picam2: Optional Picamera2 camera instance. If None, will be created automatically.
+            capture_manager: Optional CaptureManager instance. If None, will be created automatically.
             initial_resolution: Initial preview resolution (width, height)
             initial_fps: Initial preview FPS
+            simulate_cam: If True, run in camera simulation mode
         """
         self.parent = parent
-        self.picam2 = picam2
-        self.capture_manager = capture_manager
+        self._simulate_cam = simulate_cam
+        
+        # Create picam2 if not provided
+        if picam2 is None and not simulate_cam:
+            from picamera2 import Picamera2
+            self.picam2 = Picamera2()
+            self.picam2_config = self.picam2.create_preview_configuration(
+                main={"size": initial_resolution},
+                controls={"FrameRate": initial_fps},
+                buffer_count=2
+            )
+            self.picam2.configure(self.picam2_config)
+            try:
+                self.picam2.start()
+                logger.info("PreviewWindow: Created and started Picamera2 instance")
+            except Exception as e:
+                logger.error(f"PreviewWindow: Failed to start camera: {e}")
+                self.picam2 = None
+        else:
+            self.picam2 = picam2
+        
+        # Create capture manager if not provided
+        if capture_manager is None and not simulate_cam and self.picam2 is not None:
+            try:
+                self.capture_manager = CaptureManager(
+                    capture_type="Picamera2 (Color)",
+                    resolution=initial_resolution,
+                    fps=initial_fps,
+                    picam2=self.picam2  # Pass existing instance
+                )
+                logger.info("PreviewWindow: Created CaptureManager")
+            except Exception as e:
+                logger.warning(f"PreviewWindow: Failed to create capture manager: {e}")
+                self.capture_manager = None
+        else:
+            self.capture_manager = capture_manager
         self.preview_widget: Optional[TkinterPreviewWidget] = None
         self._recording: bool = False
+        self.fps_tracker: Optional[FPSTracker] = None
+        self._running: bool = True
         
         # Create window
         self.window = tk.Toplevel(parent)
@@ -141,6 +179,11 @@ class PreviewWindow:
         )
         self.quick_capture_btn.grid(row=5, column=0, columnspan=2, padx=2, pady=10, sticky="ew")
         
+        # Preview FPS label
+        tk.Label(settings_frame, text="Preview FPS:").grid(row=6, column=0, sticky="w", padx=2, pady=2)
+        self.fps_label = tk.Label(settings_frame, text="0.0", font=("Courier", 10))
+        self.fps_label.grid(row=6, column=1, sticky="w", padx=2, pady=2)
+        
         # Status label
         self.status_label = tk.Label(
             settings_frame,
@@ -149,10 +192,37 @@ class PreviewWindow:
             font=("Arial", 9),
             wraplength=200
         )
-        self.status_label.grid(row=6, column=0, columnspan=2, padx=2, pady=5, sticky="w")
+        self.status_label.grid(row=7, column=0, columnspan=2, padx=2, pady=5, sticky="w")
+        
+        # Initialize FPS tracking if picam2 is available
+        # Note: We'll use the existing post_callback if available, or create our own
+        if self.picam2 is not None and not self._simulate_cam:
+            self.fps_tracker = FPSTracker()
+            # Set up frame callback for FPS tracking
+            # Store existing callback if any
+            existing_callback = getattr(self.picam2, 'post_callback', None)
+            
+            def frame_callback(request):
+                """Callback fired for each camera frame."""
+                # Call existing callback if it exists
+                if existing_callback:
+                    try:
+                        existing_callback(request)
+                    except Exception as e:
+                        logger.warning(f"Error in existing post_callback: {e}")
+                # Update our FPS tracker
+                if self.fps_tracker:
+                    self.fps_tracker.update()
+            
+            self.picam2.post_callback = frame_callback
+        else:
+            self.fps_tracker = None
         
         # Initialize preview widget
         self.update_preview()
+        
+        # Start FPS update loop
+        self.update_fps()
     
     def on_capture_type_change(self, capture_type: str) -> None:
         """Handle capture type change."""
@@ -192,17 +262,10 @@ class PreviewWindow:
                 res_x, res_y = 800, 600
                 fps = 30.0
             
-            # Update capture manager if available
-            if self.capture_manager:
-                try:
-                    self.capture_manager.configure_video_recording(
-                        resolution=(res_x, res_y),
-                        fps=fps,
-                        export_type="H264",
-                        quality=85
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to update capture manager: {e}")
+            # Note: Preview uses picam2 directly through TkinterPreviewWidget,
+            # not through capture_manager. The capture_manager is only used for
+            # actual capture operations (images/videos), not for preview.
+            # So we don't need to update capture_manager here.
             
             # Create new preview widget with current settings
             self.preview_widget = TkinterPreviewWidget(
@@ -283,6 +346,20 @@ class PreviewWindow:
                 self.capture_manager.stop_video_recording()
             except Exception as e:
                 logger.error(f"Error stopping recording: {e}")
+        
+        # Cleanup capture manager (if we created it)
+        if self.capture_manager is not None:
+            try:
+                self.capture_manager.cleanup()
+            except Exception as e:
+                logger.error(f"Error cleaning up capture manager: {e}")
+        
+        # Stop camera (if we created it)
+        if self.picam2 is not None:
+            try:
+                self.picam2.stop()
+            except Exception as e:
+                logger.error(f"Error stopping camera: {e}")
         
         # Destroy window
         self.window.destroy()

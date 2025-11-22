@@ -39,7 +39,7 @@ class CameraApp:
     
     Attributes:
         root (tk.Tk): Main tkinter window
-        picam2 (Picamera2): Camera instance
+        picam2 (Optional[Picamera2]): Camera instance (owned by preview_window, stored here for reference)
         robocam (RoboCam): Printer control instance
         running (bool): Application running state
         step_size_type (tk.StringVar): Current step size selection ("0.1", "1.0", "10.0", or "custom")
@@ -82,67 +82,32 @@ class CameraApp:
         else:
             preview_resolution = default_preview_resolution
 
-        # Picamera2 setup
-        self.preview_window: Optional[PreviewWindow] = None
-        if self._simulate_cam:
-            # Camera simulation mode: skip camera initialization
-            self.picam2: Optional[Picamera2] = None
-            self.fps_tracker: Optional[FPSTracker] = None
-            print("Camera simulation mode: Skipping camera initialization")
-        else:
-            self.picam2: Picamera2 = Picamera2()
-            self.picam2_config = self.picam2.create_preview_configuration(
-                main={"size": preview_resolution},
-                controls={"FrameRate": default_fps},
-                buffer_count=2
-            )
-            self.picam2.configure(self.picam2_config)
-            
-            # Set up FPS tracking
-            self.fps_tracker: FPSTracker = FPSTracker()
-            
-            def frame_callback(request):
-                """Callback fired for each camera frame."""
-                self.fps_tracker.update()
-            
-            self.picam2.post_callback = frame_callback
-            
-            # Start camera
-            try:
-                self.picam2.start()
-                print("Camera started")
-            except Exception as exc:
-                msg = f"Camera start failed: {exc}"
-                raise RuntimeError(msg) from exc
-
         # UI Elements
         self.create_widgets()
         
-        # Initialize capture manager (only if not in camera simulation mode)
-        self.capture_manager: Optional[CaptureManager] = None
+        # Create separate preview window - it will create its own picam2 and capture_manager
+        # calibrate.py doesn't need picam2 - only PreviewWindow needs it
+        self.preview_window: Optional[PreviewWindow] = None
         if not self._simulate_cam:
-            try:
-                self.capture_manager = CaptureManager(
-                    capture_type="Picamera2 (Color)",
-                    resolution=preview_resolution,
-                    fps=default_fps
-                )
-            except Exception as e:
-                print(f"Warning: Failed to initialize capture manager: {e}")
-        
-        # Create separate preview window (after widgets are created and capture manager is ready)
-        if not self._simulate_cam and self.picam2 is not None:
             try:
                 self.preview_window = PreviewWindow(
                     parent=self.root,
-                    picam2=self.picam2,
-                    capture_manager=self.capture_manager,
+                    picam2=None,  # Let PreviewWindow create its own instance
+                    capture_manager=None,  # Let PreviewWindow create its own instance
                     initial_resolution=preview_resolution,
-                    initial_fps=default_fps
+                    initial_fps=default_fps,
+                    simulate_cam=self._simulate_cam
                 )
                 print("Preview window created")
             except Exception as e:
                 print(f"Warning: Failed to create preview window: {e}")
+        
+        # Store reference to picam2 from preview_window for cleanup (if needed)
+        self.picam2: Optional[Picamera2] = None
+        self.capture_manager: Optional[CaptureManager] = None
+        if self.preview_window is not None:
+            self.picam2 = getattr(self.preview_window, 'picam2', None)
+            self.capture_manager = getattr(self.preview_window, 'capture_manager', None)
         
         # Calculate and set proper initial window size
         self.root.update_idletasks()
@@ -281,15 +246,10 @@ class CameraApp:
         self.position_label = tk.Label(controls_frame, text="0.00, 0.00, 0.00", font=("Courier", 10))
         self.position_label.grid(row=6, column=1, columnspan=2, sticky="w", padx=5)
 
-        # FPS label
-        tk.Label(controls_frame, text="Preview FPS:").grid(row=7, column=0, sticky="e", padx=5, pady=5)
-        self.fps_label = tk.Label(controls_frame, text="0.0", font=("Courier", 10))
-        self.fps_label.grid(row=7, column=1, sticky="w", padx=5)
-
         # Go to coordinate section
-        tk.Label(controls_frame, text="Go to Coordinate:").grid(row=8, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(controls_frame, text="Go to Coordinate:").grid(row=7, column=0, sticky="e", padx=5, pady=5)
         coord_frame = tk.Frame(controls_frame)
-        coord_frame.grid(row=8, column=1, columnspan=3, padx=5, pady=5, sticky="w")
+        coord_frame.grid(row=7, column=1, columnspan=3, padx=5, pady=5, sticky="w")
         
         tk.Label(coord_frame, text="X:").pack(side=tk.LEFT, padx=2)
         self.x_coord_entry = tk.Entry(coord_frame, width=10)
@@ -307,21 +267,21 @@ class CameraApp:
                  width=8, bg="#2196F3", fg="white").pack(side=tk.LEFT, padx=5)
 
         # Status/Error label
-        tk.Label(controls_frame, text="Status:").grid(row=9, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(controls_frame, text="Status:").grid(row=8, column=0, sticky="e", padx=5, pady=5)
         self.status_label = tk.Label(controls_frame, text="Ready", fg="green", font=("Arial", 9))
-        self.status_label.grid(row=9, column=1, columnspan=2, sticky="w", padx=5)
+        self.status_label.grid(row=8, column=1, columnspan=2, sticky="w", padx=5)
         
         # Home button
         tk.Button(controls_frame, text="Home Printer", command=self.home_printer,
                  width=15, height=2, bg="#4CAF50", fg="white").grid(
-            row=10, column=0, columnspan=2, padx=10, pady=10
+            row=9, column=0, columnspan=2, padx=10, pady=10
         )
         
         # Store controls_frame for use in other sections
         self.controls_frame = controls_frame
         
         # Store starting row for calibration section
-        self.calibration_start_row = 11
+        self.calibration_start_row = 10
         
         # 4-Corner Calibration Section
         self.create_calibration_section()
@@ -795,25 +755,15 @@ class CameraApp:
 
     def update_status(self) -> None:
         """
-        Update position and FPS display.
+        Update position display.
         
-        Updates position and FPS labels in the tkinter window.
-        Camera preview runs natively in a separate window for better performance.
+        Updates position label in the tkinter window.
+        FPS is displayed in the preview window.
         Schedules next update after 200ms.
         """
         if self.running:
             # Update position display
             self.update_position()
-            
-            # Update FPS display
-            if self._simulate_cam:
-                # In camera simulation mode, show "SIM" instead of FPS
-                self.fps_label.config(text="SIM")
-            elif self.fps_tracker is not None:
-                fps = self.fps_tracker.get_fps()
-                self.fps_label.config(text=f"{fps:.1f}")
-            else:
-                self.fps_label.config(text="N/A")
             
             # Schedule next update (200ms = 5 Hz update rate for status)
             self.root.after(200, self.update_status)
@@ -835,24 +785,25 @@ class CameraApp:
         Handle window close event.
         
         Stops camera, preview window, sets running flag to False, and destroys window.
+        Note: preview_window owns picam2 and capture_manager, so destroying it will clean them up.
         """
         self.running = False
         
-        # Close preview window
+        # Close preview window (it owns picam2 and capture_manager, so this cleans them up)
         if self.preview_window is not None:
             try:
                 self.preview_window.destroy()
             except Exception as e:
                 print(f"Error closing preview window: {e}")
         
-        # Cleanup capture manager
+        # Additional cleanup as fallback (preview_window should have handled this)
         if self.capture_manager is not None:
             try:
                 self.capture_manager.cleanup()
             except Exception as e:
                 print(f"Error cleaning up capture manager: {e}")
         
-        # Stop camera
+        # Additional cleanup as fallback (preview_window should have handled this)
         try:
             if self.picam2 is not None:
                 self.picam2.stop()
