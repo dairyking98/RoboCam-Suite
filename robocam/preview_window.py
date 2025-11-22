@@ -764,14 +764,16 @@ class PreviewWindow:
                 from robocam.picamera2_highfps_capture import Picamera2HighFpsCapture
                 capture_instance = Picamera2HighFpsCapture(width=w, height=h, fps=fps, picam2=preview_picam2)
                 if not capture_instance.start_capture():
-                    raise RuntimeError("Failed to start Picamera2 high-FPS capture")
+                    detail = f" ({capture_instance.last_error})" if getattr(capture_instance, 'last_error', None) else ""
+                    raise RuntimeError(f"Failed to start Picamera2 high-FPS capture{detail}")
                 logger.info(f"Picamera2 high-FPS started: {w}x{h} @ {fps} FPS")
             elif use_rpicam_vid:
                 # Use rpicam-vid subprocess implementation
                 from robocam.rpicam_vid_capture import RpicamVidCapture
                 capture_instance = RpicamVidCapture(width=w, height=h, fps=fps)
                 if not capture_instance.start_capture():
-                    raise RuntimeError("Failed to start rpicam-vid capture")
+                    detail = f" ({capture_instance.last_error})" if getattr(capture_instance, 'last_error', None) else ""
+                    raise RuntimeError(f"Failed to start rpicam-vid capture{detail}")
                 logger.info(f"Rpicam-vid started: {w}x{h} @ {fps} FPS")
             else:
                 raise ValueError(f"Unknown high-FPS capture type: {capture_type}")

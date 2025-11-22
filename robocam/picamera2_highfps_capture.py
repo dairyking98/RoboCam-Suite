@@ -57,6 +57,7 @@ class Picamera2HighFpsCapture:
         self._picam2_provided: bool = picam2 is not None  # Track if we need to clean up on stop
         self.frames: List[np.ndarray] = []
         self._recording: bool = False
+        self.last_error: Optional[str] = None
         
     def start_capture(self) -> bool:
         """
@@ -65,6 +66,7 @@ class Picamera2HighFpsCapture:
         Returns:
             True if capture started successfully, False otherwise
         """
+        self.last_error = None
         try:
             # Always stop existing camera if it's running (critical for proper transitions)
             if self.picam2 is not None:
@@ -96,18 +98,28 @@ class Picamera2HighFpsCapture:
                 self._picam2_provided = False
                 logger.info("Created new Picamera2 instance for high-FPS capture")
             
-            # Create video configuration with YUV420 format
-            # YUV420: Y (luminance) channel is h rows, U and V are h/2 rows each
-            # Total height is h*3/2, width is w
-            config = self.picam2.create_video_configuration(
-                main={"format": "Y", "size": (self.width, self.height)},
-                controls={"FrameRate": self.fps},
-                buffer_count=2  # Optimize buffer for high FPS
-            )
+            # Create video configuration with single-plane Y format for fastest readout.
+            # Fallback to YUV420 if Y is unsupported on this platform.
+            try:
+                config = self.picam2.create_video_configuration(
+                    main={"format": "Y", "size": (self.width, self.height)},
+                    controls={"FrameRate": self.fps},
+                    buffer_count=2  # Optimize buffer for high FPS
+                )
+                selected_format = "Y"
+            except Exception as e:
+                logger.warning(f"Y format not available, falling back to YUV420: {e}")
+                config = self.picam2.create_video_configuration(
+                    main={"format": "YUV420", "size": (self.width, self.height)},
+                    controls={"FrameRate": self.fps},
+                    buffer_count=2
+                )
+                selected_format = "YUV420"
+            self._selected_format = selected_format
             
             # Always configure before starting - this initializes the allocator properly
             self.picam2.configure(config)
-            logger.info(f"Configured Picamera2: {self.width}x{self.height} @ {self.fps} FPS (YUV420)")
+            logger.info(f"Configured Picamera2: {self.width}x{self.height} @ {self.fps} FPS ({selected_format})")
             
             # Brief pause after configure to ensure allocator is ready
             time.sleep(0.2)
@@ -125,10 +137,11 @@ class Picamera2HighFpsCapture:
             # Wait for first frame and discard it (warmup)
             try:
                 # Capture a frame to warm up
-                _ = self.picam2.capture_array("main")
-                # Discard warmup frame
+                with self.picam2.capture_request() as request:
+                    _ = request.make_array("main")
             except Exception as e:
                 logger.error(f"Error during warmup: {e}")
+                self.last_error = str(e)
                 self.stop_capture()
                 return False
             
@@ -137,6 +150,7 @@ class Picamera2HighFpsCapture:
             
         except Exception as e:
             logger.error(f"Failed to start Picamera2 capture: {e}")
+            self.last_error = str(e)
             self.stop_capture()
             return False
     
