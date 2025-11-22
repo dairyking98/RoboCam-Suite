@@ -336,7 +336,8 @@ class PreviewWindow:
                 preview_started = True
                 logger.info("Started native preview with backend: DRM")
             except Exception as drm_error:
-                logger.warning(f"DRM preview failed: {drm_error}, trying QTGL...")
+                drm_error_msg = str(drm_error)
+                logger.warning(f"DRM preview failed: {drm_error_msg}, trying QTGL...")
                 # If DRM fails, try QTGL (but may conflict with tkinter)
                 try:
                     self.picam2.start_preview(Preview.QTGL)
@@ -344,17 +345,28 @@ class PreviewWindow:
                     preview_started = True
                     logger.info("Started native preview with backend: QTGL")
                 except Exception as qtgl_error:
-                    # If both fail, show helpful error message
-                    error_msg = str(qtgl_error)
-                    if "event loop" in error_msg.lower():
-                        error_msg = "Event loop conflict (tkinter + QTGL). Try running without GUI or use DRM backend."
-                    logger.error(f"Failed to start native preview: {error_msg}")
-                    self.preview_info_label.config(
-                        text=f"✗ Preview unavailable - QTGL conflicts with tkinter, DRM also failed. Try running on console.",
-                        fg="orange"
-                    )
-                    self._native_preview_active = False
-                    return
+                    qtgl_error_msg = str(qtgl_error)
+                    logger.warning(f"QTGL preview failed: {qtgl_error_msg}, trying NULL (headless)...")
+                    # If both fail, try NULL preview (headless - no visual preview but allows capture)
+                    try:
+                        self.picam2.start_preview(Preview.NULL)
+                        self._preview_backend = "null"
+                        preview_started = True
+                        logger.info("Started NULL preview (headless mode - no visual preview)")
+                        self.preview_info_label.config(
+                            text=f"⚠ Preview unavailable (headless mode)\nCapture still works\n\nDRM failed: {drm_error_msg[:40]}\nQTGL failed: {qtgl_error_msg[:40]}",
+                            fg="orange"
+                        )
+                    except Exception as null_error:
+                        # All preview backends failed - but we can still capture
+                        logger.error(f"All preview backends failed. DRM: {drm_error_msg}, QTGL: {qtgl_error_msg}, NULL: {null_error}")
+                        self.preview_info_label.config(
+                            text=f"⚠ Preview unavailable\nCapture still works\n\nAll backends failed.\nCheck display/camera connection.",
+                            fg="orange"
+                        )
+                        self._native_preview_active = False
+                        # Don't return - allow app to continue without preview
+                        return
             
             if preview_started:
                 self._native_preview_active = True
