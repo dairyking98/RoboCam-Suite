@@ -324,56 +324,49 @@ class PreviewWindow:
             self.picam2.configure(self.picam2_config)
             self.picam2.start()
             
-            # Start native preview
-            # In tkinter environment, prefer DRM over QTGL to avoid event loop conflicts
-            from picamera2 import Preview
-            preview_started = False
+            # Give camera a moment to fully start before attempting preview
+            time.sleep(0.1)
             
-            # Try DRM first (works better with tkinter, no Qt event loop conflict)
+            # Start native preview using the smart backend selection function
+            # This function automatically detects desktop session and picks the best backend
             try:
-                self.picam2.start_preview(Preview.DRM)
-                self._preview_backend = "drm"
-                preview_started = True
-                logger.info("Started native preview with backend: DRM")
-            except Exception as drm_error:
-                drm_error_msg = str(drm_error)
-                logger.warning(f"DRM preview failed: {drm_error_msg}, trying QTGL...")
-                # If DRM fails, try QTGL (but may conflict with tkinter)
-                try:
-                    self.picam2.start_preview(Preview.QTGL)
-                    self._preview_backend = "qtgl"
-                    preview_started = True
-                    logger.info("Started native preview with backend: QTGL")
-                except Exception as qtgl_error:
-                    qtgl_error_msg = str(qtgl_error)
-                    logger.warning(f"QTGL preview failed: {qtgl_error_msg}, trying NULL (headless)...")
-                    # If both fail, try NULL preview (headless - no visual preview but allows capture)
-                    try:
-                        self.picam2.start_preview(Preview.NULL)
-                        self._preview_backend = "null"
-                        preview_started = True
-                        logger.info("Started NULL preview (headless mode - no visual preview)")
-                        self.preview_info_label.config(
-                            text=f"⚠ Preview unavailable (headless mode)\nCapture still works\n\nDRM failed: {drm_error_msg[:40]}\nQTGL failed: {qtgl_error_msg[:40]}",
-                            fg="orange"
-                        )
-                    except Exception as null_error:
-                        # All preview backends failed - but we can still capture
-                        logger.error(f"All preview backends failed. DRM: {drm_error_msg}, QTGL: {qtgl_error_msg}, NULL: {null_error}")
-                        self.preview_info_label.config(
-                            text=f"⚠ Preview unavailable\nCapture still works\n\nAll backends failed.\nCheck display/camera connection.",
-                            fg="orange"
-                        )
-                        self._native_preview_active = False
-                        # Don't return - allow app to continue without preview
-                        return
-            
-            if preview_started:
+                self._preview_backend = start_best_preview(self.picam2, backend="auto")
                 self._native_preview_active = True
                 self.preview_info_label.config(
                     text=f"✓ Native preview active in separate window (Backend: {self._preview_backend.upper()})",
                     fg="green"
                 )
+                logger.info(f"Started native preview with backend: {self._preview_backend.upper()}")
+            except RuntimeError as e:
+                # start_best_preview failed - try NULL as last resort (headless mode)
+                try:
+                    from picamera2 import Preview
+                    self.picam2.start_preview(Preview.NULL)
+                    self._preview_backend = "null"
+                    self._native_preview_active = True
+                    logger.info("Started NULL preview (headless mode - no visual preview)")
+                    self.preview_info_label.config(
+                        text=f"⚠ Preview unavailable (headless mode)\nCapture still works\n\nAuto-selection failed: {str(e)[:50]}",
+                        fg="orange"
+                    )
+                except Exception as null_error:
+                    # All preview backends failed - but we can still capture
+                    logger.error(f"All preview backends failed: {e}, NULL also failed: {null_error}")
+                    self.preview_info_label.config(
+                        text=f"⚠ Preview unavailable\nCapture still works\n\nAll backends failed.\nCheck display/camera connection.",
+                        fg="orange"
+                    )
+                    self._native_preview_active = False
+                    # Don't return - allow app to continue without preview
+                    return
+            except Exception as e:
+                # Unexpected error
+                logger.error(f"Unexpected error starting preview: {e}")
+                self.preview_info_label.config(
+                    text=f"✗ Preview error: {str(e)[:60]}...",
+                    fg="red"
+                )
+                self._native_preview_active = False
         except Exception as e:
             logger.error(f"Error starting native preview: {e}")
             self.preview_info_label.config(
