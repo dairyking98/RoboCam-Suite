@@ -141,21 +141,33 @@ class CaptureManager:
             output_path = f"capture_{timestamp}{ext}"
         
         try:
+            # Determine format from file extension
+            ext = os.path.splitext(output_path)[1].lower()
+            is_jpeg = ext in ['.jpg', '.jpeg']
+            
             if "raspividyuv" in self.capture_type:
                 # Capture single frame from raspividyuv
                 frame = self.raspividyuv.read_frame()
                 if frame is None:
                     logger.error("Failed to read frame from raspividyuv")
                     return False
-                cv2.imwrite(output_path, frame)
+                
+                # Save with appropriate format
+                if is_jpeg:
+                    # JPEG with quality 95
+                    cv2.imwrite(output_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                else:
+                    # PNG (default)
+                    cv2.imwrite(output_path, frame)
                 logger.info(f"Saved image: {output_path}")
                 return True
             else:
                 # Use Picamera2
                 if self.pihq_camera is not None:
+                    # PiHQCamera uses capture_file which supports formats based on extension
                     self.pihq_camera.take_photo_and_save(output_path)
                 elif self.picam2 is not None:
-                    # Use picam2 directly
+                    # Use picam2 directly - capture_file supports formats based on extension
                     self.picam2.capture_file(output_path)
                 else:
                     logger.error("Picamera2 not initialized")
