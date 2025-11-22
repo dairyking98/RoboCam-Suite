@@ -744,6 +744,18 @@ class PreviewWindow:
                 wait_time = 1.0 if "rpicam-vid" in capture_type else 0.5
                 time.sleep(wait_time)
                 
+                # For rpicam-vid, fully close the Picamera2 instance to release the pipeline handler
+                if "rpicam-vid" in capture_type:
+                    try:
+                        if hasattr(self.picam2, "close"):
+                            self.picam2.close()
+                            logger.info("Closed preview picam2 to release camera for rpicam-vid")
+                    except Exception as e:
+                        logger.warning(f"Error closing picam2 before rpicam-vid: {e}")
+                    # Ensure references are cleared so we recreate later
+                    self.picam2 = None
+                    preview_picam2 = None
+                
             except Exception as e:
                 logger.warning(f"Error stopping camera before high-FPS measurement: {e}")
         
@@ -831,7 +843,7 @@ class PreviewWindow:
             wait_time = 1.0 if use_rpicam_vid else 0.5
             time.sleep(wait_time)
             
-            # Restore preview window's picam2 reference
+            # Restore preview window's picam2 reference if we kept it; otherwise a new one will be created in restore
             if preview_picam2 is not None:
                 self.picam2 = preview_picam2
             
@@ -865,7 +877,7 @@ class PreviewWindow:
             
             # Wait for hardware release - longer for rpicam-vid
             try:
-                wait_time = 1.0 if use_rpicam_vid else 0.5
+                wait_time = 1.5 if use_rpicam_vid else 0.5
             except:
                 wait_time = 0.5
             time.sleep(wait_time)
@@ -986,8 +998,13 @@ class PreviewWindow:
     def _restore_preview_config(self, res_x: int, res_y: int, fps: float, was_preview_active: bool) -> None:
         """Restore preview configuration after FPS test."""
         if self.picam2 is None:
-            logger.warning("Cannot restore preview config: picam2 is None")
-            return
+            try:
+                from picamera2 import Picamera2
+                self.picam2 = Picamera2()
+                logger.info("Created new Picamera2 instance for preview restore")
+            except Exception as e:
+                logger.error(f"Cannot restore preview config: failed to create Picamera2 ({e})")
+                return
         
         try:
             # Always ensure camera is stopped before reconfiguring
