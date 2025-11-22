@@ -108,38 +108,38 @@ class PreviewWindow:
         self.window.title("Camera Preview & Capture Settings")
         self.window.protocol("WM_DELETE_WINDOW", self.on_close)
         
-        # Create main frame
+        # Create main frame - only settings, no preview embedded
         main_frame = tk.Frame(self.window)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Left side: Preview area (for grayscale image preview or info)
-        preview_frame = tk.LabelFrame(main_frame, text="Camera Preview", padx=5, pady=5)
-        preview_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        # Settings frame (no preview area in tkinter - preview is separate native window)
+        settings_frame = tk.LabelFrame(main_frame, text="Capture Settings", padx=5, pady=5)
+        settings_frame.pack(fill=tk.BOTH, expand=True, padx=5)
         
-        # Preview info label (for native preview)
+        # Preview status label (info only, not actual preview)
+        preview_status_frame = tk.LabelFrame(main_frame, text="Preview Status", padx=5, pady=5)
+        preview_status_frame.pack(fill=tk.X, padx=5, pady=5)
+        
         self.preview_info_label = tk.Label(
-            preview_frame,
-            text="Native hardware-accelerated preview\n(separate window)",
-            font=("Arial", 10),
+            preview_status_frame,
+            text="Native preview opens in separate window",
+            font=("Arial", 9),
             fg="gray",
-            justify=tk.CENTER
+            justify=tk.LEFT
         )
-        self.preview_info_label.pack(expand=True)
+        self.preview_info_label.pack(anchor="w", padx=5, pady=5)
         
-        # Grayscale preview canvas (shown when in grayscale mode)
+        # Grayscale preview canvas (shown when in grayscale mode - for captured image only)
         self.grayscale_canvas = tk.Canvas(
-            preview_frame,
-            width=initial_resolution[0],
-            height=initial_resolution[1],
+            preview_status_frame,
+            width=min(initial_resolution[0], 400),
+            height=min(initial_resolution[1], 300),
             bg="black",
-            highlightthickness=2,
+            highlightthickness=1,
             highlightbackground="gray"
         )
         self.grayscale_image_id = None
-        
-        # Right side: Capture Settings
-        settings_frame = tk.LabelFrame(main_frame, text="Capture Settings", padx=5, pady=5)
-        settings_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5)
+        # Canvas is hidden by default, only shown for grayscale captured images
         
         # Capture Type
         tk.Label(settings_frame, text="Capture Type:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
@@ -325,17 +325,47 @@ class PreviewWindow:
             self.picam2.start()
             
             # Start native preview
-            self._preview_backend = start_best_preview(self.picam2, backend="auto")
-            self._native_preview_active = True
-            self.preview_info_label.config(
-                text=f"Native preview active\nBackend: {self._preview_backend.upper()}\n(separate window)",
-                fg="green"
-            )
-            logger.info(f"Started native preview with backend: {self._preview_backend}")
+            # In tkinter environment, prefer DRM over QTGL to avoid event loop conflicts
+            from picamera2 import Preview
+            preview_started = False
+            
+            # Try DRM first (works better with tkinter, no Qt event loop conflict)
+            try:
+                self.picam2.start_preview(Preview.DRM)
+                self._preview_backend = "drm"
+                preview_started = True
+                logger.info("Started native preview with backend: DRM")
+            except Exception as drm_error:
+                logger.warning(f"DRM preview failed: {drm_error}, trying QTGL...")
+                # If DRM fails, try QTGL (but may conflict with tkinter)
+                try:
+                    self.picam2.start_preview(Preview.QTGL)
+                    self._preview_backend = "qtgl"
+                    preview_started = True
+                    logger.info("Started native preview with backend: QTGL")
+                except Exception as qtgl_error:
+                    # If both fail, show helpful error message
+                    error_msg = str(qtgl_error)
+                    if "event loop" in error_msg.lower():
+                        error_msg = "Event loop conflict (tkinter + QTGL). Try running without GUI or use DRM backend."
+                    logger.error(f"Failed to start native preview: {error_msg}")
+                    self.preview_info_label.config(
+                        text=f"✗ Preview unavailable - QTGL conflicts with tkinter, DRM also failed. Try running on console.",
+                        fg="orange"
+                    )
+                    self._native_preview_active = False
+                    return
+            
+            if preview_started:
+                self._native_preview_active = True
+                self.preview_info_label.config(
+                    text=f"✓ Native preview active in separate window (Backend: {self._preview_backend.upper()})",
+                    fg="green"
+                )
         except Exception as e:
             logger.error(f"Error starting native preview: {e}")
             self.preview_info_label.config(
-                text=f"Preview error: {e}",
+                text=f"✗ Preview error: {str(e)[:60]}...",
                 fg="red"
             )
     
@@ -401,9 +431,8 @@ class PreviewWindow:
                 # Convert to PhotoImage and display
                 photo = ImageTk.PhotoImage(image=pil_image)
                 
-                # Hide info label, show canvas
-                self.preview_info_label.pack_forget()
-                self.grayscale_canvas.pack(fill=tk.BOTH, expand=True)
+                # Show canvas below info label
+                self.grayscale_canvas.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
                 
                 # Update canvas
                 if self.grayscale_image_id is None:
@@ -425,7 +454,7 @@ class PreviewWindow:
                 self.grayscale_canvas.photo = photo
                 
                 self.preview_info_label.config(
-                    text="Grayscale preview\n(captured image)",
+                    text="✓ Grayscale preview (captured image shown below)",
                     fg="blue"
                 )
         except Exception as e:
@@ -438,7 +467,6 @@ class PreviewWindow:
     def _hide_grayscale_preview(self) -> None:
         """Hide grayscale preview canvas."""
         self.grayscale_canvas.pack_forget()
-        self.preview_info_label.pack(expand=True)
     
     def on_quick_capture(self) -> None:
         """Handle quick capture button click."""
