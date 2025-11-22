@@ -4,7 +4,7 @@
 # Camera and Imaging
 picamera2>=0.3.12
 opencv-python>=4.5.0  # Required for capture interface video encoding (FFV1, MJPG codecs)
-# Note: simplejpeg will be installed in venv by setup.sh to match venv's numpy version
+numpy<2.0  # Pin to <2.0 to avoid compatibility issues with system packages compiled against numpy 1.x
 
 # Serial Communication
 pyserial>=3.5
