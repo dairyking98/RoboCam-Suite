@@ -148,6 +148,19 @@ fi
 
 echo ""
 
+# Fix opencv-python: uninstall GUI version and install headless version
+# opencv-python includes Qt/GUI dependencies that cause issues on headless systems
+# opencv-python-headless has all the same functionality (VideoWriter, imwrite, etc.) without GUI
+echo "Fixing opencv-python installation..."
+echo "Uninstalling opencv-python (if installed) and installing opencv-python-headless..."
+# Uninstall any existing opencv-python (system or venv)
+pip uninstall -y opencv-python 2>/dev/null || true
+# Install opencv-python-headless in venv
+pip install opencv-python-headless 2>&1 | grep -v "WARNING: Error parsing dependencies of send2trash" || true
+echo "opencv-python-headless installed (no Qt/GUI dependencies)"
+
+echo ""
+
 # Create configuration directories
 echo "Creating configuration directories..."
 mkdir -p calibrations

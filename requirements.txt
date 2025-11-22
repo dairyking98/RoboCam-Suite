@@ -3,7 +3,8 @@
 
 # Camera and Imaging
 picamera2>=0.3.12
-opencv-python>=4.5.0  # Required for capture interface video encoding (FFV1, MJPG codecs)
+opencv-python-headless>=4.5.0  # Required for capture interface video encoding (FFV1, PNG codecs) - headless version avoids Qt/GUI dependencies
+Pillow>=9.0.0  # Required for converting camera frames to tkinter PhotoImage
 numpy<2.0  # Pin to <2.0 to avoid compatibility issues with system packages compiled against numpy 1.x
 
 # Serial Communication

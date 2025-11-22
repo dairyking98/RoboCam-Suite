@@ -2,8 +2,8 @@
 Calibration Application - Manual Positioning and Calibration GUI
 
 Provides a GUI for manually positioning the camera over well plates and
-recording coordinates for calibration. Uses native Picamera2 preview for
-high-performance camera display and tkinter for control interface.
+recording coordinates for calibration. Uses embedded tkinter preview for
+camera display integrated into the main window.
 
 Author: RoboCam-Suite
 """
@@ -15,10 +15,11 @@ from datetime import datetime
 from typing import Optional, List, Tuple
 from picamera2 import Picamera2
 from robocam.robocam_ccc import RoboCam
-from robocam.camera_preview import start_best_preview, FPSTracker, has_desktop_session
+from robocam.camera_preview import FPSTracker
 from robocam.config import get_config
 from robocam.stentorcam import WellPlatePathGenerator
 from robocam.capture_interface import CaptureManager
+from robocam.tkinter_preview import TkinterPreviewWidget
 
 # Preview resolution for camera display (will be loaded from config)
 # Default resolution optimized for 30 FPS preview (800x600 should easily achieve 30 FPS)
@@ -30,14 +31,14 @@ class CameraApp:
     Calibration application GUI for manual positioning and coordinate recording.
     
     Provides:
-    - Native hardware-accelerated camera preview (separate window)
+    - Embedded camera preview in main window
     - Precise movement controls (0.1mm, 1.0mm, 10.0mm, or custom step size)
     - Real-time position display
     - FPS monitoring
     - Home functionality
     
     Attributes:
-        root (tk.Tk): Main tkinter window (controls)
+        root (tk.Tk): Main tkinter window
         picam2 (Picamera2): Camera instance
         robocam (RoboCam): Printer control instance
         running (bool): Application running state
@@ -46,16 +47,15 @@ class CameraApp:
         position_label (tk.Label): Current position display
         fps_label (tk.Label): FPS display
         fps_tracker (FPSTracker): FPS tracking instance
-        preview_backend (str): Preview backend being used
+        preview_widget (Optional[TkinterPreviewWidget]): Embedded preview widget
     """
     
-    def __init__(self, root: tk.Tk, preview_backend: str = "auto", simulate_3d: bool = False, simulate_cam: bool = False) -> None:
+    def __init__(self, root: tk.Tk, simulate_3d: bool = False, simulate_cam: bool = False) -> None:
         """
         Initialize calibration application.
         
         Args:
             root: Tkinter root window
-            preview_backend: Preview backend to use ("auto", "drm", "qtgl", "null")
             simulate_3d: If True, run in 3D printer simulation mode (no printer connection)
             simulate_cam: If True, run in camera simulation mode (no camera connection)
         """
@@ -83,25 +83,22 @@ class CameraApp:
             preview_resolution = default_preview_resolution
 
         # Picamera2 setup
+        self.preview_widget: Optional[TkinterPreviewWidget] = None
         if self._simulate_cam:
             # Camera simulation mode: skip camera initialization
             self.picam2: Optional[Picamera2] = None
-            self.preview_backend: str = "null"
             self.fps_tracker: Optional[FPSTracker] = None
             print("Camera simulation mode: Skipping camera initialization")
         else:
             self.picam2: Picamera2 = Picamera2()
             self.picam2_config = self.picam2.create_preview_configuration(
                 main={"size": preview_resolution},
-                controls={"FrameRate": default_fps},  # Set FPS to 30
-                buffer_count=2  # Optimize buffer count
+                controls={"FrameRate": default_fps},
+                buffer_count=2
             )
             self.picam2.configure(self.picam2_config)
             
             # Set up FPS tracking
-            # Note: With hardware-accelerated preview (DRM/QTGL), post_callback may not
-            # be called for every frame, so FPS reading may be lower than actual camera FPS.
-            # The actual preview display FPS may be higher than what's reported here.
             self.fps_tracker: FPSTracker = FPSTracker()
             
             def frame_callback(request):
@@ -110,27 +107,33 @@ class CameraApp:
             
             self.picam2.post_callback = frame_callback
             
-            # Start native preview (creates separate window)
+            # Start camera (no native preview - we'll use tkinter preview)
             try:
-                self.preview_backend: str = start_best_preview(self.picam2, backend=preview_backend)
                 self.picam2.start()
-                print(f"Camera preview started using {self.preview_backend} backend")
+                print("Camera started (embedded preview in tkinter window)")
             except Exception as exc:
-                # Provide helpful error messages
-                hint = []
-                if preview_backend == "auto":
-                    if has_desktop_session():
-                        hint.append("Try: --backend qtgl (desktop session detected)")
-                    else:
-                        hint.append("Try: --backend drm (no desktop session detected)")
-                hint.append("Diagnostic: libcamera-hello -t 0")
-                msg = f"Camera/preview start failed: {exc}"
-                if hint:
-                    msg += " | " + " | ".join(hint)
+                msg = f"Camera start failed: {exc}"
                 raise RuntimeError(msg) from exc
 
-        # UI Elements
+        # UI Elements (must be created before preview widget)
         self.create_widgets()
+        
+        # Initialize embedded preview widget (after widgets are created)
+        if not self._simulate_cam and self.picam2 is not None:
+            try:
+                preview_canvas = getattr(self, 'preview_canvas', None)
+                if preview_canvas is not None:
+                    self.preview_widget = TkinterPreviewWidget(
+                        canvas=preview_canvas,
+                        picam2=self.picam2,
+                        width=preview_resolution[0],
+                        height=preview_resolution[1],
+                        fps=default_fps
+                    )
+                    self.preview_widget.start()
+                    print("Embedded preview started")
+            except Exception as e:
+                print(f"Warning: Failed to start embedded preview: {e}")
         
         # Calculate and set proper initial window size
         self.root.update_idletasks()
@@ -226,66 +229,82 @@ class CameraApp:
         Create and layout GUI widgets.
         
         Creates:
+        - Camera preview canvas (embedded in window)
         - Step size radio buttons (0.1mm, 1.0mm, 10.0mm)
-        - Movement direction buttons (X+, X-, Y+, Y-, Z+, Z-)
+        - Movement direction buttons (X+, X-, Y+, Y-, Z+, Z+)
         - Position display label
         - FPS display label
         - Home button
-        - Preview backend info label
         """
-        # Info label about preview window
-        info_text = f"Camera preview running in separate window ({self.preview_backend} backend)"
-        tk.Label(self.root, text=info_text, font=("Arial", 9), fg="gray").grid(
-            row=0, column=0, columnspan=4, padx=10, pady=5
+        # Create main frame with two columns: preview on left, controls on right
+        main_frame = tk.Frame(self.root)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Left column: Preview canvas
+        preview_frame = tk.Frame(main_frame)
+        preview_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        
+        tk.Label(preview_frame, text="Camera Preview", font=("Arial", 10, "bold")).pack(pady=5)
+        self.preview_canvas = tk.Canvas(
+            preview_frame,
+            width=800,
+            height=600,
+            bg="black",
+            highlightthickness=2,
+            highlightbackground="gray"
         )
-
+        self.preview_canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Right column: Controls
+        controls_frame = tk.Frame(main_frame)
+        controls_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5)
+        
         # Radio buttons for step size
-        tk.Label(self.root, text="Step Size:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.step_size_type = tk.StringVar(value="1.0")  # Store selected value: "0.1", "1.0", "10.0", or "custom"
-        tk.Radiobutton(self.root, text="0.1 mm", variable=self.step_size_type, value="0.1").grid(row=1, column=1, padx=5)
-        tk.Radiobutton(self.root, text="1.0 mm", variable=self.step_size_type, value="1.0").grid(row=1, column=2, padx=5)
-        tk.Radiobutton(self.root, text="10.0 mm", variable=self.step_size_type, value="10.0").grid(row=1, column=3, padx=5)
+        tk.Label(controls_frame, text="Step Size:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.step_size_type = tk.StringVar(value="1.0")
+        tk.Radiobutton(controls_frame, text="0.1 mm", variable=self.step_size_type, value="0.1").grid(row=0, column=1, padx=5)
+        tk.Radiobutton(controls_frame, text="1.0 mm", variable=self.step_size_type, value="1.0").grid(row=0, column=2, padx=5)
+        tk.Radiobutton(controls_frame, text="10.0 mm", variable=self.step_size_type, value="10.0").grid(row=0, column=3, padx=5)
         
         # Custom step size option
-        custom_frame = tk.Frame(self.root)
-        custom_frame.grid(row=1, column=4, padx=5)
+        custom_frame = tk.Frame(controls_frame)
+        custom_frame.grid(row=0, column=4, padx=5)
         tk.Radiobutton(custom_frame, text="Custom:", variable=self.step_size_type, value="custom").pack(side=tk.LEFT)
         self.custom_step_entry = tk.Entry(custom_frame, width=8)
         self.custom_step_entry.insert(0, "9.0")
         self.custom_step_entry.pack(side=tk.LEFT, padx=2)
         tk.Label(custom_frame, text="mm").pack(side=tk.LEFT)
-        # Bind entry change to validate input
         self.custom_step_entry.bind("<KeyRelease>", self.update_custom_step_size)
 
         # XYZ movement buttons layout
-        tk.Label(self.root, text="Movement Controls:").grid(row=2, column=0, columnspan=4, sticky="w", padx=5, pady=5)
-        tk.Button(self.root, text="Y+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Y=self.get_step_size())),
-                 width=8, height=2).grid(row=3, column=2, padx=2, pady=2)
-        tk.Button(self.root, text="X-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(X=-self.get_step_size())),
-                 width=8, height=2).grid(row=4, column=1, padx=2, pady=2)
-        tk.Button(self.root, text="X+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(X=self.get_step_size())),
-                 width=8, height=2).grid(row=4, column=3, padx=2, pady=2)
-        tk.Button(self.root, text="Y-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Y=-self.get_step_size())),
-                 width=8, height=2).grid(row=5, column=2, padx=2, pady=2)
-        tk.Button(self.root, text="Z-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Z=-self.get_step_size())),
-                 width=8, height=2).grid(row=3, column=4, padx=2, pady=2)
-        tk.Button(self.root, text="Z+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Z=self.get_step_size())),
-                 width=8, height=2).grid(row=5, column=4, padx=2, pady=2)
+        tk.Label(controls_frame, text="Movement Controls:").grid(row=1, column=0, columnspan=4, sticky="w", padx=5, pady=5)
+        tk.Button(controls_frame, text="Y+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Y=self.get_step_size())),
+                 width=8, height=2).grid(row=2, column=2, padx=2, pady=2)
+        tk.Button(controls_frame, text="X-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(X=-self.get_step_size())),
+                 width=8, height=2).grid(row=3, column=1, padx=2, pady=2)
+        tk.Button(controls_frame, text="X+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(X=self.get_step_size())),
+                 width=8, height=2).grid(row=3, column=3, padx=2, pady=2)
+        tk.Button(controls_frame, text="Y-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Y=-self.get_step_size())),
+                 width=8, height=2).grid(row=4, column=2, padx=2, pady=2)
+        tk.Button(controls_frame, text="Z-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Z=-self.get_step_size())),
+                 width=8, height=2).grid(row=2, column=4, padx=2, pady=2)
+        tk.Button(controls_frame, text="Z+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Z=self.get_step_size())),
+                 width=8, height=2).grid(row=4, column=4, padx=2, pady=2)
 
         # Position label
-        tk.Label(self.root, text="Position (X, Y, Z):").grid(row=6, column=0, sticky="e", padx=5, pady=5)
-        self.position_label = tk.Label(self.root, text="0.00, 0.00, 0.00", font=("Courier", 10))
-        self.position_label.grid(row=6, column=1, columnspan=2, sticky="w", padx=5)
+        tk.Label(controls_frame, text="Position (X, Y, Z):").grid(row=5, column=0, sticky="e", padx=5, pady=5)
+        self.position_label = tk.Label(controls_frame, text="0.00, 0.00, 0.00", font=("Courier", 10))
+        self.position_label.grid(row=5, column=1, columnspan=2, sticky="w", padx=5)
 
         # FPS label
-        tk.Label(self.root, text="Preview FPS:").grid(row=7, column=0, sticky="e", padx=5, pady=5)
-        self.fps_label = tk.Label(self.root, text="0.0", font=("Courier", 10))
-        self.fps_label.grid(row=7, column=1, sticky="w", padx=5)
+        tk.Label(controls_frame, text="Preview FPS:").grid(row=6, column=0, sticky="e", padx=5, pady=5)
+        self.fps_label = tk.Label(controls_frame, text="0.0", font=("Courier", 10))
+        self.fps_label.grid(row=6, column=1, sticky="w", padx=5)
 
         # Go to coordinate section
-        tk.Label(self.root, text="Go to Coordinate:").grid(row=8, column=0, sticky="e", padx=5, pady=5)
-        coord_frame = tk.Frame(self.root)
-        coord_frame.grid(row=8, column=1, columnspan=3, padx=5, pady=5, sticky="w")
+        tk.Label(controls_frame, text="Go to Coordinate:").grid(row=7, column=0, sticky="e", padx=5, pady=5)
+        coord_frame = tk.Frame(controls_frame)
+        coord_frame.grid(row=7, column=1, columnspan=3, padx=5, pady=5, sticky="w")
         
         tk.Label(coord_frame, text="X:").pack(side=tk.LEFT, padx=2)
         self.x_coord_entry = tk.Entry(coord_frame, width=10)
@@ -303,15 +322,18 @@ class CameraApp:
                  width=8, bg="#2196F3", fg="white").pack(side=tk.LEFT, padx=5)
 
         # Status/Error label
-        tk.Label(self.root, text="Status:").grid(row=9, column=0, sticky="e", padx=5, pady=5)
-        self.status_label = tk.Label(self.root, text="Ready", fg="green", font=("Arial", 9))
-        self.status_label.grid(row=9, column=1, columnspan=2, sticky="w", padx=5)
+        tk.Label(controls_frame, text="Status:").grid(row=8, column=0, sticky="e", padx=5, pady=5)
+        self.status_label = tk.Label(controls_frame, text="Ready", fg="green", font=("Arial", 9))
+        self.status_label.grid(row=8, column=1, columnspan=2, sticky="w", padx=5)
         
         # Home button
-        tk.Button(self.root, text="Home Printer", command=self.home_printer,
+        tk.Button(controls_frame, text="Home Printer", command=self.home_printer,
                  width=15, height=2, bg="#4CAF50", fg="white").grid(
-            row=10, column=0, columnspan=2, padx=10, pady=10
+            row=9, column=0, columnspan=2, padx=10, pady=10
         )
+        
+        # Store controls_frame for use in other sections
+        self.controls_frame = controls_frame
         
         # Capture Settings Section
         self.create_capture_section()
@@ -483,14 +505,16 @@ class CameraApp:
         - Quick capture button
         - Capture status label
         """
+        controls_frame = getattr(self, 'controls_frame', self.root)
+        
         # Separator
-        tk.Label(self.root, text="─" * 50, fg="gray").grid(
-            row=11, column=0, columnspan=6, padx=5, pady=10
+        tk.Label(controls_frame, text="─" * 50, fg="gray").grid(
+            row=10, column=0, columnspan=6, padx=5, pady=10
         )
         
         # Capture Settings LabelFrame
-        capture_frame = tk.LabelFrame(self.root, text="Capture Settings", padx=5, pady=5)
-        capture_frame.grid(row=12, column=0, columnspan=6, sticky="ew", padx=5, pady=5)
+        capture_frame = tk.LabelFrame(controls_frame, text="Capture Settings", padx=5, pady=5)
+        capture_frame.grid(row=11, column=0, columnspan=6, sticky="ew", padx=5, pady=5)
         capture_frame.grid_columnconfigure(1, weight=1)
         capture_frame.grid_columnconfigure(3, weight=1)
         
@@ -534,7 +558,7 @@ class CameraApp:
         self.capture_status_label.grid(row=row, column=2, columnspan=2, sticky="w", padx=2, pady=5)
         
         # Store starting row for calibration section
-        self.calibration_start_row = 13
+        self.calibration_start_row = 12
     
     def on_capture_type_change(self, capture_type: str) -> None:
         """Handle capture type dropdown change."""
@@ -611,30 +635,32 @@ class CameraApp:
         - Save calibration button
         - Preview/validation display
         """
+        controls_frame = getattr(self, 'controls_frame', self.root)
+        
         # Separator
-        tk.Label(self.root, text="─" * 50, fg="gray").grid(
+        tk.Label(controls_frame, text="─" * 50, fg="gray").grid(
             row=self.calibration_start_row, column=0, columnspan=6, padx=5, pady=10
         )
         
         # Section title
-        tk.Label(self.root, text="4-Corner Calibration", font=("Arial", 12, "bold")).grid(
+        tk.Label(controls_frame, text="4-Corner Calibration", font=("Arial", 12, "bold")).grid(
             row=self.calibration_start_row + 1, column=0, columnspan=6, padx=5, pady=5
         )
         
         # X and Y quantity entry
-        tk.Label(self.root, text="X Quantity:").grid(row=self.calibration_start_row + 2, column=0, sticky="e", padx=5, pady=5)
-        self.x_qty_entry = tk.Entry(self.root, width=10)
+        tk.Label(controls_frame, text="X Quantity:").grid(row=self.calibration_start_row + 2, column=0, sticky="e", padx=5, pady=5)
+        self.x_qty_entry = tk.Entry(controls_frame, width=10)
         self.x_qty_entry.grid(row=self.calibration_start_row + 2, column=1, padx=5, pady=5)
         self.x_qty_entry.bind("<KeyRelease>", self.on_quantity_change)
         
-        tk.Label(self.root, text="Y Quantity:").grid(row=self.calibration_start_row + 2, column=2, sticky="e", padx=5, pady=5)
-        self.y_qty_entry = tk.Entry(self.root, width=10)
+        tk.Label(controls_frame, text="Y Quantity:").grid(row=self.calibration_start_row + 2, column=2, sticky="e", padx=5, pady=5)
+        self.y_qty_entry = tk.Entry(controls_frame, width=10)
         self.y_qty_entry.grid(row=self.calibration_start_row + 2, column=3, padx=5, pady=5)
         self.y_qty_entry.bind("<KeyRelease>", self.on_quantity_change)
         
         # Corner coordinate displays and buttons arranged in a 2x2 grid matching actual corner positions
         # Create a frame for the corner grid layout
-        corner_grid_frame = tk.Frame(self.root)
+        corner_grid_frame = tk.Frame(controls_frame)
         corner_grid_frame.grid(row=self.calibration_start_row + 3, column=0, columnspan=6, padx=5, pady=10)
         # Configure equal column weights for balanced layout
         corner_grid_frame.columnconfigure(0, weight=1)
@@ -692,13 +718,13 @@ class CameraApp:
             self.corner_labels[attr_name] = coord_label
         
         # Calibration name entry (positioned below the corner grid)
-        tk.Label(self.root, text="Calibration Name:").grid(row=self.calibration_start_row + 4, column=0, sticky="e", padx=5, pady=5)
-        self.calib_name_entry = tk.Entry(self.root, width=30)
+        tk.Label(controls_frame, text="Calibration Name:").grid(row=self.calibration_start_row + 4, column=0, sticky="e", padx=5, pady=5)
+        self.calib_name_entry = tk.Entry(controls_frame, width=30)
         self.calib_name_entry.grid(row=self.calibration_start_row + 4, column=1, columnspan=2, padx=5, pady=5)
         
         # Save calibration button
         self.save_calib_btn = tk.Button(
-            self.root,
+            controls_frame,
             text="Save Calibration",
             command=self.save_calibration,
             bg="#2196F3",
@@ -709,7 +735,7 @@ class CameraApp:
         
         # Preview/validation display
         self.calib_preview_label = tk.Label(
-            self.root,
+            controls_frame,
             text="Enter X and Y quantities, then set all 4 corners",
             font=("Arial", 9),
             fg="gray"
@@ -951,19 +977,31 @@ class CameraApp:
         """
         Handle window close event.
         
-        Stops camera, sets running flag to False, and destroys window.
+        Stops camera, preview widget, sets running flag to False, and destroys window.
         """
         self.running = False
+        
+        # Stop preview widget
+        if self.preview_widget is not None:
+            try:
+                self.preview_widget.stop()
+            except Exception as e:
+                print(f"Error stopping preview widget: {e}")
+        
+        # Cleanup capture manager
         if self.capture_manager is not None:
             try:
                 self.capture_manager.cleanup()
             except Exception as e:
                 print(f"Error cleaning up capture manager: {e}")
+        
+        # Stop camera
         try:
             if self.picam2 is not None:
                 self.picam2.stop()
         except Exception:
             pass
+        
         self.root.destroy()
 
 
@@ -972,12 +1010,6 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="RoboCam Calibration - Manual positioning and calibration")
-    parser.add_argument(
-        "--backend", 
-        default="auto", 
-        choices=["auto", "drm", "qtgl", "null"],
-        help="Preview backend to use (default: auto)"
-    )
     parser.add_argument(
         "--simulate_3d",
         action="store_true",
@@ -991,6 +1023,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     root = tk.Tk()
-    app = CameraApp(root, preview_backend=args.backend, simulate_3d=args.simulate_3d, simulate_cam=args.simulate_cam)
+    app = CameraApp(root, simulate_3d=args.simulate_3d, simulate_cam=args.simulate_cam)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.mainloop()
