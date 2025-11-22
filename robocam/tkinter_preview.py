@@ -57,7 +57,8 @@ class TkinterPreviewWidget:
         width: int = 800,
         height: int = 600,
         fps: float = 30.0,
-        update_interval: Optional[float] = None
+        update_interval: Optional[float] = None,
+        grayscale: bool = False
     ):
         """
         Initialize Tkinter preview widget.
@@ -69,11 +70,13 @@ class TkinterPreviewWidget:
             height: Preview display height
             fps: Target frames per second (used to calculate update interval if not provided)
             update_interval: Time between frame updates in seconds (defaults to 1/fps)
+            grayscale: If True, convert frames to grayscale for display
         """
         self.canvas: 'tk.Canvas' = canvas
         self.picam2: Picamera2 = picam2
         self.width: int = width
         self.height: int = height
+        self.grayscale: bool = grayscale
         self.running: bool = False
         self.photo_image: Optional[ImageTk.PhotoImage] = None
         self._thread: Optional[threading.Thread] = None
@@ -110,6 +113,11 @@ class TkinterPreviewWidget:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
         logger.info("Tkinter preview stopped")
+    
+    def set_grayscale(self, grayscale: bool) -> None:
+        """Update grayscale mode without recreating the widget."""
+        self.grayscale = grayscale
+        logger.info(f"Preview grayscale mode set to: {grayscale}")
     
     def _update_loop(self) -> None:
         """Main update loop running in separate thread."""
@@ -157,11 +165,14 @@ class TkinterPreviewWidget:
                     # Single channel (3D with 1 channel) - convert to RGB
                     array = np.stack([array[:, :, 0], array[:, :, 0], array[:, :, 0]], axis=-1)
                 elif array.shape[2] == 3:
-                    # Already RGB or YUV - check if it's YUV420
-                    # For YUV420, the Y channel is typically in the first channel
-                    # But if configured as YUV420, capture_array("main") should return just Y as 2D
-                    # So if we get 3 channels, assume it's RGB
-                    pass
+                    # RGB format - check if we need to convert to grayscale
+                    if self.grayscale:
+                        # Convert RGB to grayscale using standard weights
+                        # Formula: gray = 0.2989*R + 0.5870*G + 0.1140*B
+                        gray = np.dot(array[...,:3], [0.2989, 0.5870, 0.1140]).astype(np.uint8)
+                        # Convert back to RGB for display (3 channels, same values)
+                        array = np.stack([gray, gray, gray], axis=-1)
+                    # Otherwise, keep as RGB
                 else:
                     # Unknown format - try to extract first channel
                     logger.warning(f"Unexpected array shape: {array.shape}")

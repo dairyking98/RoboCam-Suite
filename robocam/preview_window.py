@@ -120,6 +120,24 @@ class PreviewWindow:
         )
         self.preview_canvas.pack(fill=tk.BOTH, expand=True)
         
+        # Recording indicator (red dot) - initially hidden
+        self.recording_indicator = self.preview_canvas.create_oval(
+            10, 10, 30, 30,  # Position: top-left corner
+            fill="red",
+            outline="white",
+            width=2,
+            state="hidden"  # Hidden by default
+        )
+        # Recording text
+        self.recording_text = self.preview_canvas.create_text(
+            35, 20,  # Position: next to the dot
+            text="REC",
+            fill="white",
+            font=("Arial", 12, "bold"),
+            anchor="w",
+            state="hidden"
+        )
+        
         # Right side: Capture Settings
         settings_frame = tk.LabelFrame(main_frame, text="Capture Settings", padx=5, pady=5)
         settings_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5)
@@ -243,77 +261,20 @@ class PreviewWindow:
                 success = self.capture_manager.set_capture_type(capture_type)
                 if success:
                     self.status_label.config(text=f"Switched to {capture_type}", fg="green")
-                    # Reconfigure camera preview to match capture type
-                    self._reconfigure_preview_for_capture_type(capture_type)
                     # Update preview to reflect new capture type
-                    self.update_preview()
+                    # Update grayscale flag on existing widget (faster than recreating)
+                    is_grayscale = "Grayscale" in capture_type
+                    if self.preview_widget is not None:
+                        self.preview_widget.set_grayscale(is_grayscale)
+                    else:
+                        # Recreate preview widget if it doesn't exist
+                        self.update_preview()
                 else:
                     self.status_label.config(text="Failed to switch capture type", fg="red")
             except Exception as e:
                 self.status_label.config(text=f"Error: {e}", fg="red")
                 logger.error(f"Error changing capture type: {e}")
     
-    def _reconfigure_preview_for_capture_type(self, capture_type: str) -> None:
-        """Reconfigure camera preview to match the selected capture type."""
-        if self.picam2 is None or self._simulate_cam:
-            return
-        
-        try:
-            # Get current resolution
-            try:
-                res_x = int(self.res_x_var.get().strip())
-                res_y = int(self.res_y_var.get().strip())
-                fps = float(self.fps_var.get().strip())
-            except ValueError:
-                res_x, res_y = 800, 600
-                fps = 30.0
-            
-            # Determine if grayscale mode
-            is_grayscale = "Grayscale" in capture_type
-            
-            # Stop camera
-            self.picam2.stop()
-            
-            # Create new configuration based on capture type
-            if is_grayscale:
-                # Grayscale preview - use YUV420 format
-                self.picam2_config = self.picam2.create_preview_configuration(
-                    main={"size": (res_x, res_y), "format": "YUV420"},
-                    controls={"FrameRate": fps},
-                    buffer_count=2
-                )
-            else:
-                # Color preview - default format
-                self.picam2_config = self.picam2.create_preview_configuration(
-                    main={"size": (res_x, res_y)},
-                    controls={"FrameRate": fps},
-                    buffer_count=2
-                )
-            
-            # Configure and restart
-            self.picam2.configure(self.picam2_config)
-            self.picam2.start()
-            
-            # Restore FPS tracking callback if we have one
-            if self.fps_tracker is not None:
-                existing_callback = getattr(self.picam2, 'post_callback', None)
-                
-                def frame_callback(request):
-                    """Callback fired for each camera frame."""
-                    if existing_callback:
-                        try:
-                            existing_callback(request)
-                        except Exception as e:
-                            logger.warning(f"Error in existing post_callback: {e}")
-                    if self.fps_tracker:
-                        self.fps_tracker.update()
-                
-                self.picam2.post_callback = frame_callback
-            
-            logger.info(f"Reconfigured preview for {capture_type} (grayscale={is_grayscale})")
-        except Exception as e:
-            logger.error(f"Error reconfiguring preview for capture type: {e}")
-            self.status_label.config(text=f"Preview reconfig error: {e}", fg="orange")
     
     def on_settings_change(self, event=None) -> None:
         """Handle settings change (resolution, FPS)."""
@@ -338,19 +299,20 @@ class PreviewWindow:
                 res_x, res_y = 800, 600
                 fps = 30.0
             
-            # Reconfigure camera if needed to match current capture type
-            if self.picam2 is not None and not self._simulate_cam:
-                current_capture_type = self.capture_type_var.get()
-                self._reconfigure_preview_for_capture_type(current_capture_type)
+            # Get current capture type to pass to preview widget
+            current_capture_type = self.capture_type_var.get()
+            is_grayscale = "Grayscale" in current_capture_type
             
             # Create new preview widget with current settings
+            # Pass grayscale flag so it can convert frames appropriately
             if self.picam2 is not None:
                 self.preview_widget = TkinterPreviewWidget(
                     canvas=self.preview_canvas,
                     picam2=self.picam2,
                     width=res_x,
                     height=res_y,
-                    fps=fps
+                    fps=fps,
+                    grayscale=is_grayscale  # Pass grayscale flag
                 )
                 self.preview_widget.start()
             else:
@@ -390,6 +352,9 @@ class PreviewWindow:
                         self.status_label.config(text=f"Saved: {os.path.basename(output_path)}", fg="green")
                         self.quick_capture_btn.config(text="Quick Capture", bg="#2196F3")
                         self._recording = False
+                        # Hide recording indicator
+                        self.preview_canvas.itemconfig(self.recording_indicator, state="hidden")
+                        self.preview_canvas.itemconfig(self.recording_text, state="hidden")
                     else:
                         self.status_label.config(text="Recording failed", fg="red")
                 else:
@@ -404,6 +369,9 @@ class PreviewWindow:
                         self.status_label.config(text="Recording...", fg="red")
                         self.quick_capture_btn.config(text="Stop Recording", bg="red")
                         self._recording = True
+                        # Show recording indicator on preview
+                        self.preview_canvas.itemconfig(self.recording_indicator, state="normal")
+                        self.preview_canvas.itemconfig(self.recording_text, state="normal")
                     else:
                         self.status_label.config(text="Failed to start recording", fg="red")
         except Exception as e:
@@ -426,6 +394,10 @@ class PreviewWindow:
         if self._recording and self.capture_manager:
             try:
                 self.capture_manager.stop_video_recording()
+                self._recording = False
+                # Hide recording indicator
+                self.preview_canvas.itemconfig(self.recording_indicator, state="hidden")
+                self.preview_canvas.itemconfig(self.recording_text, state="hidden")
             except Exception as e:
                 logger.error(f"Error stopping recording: {e}")
         
