@@ -186,11 +186,27 @@ class RpicamVidCapture:
             logger.error("Capture not started")
             return None
         
+        # Check if subprocess is still alive
+        if self.process.poll() is not None:
+            # Process has terminated
+            stderr_output = ""
+            if self.process.stderr:
+                try:
+                    stderr_output = self.process.stderr.read().decode('utf-8', errors='ignore')
+                except:
+                    pass
+            logger.error(f"rpicam-vid process has terminated (returncode: {self.process.returncode}). Stderr: {stderr_output[:500]}")
+            return None
+        
         try:
             # Read raw YUV420 frame (w*h*3/2 bytes total) with a short timeout to avoid blocking forever
             import select, os
             rlist, _, _ = select.select([self.process.stdout], [], [], 0.25)
             if not rlist:
+                # Check again if process is still alive after timeout
+                if self.process.poll() is not None:
+                    logger.error("rpicam-vid process terminated during read timeout")
+                    return None
                 logger.warning("rpicam-vid read timeout")
                 return None
             frame_bytes = os.read(self.process.stdout.fileno(), self.bytes_per_frame)

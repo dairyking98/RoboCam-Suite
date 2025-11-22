@@ -800,17 +800,43 @@ class PreviewWindow:
             start_time = time.time()
             frame_count = 0
             measurement_duration = 5.0
+            consecutive_failures = 0
+            max_consecutive_failures = 50  # Exit early if 50 consecutive failures (about 1.25 seconds)
             
             while time.time() - start_time < measurement_duration:
+                # Check elapsed time at start of each iteration to ensure we can exit
+                elapsed = time.time() - start_time
+                if elapsed >= measurement_duration:
+                    break
+                
+                # For rpicam-vid, check if subprocess is still alive
+                if use_rpicam_vid and hasattr(capture_instance, 'process'):
+                    if capture_instance.process is not None:
+                        if capture_instance.process.poll() is not None:
+                            logger.error(f"rpicam-vid process died during FPS measurement (returncode: {capture_instance.process.returncode})")
+                            break
+                    else:
+                        logger.error("rpicam-vid process is None during FPS measurement")
+                        break
+                
                 try:
                     frame = capture_instance.read_frame()
                     if frame is not None:
                         frame_count += 1
+                        consecutive_failures = 0  # Reset failure counter on success
                     else:
-                        logger.warning("Failed to read frame during FPS measurement")
-                        time.sleep(0.01)  # Small delay to prevent busy loop
+                        consecutive_failures += 1
+                        if consecutive_failures >= max_consecutive_failures:
+                            logger.warning(f"Too many consecutive frame read failures ({consecutive_failures}), stopping FPS measurement early")
+                            break
+                        # Small delay to prevent busy loop, but shorter to allow more attempts
+                        time.sleep(0.01)
                 except Exception as e:
+                    consecutive_failures += 1
                     logger.warning(f"Frame read error during FPS measurement: {e}")
+                    if consecutive_failures >= max_consecutive_failures:
+                        logger.warning(f"Too many consecutive errors ({consecutive_failures}), stopping FPS measurement early")
+                        break
                     # Continue measuring even if some frames fail
                     time.sleep(0.01)  # Small delay to prevent busy loop
             
