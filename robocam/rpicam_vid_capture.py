@@ -126,8 +126,17 @@ class RpicamVidCapture:
             time.sleep(0.2)
             if self.process.poll() is not None:
                 # Process exited immediately - likely an error
-                stderr_output = self.process.stderr.read().decode('utf-8', errors='ignore') if self.process.stderr else ""
-                error_msg = f"rpicam-vid process exited immediately. Error: {stderr_output[:200]}"
+                stderr_output = ""
+                if self.process.stderr:
+                    try:
+                        stderr_output = self.process.stderr.read().decode('utf-8', errors='ignore')
+                    except Exception as e:
+                        stderr_output = f"<stderr decode failed: {e}>"
+                error_msg = (
+                    "rpicam-vid process exited immediately.\n"
+                    f"Command: {' '.join(video_cmd)}\n"
+                    f"Stderr:\n{stderr_output[:2000]}"
+                )
                 logger.error(error_msg)
                 self.last_error = error_msg
                 self.stop_capture()

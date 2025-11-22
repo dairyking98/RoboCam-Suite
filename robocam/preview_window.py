@@ -765,6 +765,8 @@ class PreviewWindow:
                 capture_instance = Picamera2HighFpsCapture(width=w, height=h, fps=fps, picam2=preview_picam2)
                 if not capture_instance.start_capture():
                     detail = f" ({capture_instance.last_error})" if getattr(capture_instance, 'last_error', None) else ""
+                    if detail:
+                        logger.error(f"Picamera2 high-FPS start failed detail: {capture_instance.last_error}")
                     raise RuntimeError(f"Failed to start Picamera2 high-FPS capture{detail}")
                 logger.info(f"Picamera2 high-FPS started: {w}x{h} @ {fps} FPS")
             elif use_rpicam_vid:
@@ -773,6 +775,8 @@ class PreviewWindow:
                 capture_instance = RpicamVidCapture(width=w, height=h, fps=fps)
                 if not capture_instance.start_capture():
                     detail = f" ({capture_instance.last_error})" if getattr(capture_instance, 'last_error', None) else ""
+                    if detail:
+                        logger.error(f"rpicam-vid start failed detail: {capture_instance.last_error}")
                     raise RuntimeError(f"Failed to start rpicam-vid capture{detail}")
                 logger.info(f"Rpicam-vid started: {w}x{h} @ {fps} FPS")
             else:
