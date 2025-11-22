@@ -234,24 +234,26 @@ class CameraApp:
         """
         # Main frame for controls
         main_frame = tk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
         
         # Info label about preview window
         info_text = "Camera preview and capture settings are in a separate window"
-        tk.Label(main_frame, text=info_text, font=("Arial", 9), fg="gray").pack(pady=5)
+        tk.Label(main_frame, text=info_text, font=("Arial", 9), fg="gray").grid(row=0, column=0, columnspan=5, padx=10, pady=5)
         
         controls_frame = main_frame
         
         # Radio buttons for step size
-        tk.Label(controls_frame, text="Step Size:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        tk.Label(controls_frame, text="Step Size:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
         self.step_size_type = tk.StringVar(value="1.0")
-        tk.Radiobutton(controls_frame, text="0.1 mm", variable=self.step_size_type, value="0.1").grid(row=0, column=1, padx=5)
-        tk.Radiobutton(controls_frame, text="1.0 mm", variable=self.step_size_type, value="1.0").grid(row=0, column=2, padx=5)
-        tk.Radiobutton(controls_frame, text="10.0 mm", variable=self.step_size_type, value="10.0").grid(row=0, column=3, padx=5)
+        tk.Radiobutton(controls_frame, text="0.1 mm", variable=self.step_size_type, value="0.1").grid(row=1, column=1, padx=5)
+        tk.Radiobutton(controls_frame, text="1.0 mm", variable=self.step_size_type, value="1.0").grid(row=1, column=2, padx=5)
+        tk.Radiobutton(controls_frame, text="10.0 mm", variable=self.step_size_type, value="10.0").grid(row=1, column=3, padx=5)
         
         # Custom step size option
         custom_frame = tk.Frame(controls_frame)
-        custom_frame.grid(row=0, column=4, padx=5)
+        custom_frame.grid(row=1, column=4, padx=5)
         tk.Radiobutton(custom_frame, text="Custom:", variable=self.step_size_type, value="custom").pack(side=tk.LEFT)
         self.custom_step_entry = tk.Entry(custom_frame, width=8)
         self.custom_step_entry.insert(0, "9.0")
@@ -260,34 +262,34 @@ class CameraApp:
         self.custom_step_entry.bind("<KeyRelease>", self.update_custom_step_size)
 
         # XYZ movement buttons layout
-        tk.Label(controls_frame, text="Movement Controls:").grid(row=1, column=0, columnspan=4, sticky="w", padx=5, pady=5)
+        tk.Label(controls_frame, text="Movement Controls:").grid(row=2, column=0, columnspan=4, sticky="w", padx=5, pady=5)
         tk.Button(controls_frame, text="Y+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Y=self.get_step_size())),
-                 width=8, height=2).grid(row=2, column=2, padx=2, pady=2)
+                 width=8, height=2).grid(row=3, column=2, padx=2, pady=2)
         tk.Button(controls_frame, text="X-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(X=-self.get_step_size())),
-                 width=8, height=2).grid(row=3, column=1, padx=2, pady=2)
+                 width=8, height=2).grid(row=4, column=1, padx=2, pady=2)
         tk.Button(controls_frame, text="X+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(X=self.get_step_size())),
-                 width=8, height=2).grid(row=3, column=3, padx=2, pady=2)
+                 width=8, height=2).grid(row=4, column=3, padx=2, pady=2)
         tk.Button(controls_frame, text="Y-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Y=-self.get_step_size())),
-                 width=8, height=2).grid(row=4, column=2, padx=2, pady=2)
+                 width=8, height=2).grid(row=5, column=2, padx=2, pady=2)
         tk.Button(controls_frame, text="Z-", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Z=-self.get_step_size())),
-                 width=8, height=2).grid(row=2, column=4, padx=2, pady=2)
+                 width=8, height=2).grid(row=3, column=4, padx=2, pady=2)
         tk.Button(controls_frame, text="Z+", command=lambda: self._safe_move(lambda: self.robocam.move_relative(Z=self.get_step_size())),
-                 width=8, height=2).grid(row=4, column=4, padx=2, pady=2)
+                 width=8, height=2).grid(row=5, column=4, padx=2, pady=2)
 
         # Position label
-        tk.Label(controls_frame, text="Position (X, Y, Z):").grid(row=5, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(controls_frame, text="Position (X, Y, Z):").grid(row=6, column=0, sticky="e", padx=5, pady=5)
         self.position_label = tk.Label(controls_frame, text="0.00, 0.00, 0.00", font=("Courier", 10))
-        self.position_label.grid(row=5, column=1, columnspan=2, sticky="w", padx=5)
+        self.position_label.grid(row=6, column=1, columnspan=2, sticky="w", padx=5)
 
         # FPS label
-        tk.Label(controls_frame, text="Preview FPS:").grid(row=6, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(controls_frame, text="Preview FPS:").grid(row=7, column=0, sticky="e", padx=5, pady=5)
         self.fps_label = tk.Label(controls_frame, text="0.0", font=("Courier", 10))
-        self.fps_label.grid(row=6, column=1, sticky="w", padx=5)
+        self.fps_label.grid(row=7, column=1, sticky="w", padx=5)
 
         # Go to coordinate section
-        tk.Label(controls_frame, text="Go to Coordinate:").grid(row=7, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(controls_frame, text="Go to Coordinate:").grid(row=8, column=0, sticky="e", padx=5, pady=5)
         coord_frame = tk.Frame(controls_frame)
-        coord_frame.grid(row=7, column=1, columnspan=3, padx=5, pady=5, sticky="w")
+        coord_frame.grid(row=8, column=1, columnspan=3, padx=5, pady=5, sticky="w")
         
         tk.Label(coord_frame, text="X:").pack(side=tk.LEFT, padx=2)
         self.x_coord_entry = tk.Entry(coord_frame, width=10)
@@ -305,21 +307,21 @@ class CameraApp:
                  width=8, bg="#2196F3", fg="white").pack(side=tk.LEFT, padx=5)
 
         # Status/Error label
-        tk.Label(controls_frame, text="Status:").grid(row=8, column=0, sticky="e", padx=5, pady=5)
+        tk.Label(controls_frame, text="Status:").grid(row=9, column=0, sticky="e", padx=5, pady=5)
         self.status_label = tk.Label(controls_frame, text="Ready", fg="green", font=("Arial", 9))
-        self.status_label.grid(row=8, column=1, columnspan=2, sticky="w", padx=5)
+        self.status_label.grid(row=9, column=1, columnspan=2, sticky="w", padx=5)
         
         # Home button
         tk.Button(controls_frame, text="Home Printer", command=self.home_printer,
                  width=15, height=2, bg="#4CAF50", fg="white").grid(
-            row=9, column=0, columnspan=2, padx=10, pady=10
+            row=10, column=0, columnspan=2, padx=10, pady=10
         )
         
         # Store controls_frame for use in other sections
         self.controls_frame = controls_frame
         
         # Store starting row for calibration section
-        self.calibration_start_row = 10
+        self.calibration_start_row = 11
         
         # 4-Corner Calibration Section
         self.create_calibration_section()
