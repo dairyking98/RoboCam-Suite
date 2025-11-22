@@ -1,0 +1,293 @@
+"""
+Preview Window - Separate Window for Camera Preview and Capture Settings
+
+Provides a separate tkinter window that displays live camera preview
+and capture settings. The preview automatically uses the capture settings.
+
+Author: RoboCam-Suite
+"""
+
+import tkinter as tk
+from tkinter import ttk
+from typing import Optional, Tuple
+from datetime import datetime
+import os
+from robocam.tkinter_preview import TkinterPreviewWidget
+from robocam.capture_interface import CaptureManager
+from robocam.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+
+class PreviewWindow:
+    """
+    Separate window for camera preview and capture settings.
+    
+    The preview automatically uses the capture settings (resolution, FPS, capture type).
+    
+    Attributes:
+        window (tk.Toplevel): The preview window
+        preview_canvas (tk.Canvas): Canvas for preview display
+        preview_widget (Optional[TkinterPreviewWidget]): Preview widget instance
+        capture_manager (Optional[CaptureManager]): Capture manager instance
+        picam2: Picamera2 instance
+        _recording (bool): Whether currently recording video
+    """
+    
+    def __init__(
+        self,
+        parent: tk.Tk,
+        picam2,
+        capture_manager: Optional[CaptureManager] = None,
+        initial_resolution: Tuple[int, int] = (800, 600),
+        initial_fps: float = 30.0,
+        simulate_cam: bool = False
+    ):
+        """
+        Initialize preview window.
+        
+        Args:
+            parent: Parent tkinter window
+            picam2: Picamera2 camera instance (must be configured and started)
+            capture_manager: Optional CaptureManager instance
+            initial_resolution: Initial preview resolution (width, height)
+            initial_fps: Initial preview FPS
+        """
+        self.parent = parent
+        self.picam2 = picam2
+        self.capture_manager = capture_manager
+        self.preview_widget: Optional[TkinterPreviewWidget] = None
+        self._recording: bool = False
+        
+        # Create window
+        self.window = tk.Toplevel(parent)
+        self.window.title("Camera Preview & Capture Settings")
+        self.window.protocol("WM_DELETE_WINDOW", self.on_close)
+        
+        # Create main frame
+        main_frame = tk.Frame(self.window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Left side: Preview
+        preview_frame = tk.LabelFrame(main_frame, text="Camera Preview", padx=5, pady=5)
+        preview_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        
+        self.preview_canvas = tk.Canvas(
+            preview_frame,
+            width=initial_resolution[0],
+            height=initial_resolution[1],
+            bg="black",
+            highlightthickness=2,
+            highlightbackground="gray"
+        )
+        self.preview_canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Right side: Capture Settings
+        settings_frame = tk.LabelFrame(main_frame, text="Capture Settings", padx=5, pady=5)
+        settings_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5)
+        
+        # Capture Type
+        tk.Label(settings_frame, text="Capture Type:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
+        self.capture_type_var = tk.StringVar(value="Picamera2 (Color)")
+        if capture_manager:
+            capture_type_menu = tk.OptionMenu(
+                settings_frame,
+                self.capture_type_var,
+                *CaptureManager.CAPTURE_TYPES,
+                command=self.on_capture_type_change
+            )
+        else:
+            capture_type_menu = tk.OptionMenu(
+                settings_frame,
+                self.capture_type_var,
+                *CaptureManager.CAPTURE_TYPES
+            )
+        capture_type_menu.grid(row=0, column=1, sticky="w", padx=2, pady=2)
+        
+        # Resolution
+        tk.Label(settings_frame, text="Resolution X:").grid(row=1, column=0, sticky="w", padx=2, pady=2)
+        self.res_x_var = tk.StringVar(value=str(initial_resolution[0]))
+        res_x_entry = tk.Entry(settings_frame, textvariable=self.res_x_var, width=10)
+        res_x_entry.grid(row=1, column=1, sticky="w", padx=2, pady=2)
+        res_x_entry.bind("<KeyRelease>", self.on_settings_change)
+        
+        tk.Label(settings_frame, text="Resolution Y:").grid(row=2, column=0, sticky="w", padx=2, pady=2)
+        self.res_y_var = tk.StringVar(value=str(initial_resolution[1]))
+        res_y_entry = tk.Entry(settings_frame, textvariable=self.res_y_var, width=10)
+        res_y_entry.grid(row=2, column=1, sticky="w", padx=2, pady=2)
+        res_y_entry.bind("<KeyRelease>", self.on_settings_change)
+        
+        # FPS
+        tk.Label(settings_frame, text="Target FPS:").grid(row=3, column=0, sticky="w", padx=2, pady=2)
+        self.fps_var = tk.StringVar(value=str(initial_fps))
+        fps_entry = tk.Entry(settings_frame, textvariable=self.fps_var, width=10)
+        fps_entry.grid(row=3, column=1, sticky="w", padx=2, pady=2)
+        fps_entry.bind("<KeyRelease>", self.on_settings_change)
+        
+        # Capture Mode
+        tk.Label(settings_frame, text="Mode:").grid(row=4, column=0, sticky="w", padx=2, pady=2)
+        self.capture_mode_var = tk.StringVar(value="Image")
+        capture_mode_menu = tk.OptionMenu(settings_frame, self.capture_mode_var, "Image", "Video")
+        capture_mode_menu.grid(row=4, column=1, sticky="w", padx=2, pady=2)
+        
+        # Quick Capture Button
+        self.quick_capture_btn = tk.Button(
+            settings_frame,
+            text="Quick Capture",
+            command=self.on_quick_capture,
+            width=15,
+            bg="#2196F3",
+            fg="white"
+        )
+        self.quick_capture_btn.grid(row=5, column=0, columnspan=2, padx=2, pady=10, sticky="ew")
+        
+        # Status label
+        self.status_label = tk.Label(
+            settings_frame,
+            text="Ready",
+            fg="gray",
+            font=("Arial", 9),
+            wraplength=200
+        )
+        self.status_label.grid(row=6, column=0, columnspan=2, padx=2, pady=5, sticky="w")
+        
+        # Initialize preview widget
+        self.update_preview()
+    
+    def on_capture_type_change(self, capture_type: str) -> None:
+        """Handle capture type change."""
+        if self.capture_manager:
+            try:
+                success = self.capture_manager.set_capture_type(capture_type)
+                if success:
+                    self.status_label.config(text=f"Switched to {capture_type}", fg="green")
+                    # Update preview to reflect new capture type
+                    self.update_preview()
+                else:
+                    self.status_label.config(text="Failed to switch capture type", fg="red")
+            except Exception as e:
+                self.status_label.config(text=f"Error: {e}", fg="red")
+                logger.error(f"Error changing capture type: {e}")
+    
+    def on_settings_change(self, event=None) -> None:
+        """Handle settings change (resolution, FPS)."""
+        # Update preview when settings change
+        self.update_preview()
+    
+    def update_preview(self) -> None:
+        """Update preview widget with current settings."""
+        try:
+            # Stop existing preview
+            if self.preview_widget is not None:
+                self.preview_widget.stop()
+                self.preview_widget = None
+            
+            # Get current settings
+            try:
+                res_x = int(self.res_x_var.get().strip())
+                res_y = int(self.res_y_var.get().strip())
+                fps = float(self.fps_var.get().strip())
+            except ValueError:
+                # Invalid values, use defaults
+                res_x, res_y = 800, 600
+                fps = 30.0
+            
+            # Update capture manager if available
+            if self.capture_manager:
+                try:
+                    self.capture_manager.configure_video_recording(
+                        resolution=(res_x, res_y),
+                        fps=fps,
+                        export_type="H264",
+                        quality=85
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to update capture manager: {e}")
+            
+            # Create new preview widget with current settings
+            self.preview_widget = TkinterPreviewWidget(
+                canvas=self.preview_canvas,
+                picam2=self.picam2,
+                width=res_x,
+                height=res_y,
+                fps=fps
+            )
+            self.preview_widget.start()
+            
+        except Exception as e:
+            logger.error(f"Error updating preview: {e}")
+            self.status_label.config(text=f"Preview error: {e}", fg="red")
+    
+    def on_quick_capture(self) -> None:
+        """Handle quick capture button click."""
+        if self.capture_manager is None:
+            self.status_label.config(text="Capture not available", fg="orange")
+            return
+        
+        mode = self.capture_mode_var.get()
+        
+        try:
+            if mode == "Image":
+                # Capture single image
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_dir = "outputs"
+                os.makedirs(output_dir, exist_ok=True)
+                output_path = os.path.join(output_dir, f"capture_{timestamp}.png")
+                
+                success = self.capture_manager.capture_image(output_path)
+                if success:
+                    self.status_label.config(text=f"Saved: {os.path.basename(output_path)}", fg="green")
+                else:
+                    self.status_label.config(text="Capture failed", fg="red")
+            else:
+                # Video mode - toggle recording
+                if self._recording:
+                    # Stop recording
+                    output_path = self.capture_manager.stop_video_recording(codec="FFV1")
+                    if output_path:
+                        self.status_label.config(text=f"Saved: {os.path.basename(output_path)}", fg="green")
+                        self.quick_capture_btn.config(text="Quick Capture", bg="#2196F3")
+                        self._recording = False
+                    else:
+                        self.status_label.config(text="Recording failed", fg="red")
+                else:
+                    # Start recording
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    output_dir = "outputs"
+                    os.makedirs(output_dir, exist_ok=True)
+                    output_path = os.path.join(output_dir, f"video_{timestamp}.avi")
+                    
+                    success = self.capture_manager.start_video_recording(output_path, codec="FFV1")
+                    if success:
+                        self.status_label.config(text="Recording...", fg="red")
+                        self.quick_capture_btn.config(text="Stop Recording", bg="red")
+                        self._recording = True
+                    else:
+                        self.status_label.config(text="Failed to start recording", fg="red")
+        except Exception as e:
+            self.status_label.config(text=f"Error: {e}", fg="red")
+            logger.error(f"Quick capture error: {e}")
+    
+    def on_close(self) -> None:
+        """Handle window close."""
+        # Stop preview
+        if self.preview_widget is not None:
+            try:
+                self.preview_widget.stop()
+            except Exception as e:
+                logger.error(f"Error stopping preview widget: {e}")
+        
+        # Stop recording if active
+        if self._recording and self.capture_manager:
+            try:
+                self.capture_manager.stop_video_recording()
+            except Exception as e:
+                logger.error(f"Error stopping recording: {e}")
+        
+        # Destroy window
+        self.window.destroy()
+    
+    def destroy(self) -> None:
+        """Destroy the preview window."""
+        self.on_close()
+

@@ -18,9 +18,10 @@ from datetime import datetime
 from typing import Optional, List, Tuple, Dict, Any
 from picamera2 import Picamera2
 from robocam.robocam_ccc import RoboCam
-from robocam.camera_preview import start_best_preview, FPSTracker, has_desktop_session
+from robocam.camera_preview import FPSTracker
 from robocam.config import get_config
 from robocam.capture_interface import CaptureManager
+from robocam.preview_window import PreviewWindow
 
 # Preview resolution for camera display (will be loaded from config)
 default_preview_resolution: tuple[int, int] = (800, 600)
@@ -46,19 +47,17 @@ class PreviewApp:
         position_label (tk.Label): Current position display
         fps_label (tk.Label): FPS display
         fps_tracker (FPSTracker): FPS tracking instance
-        preview_backend (str): Preview backend being used
         wells (List[Tuple]): List of (position, label) tuples
         current_index (int): Current well index
         homed (bool): Whether printer has been homed
     """
     
-    def __init__(self, root: tk.Tk, preview_backend: str = "auto", simulate_3d: bool = False, simulate_cam: bool = False) -> None:
+    def __init__(self, root: tk.Tk, simulate_3d: bool = False, simulate_cam: bool = False) -> None:
         """
         Initialize preview application.
         
         Args:
             root: Tkinter root window
-            preview_backend: Preview backend to use ("auto", "drm", "qtgl", "null")
             simulate_3d: If True, run in 3D printer simulation mode (no printer connection)
             simulate_cam: If True, run in camera simulation mode (no camera connection)
         """
@@ -88,14 +87,12 @@ class PreviewApp:
             preview_resolution = default_preview_resolution
 
         # Picamera2 setup
-        self.picam2: Optional[Picamera2] = None
-        self.preview_backend: str = "null"
-        self.fps_tracker: Optional[FPSTracker] = None
-        
+        self.preview_window: Optional[PreviewWindow] = None
         if self._simulate_cam:
             # In camera simulation mode, skip camera initialization
             print("Camera simulation mode: Skipping camera initialization")
-            self.fps_tracker = None
+            self.picam2: Optional[Picamera2] = None
+            self.fps_tracker: Optional[FPSTracker] = None
         else:
             # Normal camera setup
             self.picam2 = Picamera2()
@@ -115,26 +112,43 @@ class PreviewApp:
             
             self.picam2.post_callback = frame_callback
             
-            # Start native preview (creates separate window)
+            # Start camera
             try:
-                self.preview_backend: str = start_best_preview(self.picam2, backend=preview_backend)
                 self.picam2.start()
-                print(f"Camera preview started using {self.preview_backend} backend")
+                print("Camera started")
             except Exception as exc:
-                hint = []
-                if preview_backend == "auto":
-                    if has_desktop_session():
-                        hint.append("Try: --backend qtgl (desktop session detected)")
-                    else:
-                        hint.append("Try: --backend drm (no desktop session detected)")
-                hint.append("Diagnostic: libcamera-hello -t 0")
-                msg = f"Camera/preview start failed: {exc}"
-                if hint:
-                    msg += " | " + " | ".join(hint)
+                msg = f"Camera start failed: {exc}"
                 raise RuntimeError(msg) from exc
 
         # UI Elements
         self.create_widgets()
+        
+        # Initialize capture manager (only if not in camera simulation mode)
+        self.capture_manager: Optional[CaptureManager] = None
+        if not self._simulate_cam:
+            try:
+                self.capture_manager = CaptureManager(
+                    capture_type="Picamera2 (Color)",
+                    resolution=preview_resolution,
+                    fps=default_fps
+                )
+            except Exception as e:
+                print(f"Warning: Failed to initialize capture manager: {e}")
+        
+        # Create separate preview window (after widgets are created and capture manager is ready)
+        if not self._simulate_cam and self.picam2 is not None:
+            try:
+                self.preview_window = PreviewWindow(
+                    parent=self.root,
+                    picam2=self.picam2,
+                    capture_manager=self.capture_manager,
+                    initial_resolution=preview_resolution,
+                    initial_fps=default_fps,
+                    simulate_cam=self._simulate_cam
+                )
+                print("Preview window created")
+            except Exception as e:
+                print(f"Warning: Failed to create preview window: {e}")
 
         self.running: bool = True
         self.homed: bool = False  # Track homing status, but not required for movement
@@ -171,18 +185,6 @@ class PreviewApp:
             print(f"RoboCam initialization error: {e}")
             self.robocam = None
 
-        # Initialize capture manager (only if not in camera simulation mode)
-        self.capture_manager: Optional[CaptureManager] = None
-        if not self._simulate_cam:
-            try:
-                # Use preview resolution for capture
-                self.capture_manager = CaptureManager(
-                    capture_type="Picamera2 (Color)",
-                    resolution=preview_resolution,
-                    fps=default_fps
-                )
-            except Exception as e:
-                print(f"Warning: Failed to initialize capture manager: {e}")
 
         # Start updating position and FPS display
         self.update_status()
@@ -193,7 +195,7 @@ class PreviewApp:
         if self._simulate_cam:
             info_text = "Camera simulation mode: No camera preview available"
         else:
-            info_text = f"Camera preview running in separate window ({self.preview_backend} backend)"
+            info_text = "Camera preview and capture settings are in a separate window"
         tk.Label(self.root, text=info_text, font=("Arial", 9), fg="gray").grid(
             row=0, column=0, columnspan=4, padx=10, pady=5
         )
@@ -299,8 +301,6 @@ class PreviewApp:
         self.status_label = tk.Label(self.root, text="Ready", fg="green", font=("Arial", 9))
         self.status_label.grid(row=11, column=1, columnspan=2, sticky="w", padx=5)
         
-        # Capture Settings Section
-        self.create_capture_section()
         
         # Configure grid weights for resizing
         self.root.grid_rowconfigure(6, weight=1)
@@ -924,129 +924,6 @@ class PreviewApp:
             self.homed = False
             print(f"Homing error: {e}")
 
-    def create_capture_section(self) -> None:
-        """
-        Create capture settings GUI section.
-        
-        Adds:
-        - Capture type dropdown
-        - Capture mode dropdown (Image/Video)
-        - Quick capture button
-        - Capture status label
-        """
-        # Separator
-        tk.Label(self.root, text="─" * 50, fg="gray").grid(
-            row=12, column=0, columnspan=4, padx=5, pady=10
-        )
-        
-        # Capture Settings LabelFrame
-        capture_frame = tk.LabelFrame(self.root, text="Capture Settings", padx=5, pady=5)
-        capture_frame.grid(row=13, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
-        capture_frame.grid_columnconfigure(1, weight=1)
-        capture_frame.grid_columnconfigure(3, weight=1)
-        
-        row = 0
-        # Capture type dropdown
-        tk.Label(capture_frame, text="Capture Type:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        self.capture_type_var = tk.StringVar(value="Picamera2 (Color)")
-        capture_type_menu = tk.OptionMenu(
-            capture_frame, 
-            self.capture_type_var,
-            *CaptureManager.CAPTURE_TYPES,
-            command=self.on_capture_type_change
-        )
-        capture_type_menu.grid(row=row, column=1, sticky="w", padx=2, pady=2)
-        
-        # Capture mode dropdown
-        tk.Label(capture_frame, text="Mode:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
-        self.capture_mode_var = tk.StringVar(value="Image")
-        capture_mode_menu = tk.OptionMenu(capture_frame, self.capture_mode_var, "Image", "Video")
-        capture_mode_menu.grid(row=row, column=3, sticky="w", padx=2, pady=2)
-        
-        row += 1
-        # Quick capture button
-        self.quick_capture_btn = tk.Button(
-            capture_frame,
-            text="Quick Capture",
-            command=self.quick_capture,
-            width=15,
-            bg="#2196F3",
-            fg="white"
-        )
-        self.quick_capture_btn.grid(row=row, column=0, columnspan=2, padx=2, pady=5, sticky="w")
-        
-        # Capture status label
-        self.capture_status_label = tk.Label(
-            capture_frame,
-            text="Ready",
-            fg="gray",
-            font=("Arial", 9)
-        )
-        self.capture_status_label.grid(row=row, column=2, columnspan=2, sticky="w", padx=2, pady=5)
-    
-    def on_capture_type_change(self, capture_type: str) -> None:
-        """Handle capture type dropdown change."""
-        if self.capture_manager is None:
-            return
-        
-        try:
-            success = self.capture_manager.set_capture_type(capture_type)
-            if success:
-                self.capture_status_label.config(text=f"Switched to {capture_type}", fg="green")
-            else:
-                self.capture_status_label.config(text="Failed to switch capture type", fg="red")
-        except Exception as e:
-            self.capture_status_label.config(text=f"Error: {e}", fg="red")
-            print(f"Error changing capture type: {e}")
-    
-    def quick_capture(self) -> None:
-        """Handle quick capture button click."""
-        if self.capture_manager is None:
-            self.capture_status_label.config(text="Capture not available (simulation mode)", fg="orange")
-            return
-        
-        mode = self.capture_mode_var.get()
-        
-        try:
-            if mode == "Image":
-                # Capture single image
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                output_dir = "outputs"
-                os.makedirs(output_dir, exist_ok=True)
-                output_path = os.path.join(output_dir, f"capture_{timestamp}.png")
-                
-                success = self.capture_manager.capture_image(output_path)
-                if success:
-                    self.capture_status_label.config(text=f"Saved: {os.path.basename(output_path)}", fg="green")
-                else:
-                    self.capture_status_label.config(text="Capture failed", fg="red")
-            else:
-                # Video mode - toggle recording
-                if self.capture_manager.is_recording():
-                    # Stop recording
-                    output_path = self.capture_manager.stop_video_recording(codec="FFV1")
-                    if output_path:
-                        self.capture_status_label.config(text=f"Saved: {os.path.basename(output_path)}", fg="green")
-                        self.quick_capture_btn.config(text="Quick Capture", bg="#2196F3")
-                    else:
-                        self.capture_status_label.config(text="Recording failed", fg="red")
-                else:
-                    # Start recording
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    output_dir = "outputs"
-                    os.makedirs(output_dir, exist_ok=True)
-                    output_path = os.path.join(output_dir, f"video_{timestamp}.avi")
-                    
-                    success = self.capture_manager.start_video_recording(output_path, codec="FFV1")
-                    if success:
-                        self.capture_status_label.config(text="Recording...", fg="red")
-                        self.quick_capture_btn.config(text="Stop Recording", bg="red")
-                    else:
-                        self.capture_status_label.config(text="Failed to start recording", fg="red")
-        except Exception as e:
-            self.capture_status_label.config(text=f"Error: {e}", fg="red")
-            print(f"Quick capture error: {e}")
-
     def update_status(self) -> None:
         """Update position and FPS display."""
         if self.running:
@@ -1078,16 +955,28 @@ class PreviewApp:
     def on_close(self) -> None:
         """Handle window close event."""
         self.running = False
+        
+        # Close preview window
+        if self.preview_window is not None:
+            try:
+                self.preview_window.destroy()
+            except Exception as e:
+                print(f"Error closing preview window: {e}")
+        
+        # Cleanup capture manager
         if self.capture_manager is not None:
             try:
                 self.capture_manager.cleanup()
             except Exception as e:
                 print(f"Error cleaning up capture manager: {e}")
+        
+        # Stop camera
         try:
             if self.picam2:
                 self.picam2.stop()
         except Exception:
             pass
+        
         self.root.destroy()
 
 
@@ -1096,12 +985,6 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="RoboCam Preview - Sequential well alignment check")
-    parser.add_argument(
-        "--backend", 
-        default="auto", 
-        choices=["auto", "drm", "qtgl", "null"],
-        help="Preview backend to use (default: auto)"
-    )
     parser.add_argument(
         "--simulate_3d",
         action="store_true",
@@ -1115,7 +998,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     root = tk.Tk()
-    app = PreviewApp(root, preview_backend=args.backend, simulate_3d=args.simulate_3d, simulate_cam=args.simulate_cam)
+    app = PreviewApp(root, simulate_3d=args.simulate_3d, simulate_cam=args.simulate_cam)
     root.protocol("WM_DELETE_WINDOW", app.on_close)
     root.mainloop()
 

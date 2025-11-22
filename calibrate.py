@@ -19,7 +19,7 @@ from robocam.camera_preview import FPSTracker
 from robocam.config import get_config
 from robocam.stentorcam import WellPlatePathGenerator
 from robocam.capture_interface import CaptureManager
-from robocam.tkinter_preview import TkinterPreviewWidget
+from robocam.preview_window import PreviewWindow
 
 # Preview resolution for camera display (will be loaded from config)
 # Default resolution optimized for 30 FPS preview (800x600 should easily achieve 30 FPS)
@@ -83,7 +83,7 @@ class CameraApp:
             preview_resolution = default_preview_resolution
 
         # Picamera2 setup
-        self.preview_widget: Optional[TkinterPreviewWidget] = None
+        self.preview_window: Optional[PreviewWindow] = None
         if self._simulate_cam:
             # Camera simulation mode: skip camera initialization
             self.picam2: Optional[Picamera2] = None
@@ -107,33 +107,42 @@ class CameraApp:
             
             self.picam2.post_callback = frame_callback
             
-            # Start camera (no native preview - we'll use tkinter preview)
+            # Start camera
             try:
                 self.picam2.start()
-                print("Camera started (embedded preview in tkinter window)")
+                print("Camera started")
             except Exception as exc:
                 msg = f"Camera start failed: {exc}"
                 raise RuntimeError(msg) from exc
 
-        # UI Elements (must be created before preview widget)
+        # UI Elements
         self.create_widgets()
         
-        # Initialize embedded preview widget (after widgets are created)
+        # Initialize capture manager (only if not in camera simulation mode)
+        self.capture_manager: Optional[CaptureManager] = None
+        if not self._simulate_cam:
+            try:
+                self.capture_manager = CaptureManager(
+                    capture_type="Picamera2 (Color)",
+                    resolution=preview_resolution,
+                    fps=default_fps
+                )
+            except Exception as e:
+                print(f"Warning: Failed to initialize capture manager: {e}")
+        
+        # Create separate preview window (after widgets are created and capture manager is ready)
         if not self._simulate_cam and self.picam2 is not None:
             try:
-                preview_canvas = getattr(self, 'preview_canvas', None)
-                if preview_canvas is not None:
-                    self.preview_widget = TkinterPreviewWidget(
-                        canvas=preview_canvas,
-                        picam2=self.picam2,
-                        width=preview_resolution[0],
-                        height=preview_resolution[1],
-                        fps=default_fps
-                    )
-                    self.preview_widget.start()
-                    print("Embedded preview started")
+                self.preview_window = PreviewWindow(
+                    parent=self.root,
+                    picam2=self.picam2,
+                    capture_manager=self.capture_manager,
+                    initial_resolution=preview_resolution,
+                    initial_fps=default_fps
+                )
+                print("Preview window created")
             except Exception as e:
-                print(f"Warning: Failed to start embedded preview: {e}")
+                print(f"Warning: Failed to create preview window: {e}")
         
         # Calculate and set proper initial window size
         self.root.update_idletasks()
@@ -208,18 +217,6 @@ class CameraApp:
         self.interpolated_positions: List[Tuple[float, float, float]] = []
         self.labels: List[str] = []
 
-        # Initialize capture manager (only if not in camera simulation mode)
-        self.capture_manager: Optional[CaptureManager] = None
-        if not self._simulate_cam:
-            try:
-                # Use preview resolution for capture
-                self.capture_manager = CaptureManager(
-                    capture_type="Picamera2 (Color)",
-                    resolution=preview_resolution,
-                    fps=default_fps
-                )
-            except Exception as e:
-                print(f"Warning: Failed to initialize capture manager: {e}")
 
         # Start updating position and FPS display
         self.update_status()
@@ -229,35 +226,21 @@ class CameraApp:
         Create and layout GUI widgets.
         
         Creates:
-        - Camera preview canvas (embedded in window)
         - Step size radio buttons (0.1mm, 1.0mm, 10.0mm)
         - Movement direction buttons (X+, X-, Y+, Y-, Z+, Z+)
         - Position display label
         - FPS display label
         - Home button
         """
-        # Create main frame with two columns: preview on left, controls on right
+        # Main frame for controls
         main_frame = tk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Left column: Preview canvas
-        preview_frame = tk.Frame(main_frame)
-        preview_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        # Info label about preview window
+        info_text = "Camera preview and capture settings are in a separate window"
+        tk.Label(main_frame, text=info_text, font=("Arial", 9), fg="gray").pack(pady=5)
         
-        tk.Label(preview_frame, text="Camera Preview", font=("Arial", 10, "bold")).pack(pady=5)
-        self.preview_canvas = tk.Canvas(
-            preview_frame,
-            width=800,
-            height=600,
-            bg="black",
-            highlightthickness=2,
-            highlightbackground="gray"
-        )
-        self.preview_canvas.pack(fill=tk.BOTH, expand=True)
-        
-        # Right column: Controls
-        controls_frame = tk.Frame(main_frame)
-        controls_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5)
+        controls_frame = main_frame
         
         # Radio buttons for step size
         tk.Label(controls_frame, text="Step Size:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
@@ -335,8 +318,8 @@ class CameraApp:
         # Store controls_frame for use in other sections
         self.controls_frame = controls_frame
         
-        # Capture Settings Section
-        self.create_capture_section()
+        # Store starting row for calibration section
+        self.calibration_start_row = 10
         
         # 4-Corner Calibration Section
         self.create_calibration_section()
@@ -494,134 +477,6 @@ class CameraApp:
             
             self.status_label.config(text=user_msg, fg="red")
             print(f"Go to coordinate error: {e}")
-    
-    def create_capture_section(self) -> None:
-        """
-        Create capture settings GUI section.
-        
-        Adds:
-        - Capture type dropdown
-        - Capture mode dropdown (Image/Video)
-        - Quick capture button
-        - Capture status label
-        """
-        controls_frame = getattr(self, 'controls_frame', self.root)
-        
-        # Separator
-        tk.Label(controls_frame, text="─" * 50, fg="gray").grid(
-            row=10, column=0, columnspan=6, padx=5, pady=10
-        )
-        
-        # Capture Settings LabelFrame
-        capture_frame = tk.LabelFrame(controls_frame, text="Capture Settings", padx=5, pady=5)
-        capture_frame.grid(row=11, column=0, columnspan=6, sticky="ew", padx=5, pady=5)
-        capture_frame.grid_columnconfigure(1, weight=1)
-        capture_frame.grid_columnconfigure(3, weight=1)
-        
-        row = 0
-        # Capture type dropdown
-        tk.Label(capture_frame, text="Capture Type:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        self.capture_type_var = tk.StringVar(value="Picamera2 (Color)")
-        capture_type_menu = tk.OptionMenu(
-            capture_frame, 
-            self.capture_type_var,
-            *CaptureManager.CAPTURE_TYPES,
-            command=self.on_capture_type_change
-        )
-        capture_type_menu.grid(row=row, column=1, sticky="w", padx=2, pady=2)
-        
-        # Capture mode dropdown
-        tk.Label(capture_frame, text="Mode:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
-        self.capture_mode_var = tk.StringVar(value="Image")
-        capture_mode_menu = tk.OptionMenu(capture_frame, self.capture_mode_var, "Image", "Video")
-        capture_mode_menu.grid(row=row, column=3, sticky="w", padx=2, pady=2)
-        
-        row += 1
-        # Quick capture button
-        self.quick_capture_btn = tk.Button(
-            capture_frame,
-            text="Quick Capture",
-            command=self.quick_capture,
-            width=15,
-            bg="#2196F3",
-            fg="white"
-        )
-        self.quick_capture_btn.grid(row=row, column=0, columnspan=2, padx=2, pady=5, sticky="w")
-        
-        # Capture status label
-        self.capture_status_label = tk.Label(
-            capture_frame,
-            text="Ready",
-            fg="gray",
-            font=("Arial", 9)
-        )
-        self.capture_status_label.grid(row=row, column=2, columnspan=2, sticky="w", padx=2, pady=5)
-        
-        # Store starting row for calibration section
-        self.calibration_start_row = 12
-    
-    def on_capture_type_change(self, capture_type: str) -> None:
-        """Handle capture type dropdown change."""
-        if self.capture_manager is None:
-            return
-        
-        try:
-            success = self.capture_manager.set_capture_type(capture_type)
-            if success:
-                self.capture_status_label.config(text=f"Switched to {capture_type}", fg="green")
-            else:
-                self.capture_status_label.config(text="Failed to switch capture type", fg="red")
-        except Exception as e:
-            self.capture_status_label.config(text=f"Error: {e}", fg="red")
-            print(f"Error changing capture type: {e}")
-    
-    def quick_capture(self) -> None:
-        """Handle quick capture button click."""
-        if self.capture_manager is None:
-            self.capture_status_label.config(text="Capture not available (simulation mode)", fg="orange")
-            return
-        
-        mode = self.capture_mode_var.get()
-        
-        try:
-            if mode == "Image":
-                # Capture single image
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                output_dir = "outputs"
-                os.makedirs(output_dir, exist_ok=True)
-                output_path = os.path.join(output_dir, f"capture_{timestamp}.png")
-                
-                success = self.capture_manager.capture_image(output_path)
-                if success:
-                    self.capture_status_label.config(text=f"Saved: {os.path.basename(output_path)}", fg="green")
-                else:
-                    self.capture_status_label.config(text="Capture failed", fg="red")
-            else:
-                # Video mode - toggle recording
-                if self.capture_manager.is_recording():
-                    # Stop recording
-                    output_path = self.capture_manager.stop_video_recording(codec="FFV1")
-                    if output_path:
-                        self.capture_status_label.config(text=f"Saved: {os.path.basename(output_path)}", fg="green")
-                        self.quick_capture_btn.config(text="Quick Capture", bg="#2196F3")
-                    else:
-                        self.capture_status_label.config(text="Recording failed", fg="red")
-                else:
-                    # Start recording
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    output_dir = "outputs"
-                    os.makedirs(output_dir, exist_ok=True)
-                    output_path = os.path.join(output_dir, f"video_{timestamp}.avi")
-                    
-                    success = self.capture_manager.start_video_recording(output_path, codec="FFV1")
-                    if success:
-                        self.capture_status_label.config(text="Recording...", fg="red")
-                        self.quick_capture_btn.config(text="Stop Recording", bg="red")
-                    else:
-                        self.capture_status_label.config(text="Failed to start recording", fg="red")
-        except Exception as e:
-            self.capture_status_label.config(text=f"Error: {e}", fg="red")
-            print(f"Quick capture error: {e}")
     
     def create_calibration_section(self) -> None:
         """
@@ -977,16 +832,16 @@ class CameraApp:
         """
         Handle window close event.
         
-        Stops camera, preview widget, sets running flag to False, and destroys window.
+        Stops camera, preview window, sets running flag to False, and destroys window.
         """
         self.running = False
         
-        # Stop preview widget
-        if self.preview_widget is not None:
+        # Close preview window
+        if self.preview_window is not None:
             try:
-                self.preview_widget.stop()
+                self.preview_window.destroy()
             except Exception as e:
-                print(f"Error stopping preview widget: {e}")
+                print(f"Error closing preview window: {e}")
         
         # Cleanup capture manager
         if self.capture_manager is not None:
