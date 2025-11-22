@@ -58,6 +58,8 @@ class Picamera2HighFpsCapture:
         self.frames: List[np.ndarray] = []
         self._recording: bool = False
         self.last_error: Optional[str] = None
+        # Precompute frame duration limit (microseconds) to nudge libcamera toward target FPS
+        self._frame_duration_us: int = max(1, int(1_000_000 / max(1, fps)))
         
     def start_capture(self) -> bool:
         """
@@ -103,7 +105,10 @@ class Picamera2HighFpsCapture:
             try:
                 config = self.picam2.create_video_configuration(
                     main={"format": "Y", "size": (self.width, self.height)},
-                    controls={"FrameRate": self.fps},
+                    controls={
+                        "FrameRate": self.fps,
+                        "FrameDurationLimits": (self._frame_duration_us, self._frame_duration_us)
+                    },
                     buffer_count=2  # Optimize buffer for high FPS
                 )
                 selected_format = "Y"
@@ -111,7 +116,10 @@ class Picamera2HighFpsCapture:
                 logger.warning(f"Y format not available, falling back to YUV420: {e}")
                 config = self.picam2.create_video_configuration(
                     main={"format": "YUV420", "size": (self.width, self.height)},
-                    controls={"FrameRate": self.fps},
+                    controls={
+                        "FrameRate": self.fps,
+                        "FrameDurationLimits": (self._frame_duration_us, self._frame_duration_us)
+                    },
                     buffer_count=2
                 )
                 selected_format = "YUV420"
