@@ -70,7 +70,7 @@ class Picamera2HighFpsCapture:
             return False
         
         try:
-            # Stop existing camera if it's running (in case it was provided and already started)
+            # Always stop existing camera if it's running (critical for proper transitions)
             if self.picam2 is not None:
                 try:
                     # Clear any callbacks that might interfere with new configuration
@@ -79,22 +79,20 @@ class Picamera2HighFpsCapture:
                     if hasattr(self.picam2, 'pre_callback'):
                         self.picam2.pre_callback = None
                     
+                    # Always stop the camera instance - this is required before reconfiguring
                     if hasattr(self.picam2, 'started') and self.picam2.started:
                         self.picam2.stop()
                         logger.info("Stopped existing Picamera2 instance before reconfiguring")
-                        # Longer delay to ensure camera and request handlers are fully stopped
-                        time.sleep(0.5)
                     
-                    # Additional cleanup - ensure no pending requests
-                    # The allocator error suggests old request handlers might still be active
-                    # Wait a bit more for any pending operations to complete
-                    time.sleep(0.2)
+                    # Wait for camera to fully stop and release hardware
+                    time.sleep(0.5)
                 except Exception as e:
                     logger.warning(f"Error stopping existing Picamera2 instance: {e}")
             else:
                 # Create new Picamera2 instance if none was provided
                 self.picam2 = Picamera2()
                 self._picam2_provided = False
+                logger.info("Created new Picamera2 instance for high-FPS capture")
             
             # Create video configuration with YUV420 format
             # YUV420: Y (luminance) channel is h rows, U and V are h/2 rows each
@@ -105,11 +103,19 @@ class Picamera2HighFpsCapture:
                 buffer_count=2  # Optimize buffer for high FPS
             )
             
-            # Configure and start - this should initialize the allocator properly
+            # Always configure before starting - this initializes the allocator properly
             self.picam2.configure(config)
-            # Small delay after configure to ensure allocator is ready
-            time.sleep(0.1)
+            logger.info(f"Configured Picamera2: {self.width}x{self.height} @ {self.fps} FPS (YUV420)")
+            
+            # Brief pause after configure to ensure allocator is ready
+            time.sleep(0.2)
+            
+            # Start the camera - this activates the allocator
             self.picam2.start()
+            logger.info("Started Picamera2 for high-FPS capture")
+            
+            # Wait for camera to be ready
+            time.sleep(0.2)
             
             # Register cleanup on exit
             atexit.register(self.stop_capture)

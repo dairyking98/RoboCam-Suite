@@ -718,16 +718,29 @@ class PreviewWindow:
     
     def _measure_fps_highfps(self, w: int, h: int, target_fps: float, was_preview_active: bool, capture_type: str) -> None:
         """Measure FPS using high-FPS capture methods (Picamera2 or rpicam-vid)."""
-        # Stop camera if running and clear callbacks to avoid allocator conflicts
+        # Store reference to preview window's picam2 for later restoration
+        preview_picam2 = self.picam2
+        
+        # Always stop the preview window's picam2 instance completely before creating new one
         if self.picam2 is not None:
             try:
+                # Stop preview first
+                self._stop_native_preview()
+                
                 # Clear any callbacks that might interfere
                 if hasattr(self.picam2, 'post_callback'):
                     self.picam2.post_callback = None
+                if hasattr(self.picam2, 'pre_callback'):
+                    self.picam2.pre_callback = None
+                
+                # Always stop the camera instance - this is critical for proper cleanup
                 if hasattr(self.picam2, 'started') and self.picam2.started:
                     self.picam2.stop()
-                    # Longer delay to ensure camera is fully stopped and cleaned up
-                    time.sleep(0.5)
+                    logger.info("Stopped preview window's picam2 instance")
+                
+                # Wait for camera to fully stop and release hardware
+                time.sleep(0.5)
+                
             except Exception as e:
                 logger.warning(f"Error stopping camera before high-FPS measurement: {e}")
         
@@ -745,10 +758,9 @@ class PreviewWindow:
         try:
             if use_picamera2:
                 # Use Picamera2 high-FPS implementation
-                # Create a new instance to avoid allocator conflicts with preview instance
-                # The preview window's picam2 instance may have callbacks/state that interfere
+                # Create a completely new instance with fresh state
                 from robocam.picamera2_highfps_capture import Picamera2HighFpsCapture
-                # Don't pass existing picam2 - let it create a fresh instance
+                # Don't pass existing picam2 - create fresh instance
                 # This avoids allocator conflicts from previous configurations
                 capture_instance = Picamera2HighFpsCapture(width=w, height=h, fps=fps, picam2=None)
                 if not capture_instance.start_capture():
@@ -799,15 +811,23 @@ class PreviewWindow:
             method_name = "Picamera2 high-FPS" if use_picamera2 else "rpicam-vid"
             logger.info(f"{method_name} FPS test: {frame_count} frames in {elapsed_seconds:.2f}s = {measured_fps:.1f} FPS")
             
-            # Stop capture
+            # Always stop the capture instance completely before restoring preview
             if capture_instance is not None:
                 try:
                     capture_instance.stop_capture()
+                    logger.info("Stopped high-FPS capture instance")
                 except Exception as e:
                     logger.warning(f"Error stopping capture: {e}")
                 capture_instance = None
             
-            # Restore preview configuration
+            # Wait for capture instance to fully release hardware
+            time.sleep(0.5)
+            
+            # Restore preview window's picam2 reference
+            if preview_picam2 is not None:
+                self.picam2 = preview_picam2
+            
+            # Restore preview configuration - this will properly start the preview instance
             self._restore_preview_config(res_x, res_y, target_fps, was_preview_active)
             
             # Update status with measured FPS
@@ -821,13 +841,22 @@ class PreviewWindow:
             logger.error(f"Error with high-FPS method: {e}", exc_info=True)
             method_name = "Picamera2 high-FPS" if use_picamera2 else "rpicam-vid" if use_rpicam_vid else "high-FPS"
             self.status_label.config(text=f"{method_name} error: {e}", fg="red")
-            # Clean up
+            
+            # Always stop capture instance on error
             if capture_instance is not None:
                 try:
                     capture_instance.stop_capture()
+                    logger.info("Stopped high-FPS capture instance (error cleanup)")
                 except Exception as cleanup_error:
                     logger.warning(f"Error during cleanup: {cleanup_error}")
                 capture_instance = None
+            
+            # Wait for hardware release
+            time.sleep(0.5)
+            
+            # Restore preview window's picam2 reference
+            if preview_picam2 is not None:
+                self.picam2 = preview_picam2
             
             # Restore preview even on error
             self._restore_preview_config(res_x, res_y, target_fps, was_preview_active)
@@ -932,24 +961,33 @@ class PreviewWindow:
     def _restore_preview_config(self, res_x: int, res_y: int, fps: float, was_preview_active: bool) -> None:
         """Restore preview configuration after FPS test."""
         if self.picam2 is None:
+            logger.warning("Cannot restore preview config: picam2 is None")
             return
         
         try:
-            # Restore preview configuration
+            # Always ensure camera is stopped before reconfiguring
             try:
                 if hasattr(self.picam2, 'started') and self.picam2.started:
                     self.picam2.stop()
-                time.sleep(0.1)
-            except:
-                pass
+                    logger.info("Stopped picam2 before restoring preview config")
+                    time.sleep(0.3)  # Wait for stop to complete
+            except Exception as e:
+                logger.warning(f"Error stopping picam2 before restore: {e}")
             
+            # Create new preview configuration
             self.picam2_config = self.picam2.create_preview_configuration(
                 main={"size": (res_x, res_y)},
                 controls={"FrameRate": fps},
                 buffer_count=2
             )
+            
+            # Configure the camera
             self.picam2.configure(self.picam2_config)
+            time.sleep(0.1)  # Brief pause after configure
+            
+            # Start the camera
             self.picam2.start()
+            logger.info(f"Started picam2 for preview: {res_x}x{res_y} @ {fps} FPS")
             
             # Restore FPS tracking callback
             if self.fps_tracker:
@@ -958,7 +996,8 @@ class PreviewWindow:
                         self.fps_tracker.update()
                 self.picam2.post_callback = restore_callback
             
-            time.sleep(0.2)
+            # Wait for camera to be ready
+            time.sleep(0.3)
             
             # Restart preview (now that FPS check is complete)
             if "Grayscale" not in self.capture_type_var.get():
@@ -967,7 +1006,7 @@ class PreviewWindow:
                 self._show_grayscale_preview()
                 
         except Exception as e:
-            logger.error(f"Error restoring preview config: {e}")
+            logger.error(f"Error restoring preview config: {e}", exc_info=True)
     
     def on_close(self) -> None:
         """Handle window close."""
