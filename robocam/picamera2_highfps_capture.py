@@ -152,9 +152,8 @@ class Picamera2HighFpsCapture:
             
             # Wait for first frame and discard it (warmup)
             try:
-                # Capture a frame to warm up
-                with self.picam2.capture_request() as request:
-                    _ = request.make_array("main")
+                # Capture a frame to warm up using capture_array (more efficient for high-FPS)
+                _ = self.picam2.capture_array("main")
             except Exception as e:
                 logger.error(f"Error during warmup: {e}")
                 self.last_error = str(e)
@@ -182,9 +181,10 @@ class Picamera2HighFpsCapture:
             return None
         
         try:
-            # Use single-plane Y format; this avoids copying chroma planes for maximum throughput
-            with self.picam2.capture_request() as request:
-                frame = request.make_array("main")
+            # Use capture_array for high-FPS - more efficient than capture_request
+            # For Y format, this directly returns the Y plane as a 2D array
+            # For YUV420, we'll extract the Y channel
+            frame = self.picam2.capture_array("main")
             
             if frame is None:
                 logger.warning("Received empty frame")
