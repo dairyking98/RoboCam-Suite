@@ -233,8 +233,17 @@ class PreviewWindow:
             
             self.picam2.post_callback = frame_callback
         
-        # Start native preview (if not grayscale)
-        self.update_preview()
+        # Defer preview start to allow window to fully initialize
+        # This prevents issues with preview backends that need a fully rendered window
+        def start_preview_after_init():
+            """Start preview after window is fully initialized."""
+            self.window.update_idletasks()  # Ensure window is rendered
+            time.sleep(0.1)  # Brief additional wait
+            # Start native preview (if not grayscale)
+            self.update_preview()
+        
+        # Schedule preview start after window initialization
+        self.window.after(100, start_preview_after_init)
         
         # Start FPS update loop
         self.update_fps()
@@ -309,26 +318,84 @@ class PreviewWindow:
                 res_x, res_y = 800, 600
                 fps = 30.0
             
-            # Reconfigure camera if needed
+            # Check if camera is already started and configured
+            camera_ready = False
+            if hasattr(self.picam2, 'started') and self.picam2.started:
+                # Camera is already started - check if we need to reconfigure
+                try:
+                    # Try to check current config - if it matches, don't reconfigure
+                    current_config = getattr(self.picam2, 'camera_config', None)
+                    if current_config:
+                        # Camera already running - only reconfigure if settings changed
+                        main_config = current_config.get('main', {})
+                        current_size = main_config.get('size')
+                        if current_size == (res_x, res_y):
+                            # Same resolution, camera is ready
+                            camera_ready = True
+                            logger.info("Camera already configured correctly, skipping reconfiguration")
+                except:
+                    pass
+            
+            # Only reconfigure if needed
+            if not camera_ready:
+                # Stop camera if running
+                try:
+                    if hasattr(self.picam2, 'started') and self.picam2.started:
+                        self.picam2.stop()
+                        time.sleep(0.1)  # Brief pause after stopping
+                except Exception as e:
+                    logger.warning(f"Error stopping camera: {e}")
+                
+                # Configure and start camera
+                try:
+                    self.picam2_config = self.picam2.create_preview_configuration(
+                        main={"size": (res_x, res_y)},
+                        controls={"FrameRate": fps},
+                        buffer_count=2
+                    )
+                    self.picam2.configure(self.picam2_config)
+                    self.picam2.start()
+                    logger.info(f"Camera configured: {res_x}x{res_y} @ {fps} FPS")
+                except Exception as e:
+                    logger.error(f"Failed to configure camera: {e}")
+                    self.preview_info_label.config(
+                        text=f"✗ Camera configuration error: {str(e)[:60]}...",
+                        fg="red"
+                    )
+                    return
+                
+                # Give camera time to fully start before attempting preview
+                time.sleep(0.2)  # Increased wait time for camera initialization
+            
+            # Stop any existing preview first (in case preview was already started)
             try:
-                if hasattr(self.picam2, 'started') and self.picam2.started:
-                    self.picam2.stop()
-            except:
-                pass
+                if hasattr(self.picam2, '_preview'):
+                    # Check if preview is active
+                    if self.picam2._preview is not None:
+                        logger.info("Stopping existing preview before starting new one...")
+                        self.picam2.stop_preview()
+                        time.sleep(0.1)
+            except Exception as e:
+                logger.debug(f"Error checking for existing preview (likely none): {e}")
             
-            self.picam2_config = self.picam2.create_preview_configuration(
-                main={"size": (res_x, res_y)},
-                controls={"FrameRate": fps},
-                buffer_count=2
-            )
-            self.picam2.configure(self.picam2_config)
-            self.picam2.start()
-            
-            # Give camera a moment to fully start before attempting preview
-            time.sleep(0.1)
+            # Ensure camera is in the right state for preview
+            # Check if camera is actually started and ready
+            if not hasattr(self.picam2, 'started') or not self.picam2.started:
+                logger.warning("Camera not started, attempting to start...")
+                try:
+                    self.picam2.start()
+                    time.sleep(0.2)  # Give it more time to initialize
+                except Exception as e:
+                    logger.error(f"Failed to start camera: {e}")
+                    self.preview_info_label.config(
+                        text=f"✗ Camera start failed: {str(e)[:60]}...",
+                        fg="red"
+                    )
+                    return
             
             # Start native preview using the smart backend selection function
             # This function automatically detects desktop session and picks the best backend
+            error_details = []
             try:
                 self._preview_backend = start_best_preview(self.picam2, backend="auto")
                 self._native_preview_active = True
@@ -338,22 +405,51 @@ class PreviewWindow:
                 )
                 logger.info(f"Started native preview with backend: {self._preview_backend.upper()}")
             except RuntimeError as e:
-                # start_best_preview failed - try NULL as last resort (headless mode)
-                try:
-                    from picamera2 import Preview
-                    self.picam2.start_preview(Preview.NULL)
-                    self._preview_backend = "null"
-                    self._native_preview_active = True
-                    logger.info("Started NULL preview (headless mode - no visual preview)")
-                    self.preview_info_label.config(
-                        text=f"⚠ Preview unavailable (headless mode)\nCapture still works\n\nAuto-selection failed: {str(e)[:50]}",
-                        fg="orange"
-                    )
-                except Exception as null_error:
+                error_msg = str(e)
+                error_details.append(f"Auto-selection: {error_msg}")
+                logger.warning(f"start_best_preview failed: {error_msg}")
+                
+                # Try each backend individually with better error messages
+                from picamera2 import Preview
+                backends_to_try = [
+                    ("DRM", Preview.DRM),
+                    ("QTGL", Preview.QTGL),
+                    ("NULL", Preview.NULL)
+                ]
+                
+                preview_started = False
+                for backend_name, backend_type in backends_to_try:
+                    if preview_started:
+                        break
+                    try:
+                        logger.info(f"Trying {backend_name} backend...")
+                        self.picam2.start_preview(backend_type)
+                        self._preview_backend = backend_name.lower()
+                        self._native_preview_active = True
+                        preview_started = True
+                        logger.info(f"Successfully started {backend_name} preview")
+                        
+                        if backend_name == "NULL":
+                            self.preview_info_label.config(
+                                text=f"⚠ Preview unavailable (headless mode)\nCapture still works\n\nAll visual backends failed.\nErrors: {error_msg[:60]}",
+                                fg="orange"
+                            )
+                        else:
+                            self.preview_info_label.config(
+                                text=f"✓ Native preview active (Backend: {backend_name})",
+                                fg="green"
+                            )
+                    except Exception as be:
+                        be_msg = str(be)
+                        error_details.append(f"{backend_name}: {be_msg[:40]}")
+                        logger.warning(f"{backend_name} backend failed: {be_msg}")
+                
+                if not preview_started:
                     # All preview backends failed - but we can still capture
-                    logger.error(f"All preview backends failed: {e}, NULL also failed: {null_error}")
+                    error_summary = "\n".join(error_details[:3])  # Show first 3 errors
+                    logger.error(f"All preview backends failed. Errors: {error_details}")
                     self.preview_info_label.config(
-                        text=f"⚠ Preview unavailable\nCapture still works\n\nAll backends failed.\nCheck display/camera connection.",
+                        text=f"⚠ Preview unavailable\nCapture still works\n\nAll backends failed.\n{error_summary[:80]}...\n\nCheck display/camera connection.",
                         fg="orange"
                     )
                     self._native_preview_active = False
@@ -361,9 +457,10 @@ class PreviewWindow:
                     return
             except Exception as e:
                 # Unexpected error
-                logger.error(f"Unexpected error starting preview: {e}")
+                error_msg = str(e)
+                logger.error(f"Unexpected error starting preview: {error_msg}", exc_info=True)
                 self.preview_info_label.config(
-                    text=f"✗ Preview error: {str(e)[:60]}...",
+                    text=f"✗ Preview error: {error_msg[:80]}...\n\nCheck logs for details.",
                     fg="red"
                 )
                 self._native_preview_active = False
