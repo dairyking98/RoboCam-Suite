@@ -118,7 +118,23 @@ class Picamera2HighFpsCapture:
             self._selected_format = selected_format
             
             # Always configure before starting - this initializes the allocator properly
-            self.picam2.configure(config)
+            try:
+                self.picam2.configure(config)
+            except Exception as e:
+                # If Y failed at configure time, retry once with YUV420
+                if selected_format == "Y":
+                    logger.warning(f"Configure failed for Y format, retrying with YUV420: {e}")
+                    self.last_error = f"Y format configure failed: {e}"
+                    config = self.picam2.create_video_configuration(
+                        main={"format": "YUV420", "size": (self.width, self.height)},
+                        controls={"FrameRate": self.fps},
+                        buffer_count=2
+                    )
+                    selected_format = "YUV420"
+                    self._selected_format = selected_format
+                    self.picam2.configure(config)
+                else:
+                    raise
             logger.info(f"Configured Picamera2: {self.width}x{self.height} @ {self.fps} FPS ({selected_format})")
             
             # Brief pause after configure to ensure allocator is ready
