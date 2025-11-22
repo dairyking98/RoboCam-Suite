@@ -717,6 +717,8 @@ class PreviewWindow:
             try:
                 if hasattr(self.picam2, 'started') and self.picam2.started:
                     self.picam2.stop()
+                    # Small delay to ensure camera is fully stopped before starting new capture
+                    time.sleep(0.2)
             except:
                 pass
         

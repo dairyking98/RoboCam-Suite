@@ -93,14 +93,19 @@ class CaptureManager:
         """Initialize the appropriate capture instance based on capture_type."""
         if "Picamera2 (Grayscale - High FPS)" in self.capture_type:
             # High-FPS grayscale mode using Picamera2 directly
+            # Use existing picam2 instance if provided (will stop and reconfigure it)
+            # Otherwise create new instance
             self.picamera2_highfps = Picamera2HighFpsCapture(
                 width=self.width,
                 height=self.height,
-                fps=int(self.fps)
+                fps=int(self.fps),
+                picam2=self.picam2  # Pass existing instance if available
             )
             if not self.picamera2_highfps.start_capture():
                 logger.error("Failed to start Picamera2 high-FPS capture")
                 raise RuntimeError("Picamera2 high-FPS capture failed to start")
+            # Store reference to picam2 instance
+            self.picam2 = self.picamera2_highfps.picam2
         elif "rpicam-vid (Grayscale - High FPS)" in self.capture_type:
             # High-FPS grayscale mode using rpicam-vid subprocess
             self.rpicam_vid = RpicamVidCapture(

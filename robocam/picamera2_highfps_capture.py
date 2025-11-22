@@ -40,7 +40,7 @@ class Picamera2HighFpsCapture:
         _recording (bool): Whether currently recording frames
     """
     
-    def __init__(self, width: int = 640, height: int = 480, fps: int = 250) -> None:
+    def __init__(self, width: int = 640, height: int = 480, fps: int = 250, picam2: Optional[Picamera2] = None) -> None:
         """
         Initialize Picamera2 high-FPS capture.
         
@@ -48,11 +48,13 @@ class Picamera2HighFpsCapture:
             width: Frame width in pixels (should be multiple of 32 for optimal performance)
             height: Frame height in pixels (should be multiple of 16 for optimal performance)
             fps: Target frames per second
+            picam2: Optional existing Picamera2 instance to reuse (will be stopped and reconfigured)
         """
         self.width: int = width
         self.height: int = height
         self.fps: int = fps
-        self.picam2: Optional[Picamera2] = None
+        self.picam2: Optional[Picamera2] = picam2  # Use provided instance or create new one
+        self._picam2_provided: bool = picam2 is not None  # Track if we need to clean up on stop
         self.frames: List[np.ndarray] = []
         self._recording: bool = False
         
@@ -63,20 +65,33 @@ class Picamera2HighFpsCapture:
         Returns:
             True if capture started successfully, False otherwise
         """
-        if self.picam2 is not None:
+        if self.picam2 is not None and hasattr(self.picam2, 'started') and self.picam2.started:
             logger.warning("Capture already started")
             return False
         
         try:
-            # Create Picamera2 instance
-            self.picam2 = Picamera2()
+            # Stop existing camera if it's running (in case it was provided and already started)
+            if self.picam2 is not None:
+                try:
+                    if hasattr(self.picam2, 'started') and self.picam2.started:
+                        self.picam2.stop()
+                        logger.info("Stopped existing Picamera2 instance before reconfiguring")
+                        # Small delay to ensure camera is fully stopped
+                        time.sleep(0.1)
+                except Exception as e:
+                    logger.warning(f"Error stopping existing Picamera2 instance: {e}")
+            else:
+                # Create new Picamera2 instance if none was provided
+                self.picam2 = Picamera2()
+                self._picam2_provided = False
             
             # Create video configuration with YUV420 format
             # YUV420: Y (luminance) channel is h rows, U and V are h/2 rows each
             # Total height is h*3/2, width is w
             config = self.picam2.create_video_configuration(
                 main={"format": "YUV420", "size": (self.width, self.height)},
-                controls={"FrameRate": self.fps}
+                controls={"FrameRate": self.fps},
+                buffer_count=2  # Optimize buffer for high FPS
             )
             
             self.picam2.configure(config)
@@ -293,11 +308,14 @@ class Picamera2HighFpsCapture:
         """Stop capturing and clean up Picamera2 instance."""
         if self.picam2 is not None:
             try:
-                self.picam2.stop()
+                if hasattr(self.picam2, 'started') and self.picam2.started:
+                    self.picam2.stop()
             except Exception as e:
                 logger.warning(f"Error stopping Picamera2: {e}")
             finally:
-                self.picam2 = None
+                # Only set to None if we created it (not if it was provided)
+                if not self._picam2_provided:
+                    self.picam2 = None
                 self._recording = False
                 logger.info("Picamera2 high-FPS capture stopped")
 
