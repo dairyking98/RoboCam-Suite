@@ -271,7 +271,7 @@ The configuration system uses JSON files in `config/default_config.json`:
   - `preview_backend`: Preview backend selection (default: "auto")
   - `pre_recording_delay`: Delay in seconds before starting video recording (default: 0.5)
     - Allows vibrations from printer movement to settle before recording begins
-    - Only applies to video recording modes (H264, MJPEG), not JPEG still capture
+    - Applies to video recording mode (H264)
 
 ### Adding New Configuration
 

@@ -90,21 +90,16 @@ The application automates the execution of well-plate experiments by:
   - **H264**: Video encoding with high bitrate (50 Mbps)
     - FPS metadata embedded directly in video file
     - Ensures accurate playback duration
-  - **MJPEG**: Motion JPEG video with quality control
-    - FPS metadata saved in separate JSON file (MJPEG doesn't support native FPS metadata)
-    - Use metadata file FPS for accurate playback
-  - **JPEG**: Single still image capture
-- **Quality Control**: JPEG quality setting (1-100, default: 85)
 - **Pre-Recording Delay**: Configurable delay before video recording starts (default: 0.5 seconds)
   - Allows vibrations from printer movement to settle before recording begins
   - Configurable via `hardware.camera.pre_recording_delay` in `config/default_config.json`
-  - Only applies to video recording modes (H264, MJPEG), not JPEG still capture
+  - Applies to video recording mode (H264)
 - **FPS Metadata Files**: JSON metadata files automatically saved alongside each video recording
   - Format: `{video_filename}_metadata.json`
   - Contains target FPS, actual FPS, resolution, duration, format, timestamp, and well label
   - **Target FPS**: The FPS value set in the GUI (desired frame rate)
   - **Actual FPS**: The actual frame rate achieved during recording (calculated from actual duration)
-  - Critical for accurate playback, especially for MJPEG files
+  - Critical for accurate playback
   - If the camera cannot achieve the target FPS, the actual FPS will be recorded in the metadata
 
 ### 4. Motion Configuration
@@ -128,7 +123,7 @@ The application automates the execution of well-plate experiments by:
   - `{experiment_name}`: Experiment name from the "Experiment Name" field
   - `{y}`: Row letter (e.g., "A", "B", "C")
   - `{x}`: Column number (e.g., "1", "2", "3")
-  - `{ext}`: File extension based on export type (`.h264`, `.mjpeg`, `.jpeg`)
+  - `{ext}`: File extension based on export type (`.h264`)
   - Example: `20241215_143022_exp_B2.h264`
 - **Save Folder**: Output files are saved to `outputs/YYYYMMDD_{experiment_name}/` (not configurable via GUI)
   - The application automatically creates the directory if it doesn't exist
@@ -537,7 +532,6 @@ Action phases are validated before experiment execution:
    - Resolution: `1920` x `1080` (default)
    - TARGET FPS: `30.0` (default) - this is the desired frame rate
    - Export type: `H264`, `MJPEG`, or `JPEG`
-   - Quality: `85` (for JPEG/MJPEG)
    - Note: If the camera cannot achieve the target FPS, the actual FPS will be calculated and saved in the metadata JSON file
 
 6. **Configure Motion**:
@@ -636,8 +630,6 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
 - **Recording Config**: User-specified resolution, user-specified FPS, 2 buffers
 - **Encoder Selection**:
   - H264: `H264Encoder(bitrate=50_000_000, fps=fps)` - FPS parameter ensures metadata embedding
-  - MJPEG: `JpegEncoder(q=quality)` - FPS saved in metadata JSON file
-  - JPEG: Direct capture (no encoder)
 - **FPS Metadata**: JSON files saved alongside videos with target FPS, actual FPS, resolution, duration, actual duration, format, timestamp, and well label
   - Actual FPS is calculated from actual recording duration if it differs from target FPS
 
@@ -717,8 +709,6 @@ All motion profiles are stored in `config/motion_config.json`. Each profile has 
 
 5. **Video playback duration doesn't match recording time**
    - **H264**: Actual FPS metadata is embedded - most players should use it automatically
-   - **MJPEG**: Use actual FPS from metadata JSON file for playback
-     - VLC example: `vlc --demux=mjpeg --mjpeg-fps=<actual_fps_from_metadata> video.mjpeg`
    - Verify metadata file exists alongside video: `{video_filename}_metadata.json`
    - Check logs for FPS warnings during recording
    - **Important**: Use `actual_fps` from metadata JSON (not `target_fps`) for accurate playback

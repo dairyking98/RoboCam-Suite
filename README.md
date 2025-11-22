@@ -24,7 +24,7 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
     - **Picamera2 (Grayscale)**: Grayscale capture using Picamera2 with YUV420 format
     - **raspividyuv (Grayscale - High FPS)**: High-FPS grayscale capture (100+ FPS) using raspividyuv command-line tool
   - **Quick Capture**: Instant image or video capture in calibrate.py and preview.py
-  - **Minimal Compression**: Video saved with lossless FFV1 codec or high-quality MJPEG for maximum data preservation
+  - **Minimal Compression**: Video saved with lossless FFV1 codec for maximum data preservation
   - **Accurate FPS Recording**: FPS metadata embedded in H264 videos and saved in JSON metadata files
   - **Real-Time Playback**: Ensures videos play at correct speed for scientific velocity measurements
   - **FPS Metadata Files**: JSON metadata files saved alongside videos with FPS, resolution, and duration information
@@ -273,8 +273,7 @@ python experiment.py --simulate_3d --simulate_cam  # Simulate both
 7. Configure camera settings:
    - Resolution (X and Y)
    - FPS
-   - Export type (H264, MJPEG, or JPEG)
-   - JPEG quality (if applicable)
+   - Export type (H264)
 8. Set feedrate override (optional, mm/min)
 9. Select motion configuration file (for feed/acceleration settings)
 10. Set experiment name (files use format: `{date}_{time}_{experiment_name}_{y}{x}.{ext}`)
@@ -396,7 +395,7 @@ The format includes:
 - `{experiment_name}`: Experiment name from "Experiment Name" field (default: "exp")
 - `{y}`: Row letter (e.g., "A", "B", "C")
 - `{x}`: Column number (e.g., "1", "2", "3")
-- `{ext}`: File extension based on export type (`.h264`, `.mjpeg`, `.jpeg`)
+- `{ext}`: File extension based on export type (`.h264`)
 
 Example: Experiment name "exp", well B2, captured at 14:30:22 on December 15th, 2024 → `20241215_143022_exp_B2.h264`
 
@@ -428,7 +427,7 @@ Videos or images are automatically saved to `outputs/YYYYMMDD_{experiment_name}/
 - **FPS**: Frame rate used for recording (critical for accurate playback)
 - **Resolution**: Video resolution (width, height)
 - **Duration**: Expected recording duration in seconds
-- **Format**: Video format (H264 or MJPEG)
+- **Format**: Video format (H264)
 - **Timestamp**: Recording timestamp
 - **Well Label**: Well identifier (e.g., "A1")
 
@@ -447,9 +446,6 @@ Videos or images are automatically saved to `outputs/YYYYMMDD_{experiment_name}/
 
 **FPS Accuracy**:
 - **H264 videos**: FPS metadata is embedded directly in the video file for accurate playback
-- **MJPEG videos**: FPS metadata is saved in the JSON file (MJPEG format doesn't support native FPS metadata)
-  - For MJPEG playback, use the FPS from the metadata file
-  - VLC example: `vlc --demux=mjpeg --mjpeg-fps=30.0 video.mjpeg`
 
 **Directory Creation**: The application automatically creates the `outputs/YYYYMMDD_{experiment_name}/` directory if it doesn't exist. If you encounter permission errors, the application will identify the issue and provide specific fix instructions. To manually set up the directory:
 ```bash
@@ -563,9 +559,6 @@ export ROBOCAM_BAUDRATE=9600
 - **Problem**: Videos play faster/slower than expected, or duration doesn't match recording time
 - **Solution**:
   - **H264 videos**: FPS metadata is embedded in the video - most players should use it automatically
-  - **MJPEG videos**: Use the FPS value from the `{video_filename}_metadata.json` file
-    - VLC: `vlc --demux=mjpeg --mjpeg-fps=<fps_from_metadata> video.mjpeg`
-    - Or check the metadata JSON file for the correct FPS value
   - Verify the metadata file exists alongside your video file
   - Check application logs for FPS warnings during recording
 

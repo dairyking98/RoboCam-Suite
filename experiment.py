@@ -22,7 +22,7 @@ from tkinter import filedialog
 from datetime import datetime
 from typing import Optional, Dict, List, Tuple, Any
 from picamera2 import Picamera2
-from picamera2.encoders import H264Encoder, JpegEncoder
+from picamera2.encoders import H264Encoder
 from picamera2.outputs import FileOutput
 from robocam.robocam_ccc import RoboCam
 from robocam.laser import Laser
@@ -40,7 +40,6 @@ OUTPUTS_FOLDER: str = "outputs"  # Base folder for experiment outputs
 DEFAULT_RES: tuple[int, int] = (1920, 1080)
 DEFAULT_FPS: float = 30.0
 DEFAULT_EXPORT: str = "H264"
-DEFAULT_QUALITY: int = 85
 
 
 def ensure_directory_exists(folder_path: str) -> tuple[bool, str]:
@@ -116,15 +115,14 @@ def save_video_metadata(
     Save FPS and recording metadata to a JSON file alongside the video.
     
     This metadata is critical for accurate playback timing, especially for
-    scientific velocity measurements. MJPEG files don't support native FPS
-    metadata, so this JSON file is essential for proper playback.
+    scientific velocity measurements.
     
     Args:
         video_path: Path to the video file
         target_fps: Target frames per second for recording
         resolution: Video resolution as (width, height)
         duration_seconds: Expected recording duration in seconds
-        format_type: Video format ("H264" or "MJPEG")
+        format_type: Video format ("H264")
         well_label: Well identifier (e.g., "A1")
         timestamp: Recording timestamp string
         actual_fps: Actual FPS achieved (calculated from actual duration if not provided)
@@ -175,7 +173,7 @@ class ExperimentWindow:
     Provides GUI for:
     - Configuring well positions (X, Y coordinates and labels)
     - Setting adjustable GPIO action phases (customizable ON/OFF sequences with durations)
-    - Camera settings (resolution, FPS, export type, quality)
+    - Camera settings (resolution, FPS, export type)
     - Motion settings (feedrate, motion configuration)
     - File naming and save location
     - Running, pausing, and stopping experiments
@@ -440,15 +438,10 @@ class ExperimentWindow:
         
         tk.Label(camera_frame, text="Export Type:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
         self.export_var = tk.StringVar(value=DEFAULT_EXPORT)
-        tk.OptionMenu(camera_frame, self.export_var, "H264", "MJPEG", "JPEG").grid(row=row, column=3, sticky="w", padx=2, pady=2)
+        tk.OptionMenu(camera_frame, self.export_var, "H264").grid(row=row, column=3, sticky="w", padx=2, pady=2)
         
         row += 1
-        tk.Label(camera_frame, text="JPEG Quality:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        self.quality_ent = tk.Entry(camera_frame, width=12)
-        self.quality_ent.grid(row=row, column=1, sticky="w", padx=2, pady=2)
-        self.quality_ent.insert(0, str(DEFAULT_QUALITY))
-        
-        tk.Label(camera_frame, text="Capture Type:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
+        tk.Label(camera_frame, text="Capture Type:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
         self.capture_type_var = tk.StringVar(value="Picamera2 (Color)")
         capture_type_menu = tk.OptionMenu(camera_frame, self.capture_type_var, *CaptureManager.CAPTURE_TYPES)
         capture_type_menu.grid(row=row, column=3, sticky="w", padx=2, pady=2)
@@ -618,8 +611,7 @@ class ExperimentWindow:
             exp_name = self.experiment_name_ent.get().strip() or "exp"
             date_str = datetime.now().strftime("%Y%m%d")
             output_folder = os.path.join(OUTPUTS_FOLDER, f"{date_str}_{exp_name}")
-            ext_map = {"H264": ".h264", "MJPEG": ".mjpeg", "JPEG": ".jpeg"}
-            ext    = ext_map.get(self.export_var.get(), ".h264")
+            ext = ".h264"  # H264 is the only export format
             # Use calibration labels if available, otherwise use placeholders
             if self.loaded_calibration and self.loaded_calibration.get("labels"):
                 labels = self.loaded_calibration.get("labels", [])
@@ -772,8 +764,6 @@ class ExperimentWindow:
             self.fps_ent.insert(0, str(settings.get("fps", 30.0)))
             
             self.export_var.set(settings.get("export_type", "H264"))
-            self.quality_ent.delete(0, tk.END)
-            self.quality_ent.insert(0, str(settings.get("quality", 85)))
             
             # Handle both old format (motion_config_file) and new format (motion_config_profile)
             motion_profile = settings.get("motion_config_profile") or settings.get("motion_config_file", "default")
@@ -1517,7 +1507,6 @@ class ExperimentWindow:
                 "resolution": [int(self.res_x_ent.get().strip()), int(self.res_y_ent.get().strip())],
                 "fps": float(self.fps_ent.get().strip()),
                 "export_type": self.export_var.get(),
-                "quality": int(self.quality_ent.get().strip()),
                 "motion_config_profile": self.motion_config_var.get(),
                 "experiment_name": self.experiment_name_ent.get().strip(),
                 "pattern": self.pattern_var.get()  # Stores format like "snake →↙" or "raster →↓"
@@ -1636,7 +1625,6 @@ class ExperimentWindow:
                 res_y = int(self.res_y_ent.get().strip())
                 fps = float(self.fps_ent.get().strip())
                 export = self.export_var.get()
-                quality = int(self.quality_ent.get().strip())
             except Exception as e:
                 logger.error(f"Invalid inputs: {e}")
                 self.status_lbl.config(text=f"Error: Invalid inputs - {e}")
@@ -1725,27 +1713,16 @@ class ExperimentWindow:
             
             logger.info(f"Camera configured for recording: {res_x}x{res_y} @ {fps} FPS ({capture_type})")
 
-        # select encoder for video modes
-        if export == "MJPEG":
-            # Note: JpegEncoder produces raw concatenated JPEG frames without proper
-            # MJPEG stream headers. Many players will show only the first frame.
-            # MJPEG files do not support native FPS metadata in the file itself.
-            # For reliable playback, use H264 instead, or play MJPEG files in VLC with:
-            # vlc --demux=mjpeg --mjpeg-fps=<fps> <file>
-            # FPS metadata will be saved in a separate JSON file for accurate playback.
-            self.encoder = JpegEncoder(q=quality)
-        elif export == "H264":
-            # Pass fps parameter to ensure FPS metadata is written to the H264 stream
-            # This ensures accurate playback duration for scientific measurements
-            # Note: fps parameter may not be supported in all picamera2 versions
-            try:
-                self.encoder = H264Encoder(bitrate=50_000_000, fps=fps)
-            except TypeError:
-                # Fallback for older picamera2 versions that don't support fps parameter
-                logger.warning(f"H264Encoder doesn't support fps parameter, using default (fps will be in metadata JSON)")
-                self.encoder = H264Encoder(bitrate=50_000_000)
-        else:
-            self.encoder = None  # JPEG still mode
+        # Select H264 encoder for video recording
+        # Pass fps parameter to ensure FPS metadata is written to the H264 stream
+        # This ensures accurate playback duration for scientific measurements
+        # Note: fps parameter may not be supported in all picamera2 versions
+        try:
+            self.encoder = H264Encoder(bitrate=50_000_000, fps=fps)
+        except TypeError:
+            # Fallback for older picamera2 versions that don't support fps parameter
+            logger.warning(f"H264Encoder doesn't support fps parameter, using default (fps will be in metadata JSON)")
+            self.encoder = H264Encoder(bitrate=50_000_000)
 
         # Build sequence from calibration and selected wells
         interpolated_positions = self.loaded_calibration.get("interpolated_positions", [])
@@ -1858,8 +1835,7 @@ class ExperimentWindow:
 
                 ts   = time.strftime("%H%M%S")
                 ds   = loop_date_str  # Use YYYYMMDD format (set at start of experiment)
-                ext_map = {"H264": ".h264", "MJPEG": ".avi", "JPEG": ".jpeg"}
-                ext  = ext_map.get(export, ".jpeg")
+                ext = ".h264"  # H264 is the only export format
                 fname = f"{ds}_{ts}_{loop_experiment_name}_{y_lbl}{x_lbl}{ext}"
                 path = os.path.join(loop_output_folder, fname)
                 
@@ -1871,13 +1847,7 @@ class ExperimentWindow:
                     self.running = False
                     break
 
-                if export == "JPEG":
-                    # single JPEG still
-                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Capturing JPEG...")
-                    self.picam2.capture_file(path, format="jpeg") #, q=quality)
-                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: JPEG captured")
-                else:
-                    # video (H264 or MJPEG)
+                # Video recording (H264)
                     # Calculate total expected duration from all phases
                     total_duration = sum(time for _, time in self.action_phases_list)
                     
@@ -1892,13 +1862,8 @@ class ExperimentWindow:
                     # Check if using raspividyuv capture manager
                     if self.capture_manager is not None and "raspividyuv" in self.capture_manager.get_capture_type():
                         # Use raspividyuv capture manager
-                        # Determine codec based on export type
-                        if export == "MJPEG":
-                            codec = "MJPG"
-                        elif export == "H264":
-                            codec = "FFV1"  # Use lossless for H264-like quality
-                        else:
-                            codec = "FFV1"
+                        # Use FFV1 lossless codec for maximum quality
+                        codec = "FFV1"
                         
                         # Start recording with capture manager
                         success = self.capture_manager.start_video_recording(path, codec=codec)

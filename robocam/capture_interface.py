@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 from typing import Optional, Tuple, List
 from picamera2 import Picamera2
-from picamera2.encoders import H264Encoder, JpegEncoder
+from picamera2.encoders import H264Encoder
 from picamera2.outputs import FileOutput
 from robocam.pihqcamera import PiHQCamera
 from robocam.raspividyuv_capture import RaspividyuvCapture
@@ -148,7 +148,7 @@ class CaptureManager:
         
         Args:
             output_path: Path to save video. If None, generates timestamped filename.
-            codec: Video codec ("FFV1" for lossless, "MJPG" for high-quality MJPEG, "PNG" for PNG codec)
+            codec: Video codec ("FFV1" for lossless, "PNG" for PNG codec)
             
         Returns:
             True if successful, False otherwise
@@ -160,8 +160,6 @@ class CaptureManager:
         if output_path is None:
             timestamp = time.strftime('%Y%m%d_%H%M%S')
             if codec == "FFV1" or codec == "PNG":
-                ext = ".avi"
-            elif codec == "MJPG":
                 ext = ".avi"
             else:
                 ext = ".h264"
@@ -183,9 +181,9 @@ class CaptureManager:
                     logger.error("Picamera2 not initialized")
                     return False
                 
-                # For Picamera2, we'll use H264Encoder or JpegEncoder
+                # For Picamera2, we'll use H264Encoder
                 # Note: For minimal compression, we might need to save frames and encode later
-                # For now, use standard Picamera2 recording
+                # For now, use standard Picamera2 H264 recording
                 self.pihq_camera.start_recording_video(output_path, fps=self.fps)
                 logger.info(f"Started Picamera2 recording: {output_path}")
                 return True

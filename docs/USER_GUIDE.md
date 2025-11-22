@@ -405,7 +405,6 @@ In experiment.py, the capture type is selected in the Camera Settings section:
 For maximum data preservation, videos are saved with minimal compression:
 
 - **FFV1 Codec**: Lossless compression (default for raspividyuv mode)
-- **High-Quality MJPEG**: Quality 100 (fallback option)
 - **PNG Sequence**: Option to save individual frames as PNG files (best quality, largest files)
 
 Video metadata (FPS, resolution, duration) is always saved in JSON files alongside video files for accurate playback and analysis.
@@ -480,10 +479,8 @@ Video metadata (FPS, resolution, duration) is always saved in JSON files alongsi
      - **Important**: Actual FPS achieved during recording is calculated and saved in metadata files
      - If the camera cannot achieve the target FPS, the actual FPS will be recorded in the metadata JSON
      - Ensures accurate playback duration for scientific velocity measurements
-   - **Export Type**: H264, MJPEG, or JPEG
+   - **Export Type**: H264
      - **H264**: Actual FPS metadata embedded in video file
-     - **MJPEG**: Actual FPS metadata saved in separate JSON file (use for accurate playback)
-   - **JPEG Quality**: 1-100 (for MJPEG/JPEG)
 
 7. **Motion Settings**:
    - **Motion Config**: Select motion configuration file (see Motion Configuration section)
@@ -531,7 +528,7 @@ Files are automatically named using the format: `{date}_{time}_{experiment_name}
 
 **Examples**:
 - Experiment name "exp", well B2, captured at 14:30:22 on December 15th, 2024 → `20241215_143022_exp_B2.h264`
-- Experiment name "test1", well A5, captured at 09:15:30 on December 3rd, 2024 → `20241203_091530_test1_A5.mjpeg`
+- Experiment name "test1", well A5, captured at 09:15:30 on December 3rd, 2024 → `20241203_091530_test1_A5.h264`
 
 **Components**:
 - `{date}`: Date in YYYYMMDD format (e.g., "20241215", "20241203")
@@ -539,7 +536,7 @@ Files are automatically named using the format: `{date}_{time}_{experiment_name}
 - `{experiment_name}`: Value from "Experiment Name" field (default: "exp")
 - `{y}`: Row letter (A, B, C, etc.)
 - `{x}`: Column number (1, 2, 3, etc.)
-- `{ext}`: File extension based on export type (`.h264`, `.mjpeg`, `.jpeg`)
+- `{ext}`: File extension based on export type (`.h264`)
 
 ## Motion Configuration
 
@@ -665,9 +662,7 @@ In 3D printer simulation mode, all movements are simulated but camera and imagin
    - Contains target FPS, actual FPS, resolution, duration, actual duration, format, timestamp, and well label
    - **Target FPS**: The FPS value set in the GUI (desired frame rate)
    - **Actual FPS**: The actual frame rate achieved during recording (calculated from actual duration)
-   - **Critical for accurate playback**, especially for MJPEG files
-   - For MJPEG playback, use the actual FPS value from the metadata file:
-     - VLC: `vlc --demux=mjpeg --mjpeg-fps=<actual_fps_from_metadata> video.mjpeg`
+   - **Critical for accurate playback**
    - H264 videos have actual FPS embedded, but metadata file provides additional information
    - If the camera cannot achieve the target FPS, the actual FPS will be recorded in the metadata
 

@@ -214,7 +214,7 @@ class RaspividyuvCapture:
         Args:
             output_path: Path to save video file
             fps: Frames per second for video (uses capture FPS if None)
-            codec: Video codec to use ("FFV1" for lossless, "MJPG" for high-quality MJPEG)
+            codec: Video codec to use ("FFV1" for lossless, "PNG" for PNG codec)
             
         Returns:
             True if successful, False otherwise
@@ -231,17 +231,13 @@ class RaspividyuvCapture:
             # FFV1 lossless codec (requires OpenCV with FFV1 support)
             fourcc = cv2.VideoWriter_fourcc(*'FFV1')
             ext = ".avi"
-        elif codec == "MJPG":
-            # High-quality MJPEG
-            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-            ext = ".avi"
         elif codec == "PNG":
             # PNG codec (lossless, but very large files)
             fourcc = cv2.VideoWriter_fourcc(*'PNG ')
             ext = ".avi"
         else:
-            logger.warning(f"Unknown codec {codec}, using MJPG")
-            fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+            logger.warning(f"Unknown codec {codec}, using FFV1")
+            fourcc = cv2.VideoWriter_fourcc(*'FFV1')
             ext = ".avi"
         
         # Ensure output path has correct extension
