@@ -224,6 +224,18 @@ class PreviewWindow:
         # Start FPS update loop
         self.update_fps()
     
+    def update_fps(self) -> None:
+        """Update FPS display from fps_tracker."""
+        if self.fps_tracker is not None:
+            fps = self.fps_tracker.get_fps()
+            self.fps_label.config(text=f"{fps:.1f}")
+        else:
+            self.fps_label.config(text="0.0")
+        
+        # Schedule next update (every 200ms = 5 Hz update rate)
+        if self._running:
+            self.window.after(200, self.update_fps)
+    
     def on_capture_type_change(self, capture_type: str) -> None:
         """Handle capture type change."""
         if self.capture_manager:
@@ -231,6 +243,8 @@ class PreviewWindow:
                 success = self.capture_manager.set_capture_type(capture_type)
                 if success:
                     self.status_label.config(text=f"Switched to {capture_type}", fg="green")
+                    # Reconfigure camera preview to match capture type
+                    self._reconfigure_preview_for_capture_type(capture_type)
                     # Update preview to reflect new capture type
                     self.update_preview()
                 else:
@@ -238,6 +252,68 @@ class PreviewWindow:
             except Exception as e:
                 self.status_label.config(text=f"Error: {e}", fg="red")
                 logger.error(f"Error changing capture type: {e}")
+    
+    def _reconfigure_preview_for_capture_type(self, capture_type: str) -> None:
+        """Reconfigure camera preview to match the selected capture type."""
+        if self.picam2 is None or self._simulate_cam:
+            return
+        
+        try:
+            # Get current resolution
+            try:
+                res_x = int(self.res_x_var.get().strip())
+                res_y = int(self.res_y_var.get().strip())
+                fps = float(self.fps_var.get().strip())
+            except ValueError:
+                res_x, res_y = 800, 600
+                fps = 30.0
+            
+            # Determine if grayscale mode
+            is_grayscale = "Grayscale" in capture_type
+            
+            # Stop camera
+            self.picam2.stop()
+            
+            # Create new configuration based on capture type
+            if is_grayscale:
+                # Grayscale preview - use YUV420 format
+                self.picam2_config = self.picam2.create_preview_configuration(
+                    main={"size": (res_x, res_y), "format": "YUV420"},
+                    controls={"FrameRate": fps},
+                    buffer_count=2
+                )
+            else:
+                # Color preview - default format
+                self.picam2_config = self.picam2.create_preview_configuration(
+                    main={"size": (res_x, res_y)},
+                    controls={"FrameRate": fps},
+                    buffer_count=2
+                )
+            
+            # Configure and restart
+            self.picam2.configure(self.picam2_config)
+            self.picam2.start()
+            
+            # Restore FPS tracking callback if we have one
+            if self.fps_tracker is not None:
+                existing_callback = getattr(self.picam2, 'post_callback', None)
+                
+                def frame_callback(request):
+                    """Callback fired for each camera frame."""
+                    if existing_callback:
+                        try:
+                            existing_callback(request)
+                        except Exception as e:
+                            logger.warning(f"Error in existing post_callback: {e}")
+                    if self.fps_tracker:
+                        self.fps_tracker.update()
+                
+                self.picam2.post_callback = frame_callback
+            
+            logger.info(f"Reconfigured preview for {capture_type} (grayscale={is_grayscale})")
+        except Exception as e:
+            logger.error(f"Error reconfiguring preview for capture type: {e}")
+            self.status_label.config(text=f"Preview reconfig error: {e}", fg="orange")
     
     def on_settings_change(self, event=None) -> None:
         """Handle settings change (resolution, FPS)."""
@@ -262,20 +338,23 @@ class PreviewWindow:
                 res_x, res_y = 800, 600
                 fps = 30.0
             
-            # Note: Preview uses picam2 directly through TkinterPreviewWidget,
-            # not through capture_manager. The capture_manager is only used for
-            # actual capture operations (images/videos), not for preview.
-            # So we don't need to update capture_manager here.
+            # Reconfigure camera if needed to match current capture type
+            if self.picam2 is not None and not self._simulate_cam:
+                current_capture_type = self.capture_type_var.get()
+                self._reconfigure_preview_for_capture_type(current_capture_type)
             
             # Create new preview widget with current settings
-            self.preview_widget = TkinterPreviewWidget(
-                canvas=self.preview_canvas,
-                picam2=self.picam2,
-                width=res_x,
-                height=res_y,
-                fps=fps
-            )
-            self.preview_widget.start()
+            if self.picam2 is not None:
+                self.preview_widget = TkinterPreviewWidget(
+                    canvas=self.preview_canvas,
+                    picam2=self.picam2,
+                    width=res_x,
+                    height=res_y,
+                    fps=fps
+                )
+                self.preview_widget.start()
+            else:
+                logger.warning("Cannot create preview widget: picam2 is None")
             
         except Exception as e:
             logger.error(f"Error updating preview: {e}")
@@ -333,6 +412,9 @@ class PreviewWindow:
     
     def on_close(self) -> None:
         """Handle window close."""
+        # Stop FPS update loop
+        self._running = False
+        
         # Stop preview
         if self.preview_widget is not None:
             try:

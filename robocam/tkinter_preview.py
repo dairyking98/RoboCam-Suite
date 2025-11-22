@@ -139,7 +139,7 @@ class TkinterPreviewWidget:
         Capture a frame from Picamera2.
         
         Returns:
-            Frame as numpy array, or None if capture failed
+            Frame as numpy array (RGB, uint8), or None if capture failed
         """
         try:
             # Capture array from main stream
@@ -147,18 +147,36 @@ class TkinterPreviewWidget:
             
             # Convert to RGB if needed (Picamera2 may return different formats)
             if array.ndim == 2:
-                # Grayscale - convert to RGB
+                # Grayscale (2D) - convert to RGB by stacking
                 array = np.stack([array, array, array], axis=-1)
-            elif array.shape[2] == 4:
-                # RGBA - convert to RGB
-                array = array[:, :, :3]
-            elif array.shape[2] == 1:
-                # Single channel - convert to RGB
-                array = np.stack([array[:, :, 0], array[:, :, 0], array[:, :, 0]], axis=-1)
+            elif array.ndim == 3:
+                if array.shape[2] == 4:
+                    # RGBA - convert to RGB
+                    array = array[:, :, :3]
+                elif array.shape[2] == 1:
+                    # Single channel (3D with 1 channel) - convert to RGB
+                    array = np.stack([array[:, :, 0], array[:, :, 0], array[:, :, 0]], axis=-1)
+                elif array.shape[2] == 3:
+                    # Already RGB or YUV - check if it's YUV420
+                    # For YUV420, the Y channel is typically in the first channel
+                    # But if configured as YUV420, capture_array("main") should return just Y as 2D
+                    # So if we get 3 channels, assume it's RGB
+                    pass
+                else:
+                    # Unknown format - try to extract first channel
+                    logger.warning(f"Unexpected array shape: {array.shape}")
+                    if array.shape[2] > 0:
+                        array = np.stack([array[:, :, 0], array[:, :, 0], array[:, :, 0]], axis=-1)
+            else:
+                logger.error(f"Unexpected array dimensions: {array.ndim}")
+                return None
             
             # Ensure uint8
             if array.dtype != np.uint8:
-                array = (array * 255).astype(np.uint8) if array.max() <= 1.0 else array.astype(np.uint8)
+                if array.max() <= 1.0:
+                    array = (array * 255).astype(np.uint8)
+                else:
+                    array = array.astype(np.uint8)
             
             return array
             
