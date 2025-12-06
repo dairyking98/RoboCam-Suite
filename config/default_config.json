@@ -2,7 +2,7 @@
   "hardware": {
     "printer": {
       "baudrate": 115200,
-      "timeout": 1.0,
+      "timeout": 10.0,
       "home_timeout": 90.0,
       "movement_wait_timeout": 30.0,
       "command_delay": 0.1,
