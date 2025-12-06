@@ -397,8 +397,8 @@ class ExperimentWindow:
         )
         self.mode_description_label.grid(row=1, column=0, columnspan=4, sticky="ew", padx=2, pady=2)
 
-        # === SECTION 3: GPIO ACTION PHASES ===
-        phases_frame = tk.LabelFrame(container, text="GPIO Action Phases", padx=5, pady=5)
+        # === SECTION 3: ACTION PHASES ===
+        phases_frame = tk.LabelFrame(container, text="Action Phases", padx=5, pady=5)
         phases_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
         
         # Scrollable phases container
@@ -422,7 +422,7 @@ class ExperimentWindow:
         tk.Button(phases_frame, text="Add Action", command=self.add_action_phase).grid(row=0, column=3, padx=2, pady=2, sticky="n")
         
         self.action_phases = []
-        self.add_action_phase("GPIO OFF", 30.0)
+        self.add_action_phase("GPIO OFF", 30.0)  # Default: 30 seconds for Video Capture mode
 
         # === SECTION 4: CAMERA SETTINGS ===
         camera_frame = tk.LabelFrame(container, text="Camera Settings", padx=5, pady=5)
@@ -1355,7 +1355,7 @@ class ExperimentWindow:
     def on_mode_change(self, *args) -> None:
         """
         Handle mode change between Video Capture and Image Capture.
-        Updates action phase options and description.
+        Updates action phase options, description, and time entry visibility.
         """
         mode = self.capture_mode_var.get()
         
@@ -1372,6 +1372,10 @@ class ExperimentWindow:
             )
             # Update existing action phases to show all options
             self._update_action_phase_options()
+        
+        # Update time entry visibility for all phases based on new mode
+        for phase_data in self.action_phases:
+            self._on_action_change(phase_data)
     
     def _update_action_phase_options(self) -> None:
         """Update action dropdown options for all phases based on current mode."""
@@ -1391,12 +1395,18 @@ class ExperimentWindow:
             if action_menu:
                 action_menu.destroy()
             
+            # Create callback to update time entry visibility
+            def make_callback(pd=phase_data):
+                def callback(*args):
+                    self._on_action_change(pd, *args)
+                return callback
+            
             # Create new menu with updated options
             new_menu = tk.OptionMenu(
                 phase_data["frame"], 
                 phase_data["action_var"], 
                 *action_options,
-                command=lambda *a: None  # No callback needed
+                command=make_callback()
             )
             new_menu.grid(row=0, column=1, padx=5)
             phase_data["action_menu"] = new_menu
@@ -1404,14 +1414,49 @@ class ExperimentWindow:
             # If current action is not in new options, default to first option
             if current_action not in action_options:
                 phase_data["action_var"].set(action_options[0])
+            else:
+                # Update time entry visibility for current action
+                self._on_action_change(phase_data)
+    
+    def _on_action_change(self, phase_data: dict, *args) -> None:
+        """Callback when action dropdown changes - show/hide time entry based on action type and mode."""
+        action = phase_data["action_var"].get()
+        time_ent = phase_data["time_ent"]
+        time_label = phase_data.get("time_label")
+        
+        # Get current mode
+        mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
+        
+        if mode == "Image Capture":
+            # Image Capture mode: Only DELAY shows time entry
+            if action == "DELAY":
+                if time_label:
+                    time_label.grid(row=0, column=2, padx=5)
+                time_ent.grid(row=0, column=3, padx=5)
+            else:
+                # Hide time entry for GPIO ON/OFF and CAPTURE IMAGE
+                if time_label:
+                    time_label.grid_remove()
+                time_ent.grid_remove()
+        else:
+            # Video Capture mode: GPIO ON/OFF show time entry
+            if action in ["GPIO ON", "GPIO OFF"]:
+                if time_label:
+                    time_label.grid(row=0, column=2, padx=5)
+                time_ent.grid(row=0, column=3, padx=5)
+            else:
+                # Hide for any other actions (shouldn't happen in Video Capture, but just in case)
+                if time_label:
+                    time_label.grid_remove()
+                time_ent.grid_remove()
     
     def add_action_phase(self, action: Optional[str] = None, time: Optional[float] = None) -> None:
         """
-        Add a new GPIO action phase row to the GUI.
+        Add a new action phase row to the GUI.
         
         Args:
             action: Action type. If None, defaults based on mode.
-            time: Time in seconds. If None, defaults to 0.0.
+            time: Time in seconds (only used for DELAY). If None, defaults to 0.0.
         """
         if not self.action_phases_frame:
             return
@@ -1443,13 +1488,34 @@ class ExperimentWindow:
         else:  # Video Capture
             action_options = ["GPIO ON", "GPIO OFF"]
         
-        action_menu = tk.OptionMenu(phase_frame, action_var, *action_options)
+        # Create callback to update time entry visibility
+        phase_data_for_callback = {}  # Will be populated below
+        
+        def make_callback():
+            def callback(*args):
+                self._on_action_change(phase_data_for_callback, *args)
+            return callback
+        
+        action_menu = tk.OptionMenu(phase_frame, action_var, *action_options, command=make_callback())
         action_menu.grid(row=0, column=1, padx=5)
         
-        # Time entry
+        # Time label and entry (initially hidden, shown only for DELAY)
+        time_label = tk.Label(phase_frame, text="Time (s):")
         time_ent = tk.Entry(phase_frame, width=10)
         time_ent.insert(0, str(time))
-        time_ent.grid(row=0, column=2, padx=5)
+        
+        # Store phase data first (before callback)
+        phase_data = {
+            "frame": phase_frame,
+            "phase_num": phase_num,
+            "phase_label": phase_label,
+            "action_var": action_var,
+            "action_menu": action_menu,
+            "time_label": time_label,
+            "time_ent": time_ent,
+            "delete_btn": None  # Will be set below
+        }
+        phase_data_for_callback.update(phase_data)
         
         # Delete button (disabled for first phase)
         delete_btn = tk.Button(
@@ -1458,18 +1524,27 @@ class ExperimentWindow:
             command=lambda: self.remove_action_phase(phase_num - 1),
             state="normal" if phase_num > 1 else "disabled"
         )
-        delete_btn.grid(row=0, column=3, padx=5)
+        delete_btn.grid(row=0, column=4, padx=5)
+        phase_data["delete_btn"] = delete_btn
         
-        # Store phase data
-        phase_data = {
-            "frame": phase_frame,
-            "phase_num": phase_num,
-            "phase_label": phase_label,
-            "action_var": action_var,
-            "action_menu": action_menu,
-            "time_ent": time_ent,
-            "delete_btn": delete_btn
-        }
+        # Show/hide time entry based on initial action and mode
+        if mode == "Image Capture":
+            # Image Capture: Only DELAY shows time entry
+            if action == "DELAY":
+                time_label.grid(row=0, column=2, padx=5)
+                time_ent.grid(row=0, column=3, padx=5)
+            else:
+                time_label.grid_remove()
+                time_ent.grid_remove()
+        else:
+            # Video Capture: GPIO ON/OFF show time entry
+            if action in ["GPIO ON", "GPIO OFF"]:
+                time_label.grid(row=0, column=2, padx=5)
+                time_ent.grid(row=0, column=3, padx=5)
+            else:
+                time_label.grid_remove()
+                time_ent.grid_remove()
+        
         self.action_phases.append(phase_data)
         
         # Update phase numbers for all phases
@@ -1524,31 +1599,61 @@ class ExperimentWindow:
         
         Returns:
             List of (action, time) tuples where action can be:
-            - "GPIO ON", "GPIO OFF" (Video Capture mode)
-            - "GPIO ON", "GPIO OFF", "DELAY", "CAPTURE IMAGE" (Image Capture mode)
+            - Video Capture mode: "GPIO ON", "GPIO OFF" - time from time entry field
+            - Image Capture mode: "GPIO ON", "GPIO OFF", "DELAY", "CAPTURE IMAGE"
+              - Only DELAY has a time value from time entry
+              - All others use 0.0 (instant)
         """
+        mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
         phases = []
+        
         for phase_data in self.action_phases:
             action = phase_data["action_var"].get()
-            time_str = phase_data["time_ent"].get().strip()
             
-            # CAPTURE IMAGE defaults to 0 if time not specified
-            if action == "CAPTURE IMAGE" and not time_str:
-                time_val = 0.0
+            if mode == "Video Capture":
+                # Video Capture: GPIO actions use time from time entry
+                if action in ["GPIO ON", "GPIO OFF"]:
+                    time_str = phase_data["time_ent"].get().strip()
+                    if not time_str:
+                        logger.warning(f"{action} action has no time specified, skipping")
+                        continue
+                    try:
+                        time_val = float(time_str)
+                        if time_val < 0:
+                            logger.warning(f"{action} action has negative time, skipping")
+                            continue
+                    except ValueError:
+                        logger.warning(f"{action} action has invalid time: {time_str}, skipping")
+                        continue
+                else:
+                    time_val = 0.0
             else:
-                try:
-                    time_val = float(time_str)
-                except ValueError:
-                    # Invalid time, skip this phase
-                    logger.warning(f"Skipping phase with invalid time: {action}, time={time_str}")
-                    continue
+                # Image Capture: Only DELAY uses time entry
+                if action == "DELAY":
+                    time_str = phase_data["time_ent"].get().strip()
+                    if not time_str:
+                        logger.warning(f"DELAY action has no time specified, skipping")
+                        continue
+                    try:
+                        time_val = float(time_str)
+                        if time_val < 0:
+                            logger.warning(f"DELAY action has negative time, skipping")
+                            continue
+                    except ValueError:
+                        logger.warning(f"DELAY action has invalid time: {time_str}, skipping")
+                        continue
+                else:
+                    # All other actions are instant (no time entry)
+                    time_val = 0.0
             
             phases.append((action, time_val))
         return phases
     
     def validate_action_phases(self) -> Tuple[bool, str]:
         """
-        Validate that all action phases have valid times.
+        Validate that all action phases are valid.
+        - Video Capture mode: GPIO actions require time
+        - Image Capture mode: Only DELAY requires time
         
         Returns:
             Tuple of (is_valid, error_message)
@@ -1556,29 +1661,36 @@ class ExperimentWindow:
         if not self.action_phases:
             return False, "At least one action phase is required"
         
+        mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
+        
         for i, phase_data in enumerate(self.action_phases):
             action = phase_data["action_var"].get()
-            time_str = phase_data["time_ent"].get().strip()
             
-            # CAPTURE IMAGE can have time=0 (instant capture)
-            if action == "CAPTURE IMAGE":
-                if not time_str:
-                    time_str = "0"  # Default to 0 for instant capture
-                    phase_data["time_ent"].delete(0, tk.END)
-                    phase_data["time_ent"].insert(0, "0")
+            if mode == "Video Capture":
+                # Video Capture: GPIO actions require time entry
+                if action in ["GPIO ON", "GPIO OFF"]:
+                    time_str = phase_data["time_ent"].get().strip()
+                    if not time_str:
+                        return False, f"Phase {i + 1} ({action}) has no time specified"
+                    try:
+                        time_val = float(time_str)
+                        if time_val < 0:
+                            return False, f"Phase {i + 1} ({action}) has negative time"
+                    except ValueError:
+                        return False, f"Phase {i + 1} ({action}) has invalid time: {time_str}"
             else:
-                if not time_str:
-                    return False, f"Phase {i + 1} has no time specified"
-            
-            try:
-                time_val = float(time_str)
-                if time_val < 0:
-                    return False, f"Phase {i + 1} has negative time"
-                # CAPTURE IMAGE should typically be 0, but allow small values for safety delays
-                if action == "CAPTURE IMAGE" and time_val > 1.0:
-                    logger.warning(f"Phase {i + 1} (CAPTURE IMAGE) has time > 1s - this is unusual (captures are instant)")
-            except ValueError:
-                return False, f"Phase {i + 1} has invalid time: {time_str}"
+                # Image Capture: Only DELAY requires time entry
+                if action == "DELAY":
+                    time_str = phase_data["time_ent"].get().strip()
+                    if not time_str:
+                        return False, f"Phase {i + 1} (DELAY) has no time specified"
+                    try:
+                        time_val = float(time_str)
+                        if time_val < 0:
+                            return False, f"Phase {i + 1} (DELAY) has negative time"
+                    except ValueError:
+                        return False, f"Phase {i + 1} (DELAY) has invalid time: {time_str}"
+                # All other actions are instant and don't need time validation
         
         return True, ""
     
@@ -2032,28 +2144,20 @@ class ExperimentWindow:
                                 self.status_lbl.config(text=f"Error capturing image: {e}", fg="red")
                         
                         elif action == "GPIO ON":
-                            # Set GPIO ON
+                            # Set GPIO ON (instant)
                             self.laser.switch(1)
                             self.laser_on = True
                             current_gpio_state = "ON"
-                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: GPIO ON for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
-                            
-                            # Wait for phase duration
-                            phase_start = time.time()
-                            while time.time() - phase_start < phase_time and self.running:
-                                time.sleep(0.05 if not self.paused else 0.1)
+                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: GPIO ON (Phase {phase_idx}/{len(self.action_phases_list)})")
+                            # Instant action - no waiting
                         
                         elif action == "GPIO OFF":
-                            # Set GPIO OFF
+                            # Set GPIO OFF (instant)
                             self.laser.switch(0)
                             self.laser_on = False
                             current_gpio_state = "OFF"
-                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: GPIO OFF for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
-                            
-                            # Wait for phase duration
-                            phase_start = time.time()
-                            while time.time() - phase_start < phase_time and self.running:
-                                time.sleep(0.05 if not self.paused else 0.1)
+                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: GPIO OFF (Phase {phase_idx}/{len(self.action_phases_list)})")
+                            # Instant action - no waiting
                         
                         else:
                             logger.warning(f"Unknown action in Image Capture mode: {action}")
