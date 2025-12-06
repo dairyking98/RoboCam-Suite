@@ -376,9 +376,30 @@ class ExperimentWindow:
         self.calibration_status_label = tk.Label(calib_frame, text="No calibration loaded", fg="red", font=("Arial", 9), anchor="w")
         self.calibration_status_label.grid(row=1, column=0, columnspan=4, sticky="ew", padx=2, pady=2)
 
-        # === SECTION 2: GPIO ACTION PHASES ===
+        # === SECTION 2: MODE SELECTOR ===
+        mode_frame = tk.LabelFrame(container, text="Mode", padx=5, pady=5)
+        mode_frame.grid(row=1, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        mode_frame.grid_columnconfigure(1, weight=1)
+        
+        tk.Label(mode_frame, text="Capture Mode:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
+        self.capture_mode_var = tk.StringVar(value="Video Capture")
+        mode_menu = tk.OptionMenu(mode_frame, self.capture_mode_var, "Video Capture", "Image Capture", command=self.on_mode_change)
+        mode_menu.grid(row=0, column=1, sticky="w", padx=2, pady=2)
+        
+        # Mode description label
+        self.mode_description_label = tk.Label(
+            mode_frame, 
+            text="Video Capture: Records video with GPIO control during action phases", 
+            fg="gray", 
+            font=("Arial", 9), 
+            anchor="w",
+            wraplength=500
+        )
+        self.mode_description_label.grid(row=1, column=0, columnspan=4, sticky="ew", padx=2, pady=2)
+
+        # === SECTION 3: GPIO ACTION PHASES ===
         phases_frame = tk.LabelFrame(container, text="GPIO Action Phases", padx=5, pady=5)
-        phases_frame.grid(row=1, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        phases_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
         
         # Scrollable phases container
         phases_container = tk.Frame(phases_frame)
@@ -403,9 +424,9 @@ class ExperimentWindow:
         self.action_phases = []
         self.add_action_phase("GPIO OFF", 30.0)
 
-        # === SECTION 3: CAMERA SETTINGS ===
+        # === SECTION 4: CAMERA SETTINGS ===
         camera_frame = tk.LabelFrame(container, text="Camera Settings", padx=5, pady=5)
-        camera_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        camera_frame.grid(row=3, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
         camera_frame.grid_columnconfigure(1, weight=1)
         camera_frame.grid_columnconfigure(3, weight=1)
         
@@ -446,9 +467,9 @@ class ExperimentWindow:
         capture_type_menu = tk.OptionMenu(camera_frame, self.capture_type_var, *CaptureManager.CAPTURE_TYPES)
         capture_type_menu.grid(row=row, column=3, sticky="w", padx=2, pady=2)
 
-        # === SECTION 4: MOTION SETTINGS ===
+        # === SECTION 5: MOTION SETTINGS ===
         motion_frame = tk.LabelFrame(container, text="Motion Settings", padx=5, pady=5)
-        motion_frame.grid(row=3, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        motion_frame.grid(row=4, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
         motion_frame.grid_columnconfigure(1, weight=1)
         
         tk.Label(motion_frame, text="Profile:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
@@ -468,9 +489,9 @@ class ExperimentWindow:
         self.motion_info_label = tk.Label(motion_frame, text="Load config to see settings", fg="gray", font=("Arial", 9), anchor="w", wraplength=500)
         self.motion_info_label.grid(row=1, column=0, columnspan=4, sticky="ew", padx=2, pady=2)
 
-        # === SECTION 5: EXPERIMENT SETTINGS ===
+        # === SECTION 6: EXPERIMENT SETTINGS ===
         exp_frame = tk.LabelFrame(container, text="Experiment Settings", padx=5, pady=5)
-        exp_frame.grid(row=4, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        exp_frame.grid(row=5, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
         exp_frame.grid_columnconfigure(1, weight=1)
         
         tk.Label(exp_frame, text="File:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
@@ -492,9 +513,9 @@ class ExperimentWindow:
         self.experiment_settings_status_label = tk.Label(exp_frame, text="No settings loaded", fg="red", font=("Arial", 9), wraplength=500, justify="left")
         self.experiment_settings_status_label.grid(row=1, column=0, columnspan=4, sticky="w", padx=2, pady=2)
 
-        # === SECTION 6: STATUS & CONTROLS ===
+        # === SECTION 7: STATUS & CONTROLS ===
         control_frame = tk.LabelFrame(container, text="Status & Controls", padx=5, pady=5)
-        control_frame.grid(row=5, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
+        control_frame.grid(row=6, column=0, columnspan=4, sticky="ew", padx=5, pady=5)
         control_frame.grid_columnconfigure(1, weight=1)
         
         tk.Label(control_frame, text="Status:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
@@ -1331,19 +1352,77 @@ class ExperimentWindow:
         if hasattr(self, 'status_lbl'):
             self.status_lbl.config(text=f"Ready - {len(selected_wells)} wells selected")
     
+    def on_mode_change(self, *args) -> None:
+        """
+        Handle mode change between Video Capture and Image Capture.
+        Updates action phase options and description.
+        """
+        mode = self.capture_mode_var.get()
+        
+        # Update description
+        if mode == "Video Capture":
+            self.mode_description_label.config(
+                text="Video Capture: Records video with GPIO control during action phases"
+            )
+            # Update existing action phases to only show GPIO options
+            self._update_action_phase_options()
+        else:  # Image Capture
+            self.mode_description_label.config(
+                text="Image Capture: Captures individual images with DELAY, CAPTURE IMAGE, and GPIO control options"
+            )
+            # Update existing action phases to show all options
+            self._update_action_phase_options()
+    
+    def _update_action_phase_options(self) -> None:
+        """Update action dropdown options for all phases based on current mode."""
+        mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
+        
+        if mode == "Image Capture":
+            action_options = ["GPIO ON", "GPIO OFF", "DELAY", "CAPTURE IMAGE"]
+        else:  # Video Capture
+            action_options = ["GPIO ON", "GPIO OFF"]
+        
+        # Update all existing action menus
+        for phase_data in self.action_phases:
+            current_action = phase_data["action_var"].get()
+            action_menu = phase_data.get("action_menu")
+            
+            # Recreate the menu with new options
+            if action_menu:
+                action_menu.destroy()
+            
+            # Create new menu with updated options
+            new_menu = tk.OptionMenu(
+                phase_data["frame"], 
+                phase_data["action_var"], 
+                *action_options,
+                command=lambda *a: None  # No callback needed
+            )
+            new_menu.grid(row=0, column=1, padx=5)
+            phase_data["action_menu"] = new_menu
+            
+            # If current action is not in new options, default to first option
+            if current_action not in action_options:
+                phase_data["action_var"].set(action_options[0])
+    
     def add_action_phase(self, action: Optional[str] = None, time: Optional[float] = None) -> None:
         """
         Add a new GPIO action phase row to the GUI.
         
         Args:
-            action: Action type ("GPIO ON" or "GPIO OFF"). If None, defaults to "GPIO OFF".
+            action: Action type. If None, defaults based on mode.
             time: Time in seconds. If None, defaults to 0.0.
         """
         if not self.action_phases_frame:
             return
         
+        mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
+        
         if action is None:
-            action = "GPIO OFF"
+            if mode == "Image Capture":
+                action = "GPIO OFF"
+            else:
+                action = "GPIO OFF"
         if time is None:
             time = 0.0
         
@@ -1357,9 +1436,14 @@ class ExperimentWindow:
         phase_label = tk.Label(phase_frame, text=f"Phase {phase_num}:")
         phase_label.grid(row=0, column=0, padx=5)
         
-        # Action dropdown
+        # Action dropdown - options depend on mode
         action_var = tk.StringVar(value=action)
-        action_menu = tk.OptionMenu(phase_frame, action_var, "GPIO ON", "GPIO OFF")
+        if mode == "Image Capture":
+            action_options = ["GPIO ON", "GPIO OFF", "DELAY", "CAPTURE IMAGE"]
+        else:  # Video Capture
+            action_options = ["GPIO ON", "GPIO OFF"]
+        
+        action_menu = tk.OptionMenu(phase_frame, action_var, *action_options)
         action_menu.grid(row=0, column=1, padx=5)
         
         # Time entry
@@ -1382,6 +1466,7 @@ class ExperimentWindow:
             "phase_num": phase_num,
             "phase_label": phase_label,
             "action_var": action_var,
+            "action_menu": action_menu,
             "time_ent": time_ent,
             "delete_btn": delete_btn
         }
@@ -1438,17 +1523,27 @@ class ExperimentWindow:
         Get list of action phases from GUI.
         
         Returns:
-            List of (action, time) tuples where action is "GPIO ON" or "GPIO OFF"
+            List of (action, time) tuples where action can be:
+            - "GPIO ON", "GPIO OFF" (Video Capture mode)
+            - "GPIO ON", "GPIO OFF", "DELAY", "CAPTURE IMAGE" (Image Capture mode)
         """
         phases = []
         for phase_data in self.action_phases:
             action = phase_data["action_var"].get()
-            try:
-                time_val = float(phase_data["time_ent"].get().strip())
-                phases.append((action, time_val))
-            except ValueError:
-                # Invalid time, skip this phase
-                continue
+            time_str = phase_data["time_ent"].get().strip()
+            
+            # CAPTURE IMAGE defaults to 0 if time not specified
+            if action == "CAPTURE IMAGE" and not time_str:
+                time_val = 0.0
+            else:
+                try:
+                    time_val = float(time_str)
+                except ValueError:
+                    # Invalid time, skip this phase
+                    logger.warning(f"Skipping phase with invalid time: {action}, time={time_str}")
+                    continue
+            
+            phases.append((action, time_val))
         return phases
     
     def validate_action_phases(self) -> Tuple[bool, str]:
@@ -1462,13 +1557,26 @@ class ExperimentWindow:
             return False, "At least one action phase is required"
         
         for i, phase_data in enumerate(self.action_phases):
+            action = phase_data["action_var"].get()
             time_str = phase_data["time_ent"].get().strip()
-            if not time_str:
-                return False, f"Phase {i + 1} has no time specified"
+            
+            # CAPTURE IMAGE can have time=0 (instant capture)
+            if action == "CAPTURE IMAGE":
+                if not time_str:
+                    time_str = "0"  # Default to 0 for instant capture
+                    phase_data["time_ent"].delete(0, tk.END)
+                    phase_data["time_ent"].insert(0, "0")
+            else:
+                if not time_str:
+                    return False, f"Phase {i + 1} has no time specified"
+            
             try:
                 time_val = float(time_str)
                 if time_val < 0:
                     return False, f"Phase {i + 1} has negative time"
+                # CAPTURE IMAGE should typically be 0, but allow small values for safety delays
+                if action == "CAPTURE IMAGE" and time_val > 1.0:
+                    logger.warning(f"Phase {i + 1} (CAPTURE IMAGE) has time > 1s - this is unusual (captures are instant)")
             except ValueError:
                 return False, f"Phase {i + 1} has invalid time: {time_str}"
         
@@ -1662,10 +1770,11 @@ class ExperimentWindow:
             logger.error(f"Error loading motion config: {e}, using defaults")
             self.motion_config = None
 
-        # Get capture type
+        # Get capture type and mode
         capture_type = self.capture_type_var.get()
+        capture_mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
         
-        # Initialize capture manager if using high-FPS modes
+        # Initialize capture manager if using high-FPS modes or for Image Capture
         self.capture_manager: Optional[CaptureManager] = None
         if "High FPS" in capture_type:
             # Use capture manager for high-FPS modes
@@ -1686,32 +1795,54 @@ class ExperimentWindow:
                 logger.warning("Camera simulation mode: Skipping camera configuration")
                 return
             
-            preview_config = self.picam2.create_preview_configuration(
-                main={'size': (640, 480)},  # Lower resolution for preview
-                buffer_count=2
-            )
-            
-            # Recording configuration optimized for maximum FPS
-            grayscale = "Grayscale" in capture_type
-            if grayscale:
-                video_config = self.picam2.create_video_configuration(
-                    main={'size': (res_x, res_y), 'format': 'YUV420'},
-                    controls={'FrameRate': fps},
+            if capture_mode == "Image Capture":
+                # Configure for still image capture
+                grayscale = "Grayscale" in capture_type
+                if grayscale:
+                    still_config = self.picam2.create_still_configuration(
+                        main={'size': (res_x, res_y), 'format': 'YUV420'},
+                        buffer_count=2
+                    )
+                else:
+                    still_config = self.picam2.create_still_configuration(
+                        main={'size': (res_x, res_y)},
+                        buffer_count=2
+                    )
+                
+                # Configure for still capture
+                self.picam2.stop()
+                self.picam2.configure(still_config)
+                self.picam2.start()
+                
+                logger.info(f"Camera configured for image capture: {res_x}x{res_y} ({capture_type})")
+            else:
+                # Video Capture mode - configure for video recording
+                preview_config = self.picam2.create_preview_configuration(
+                    main={'size': (640, 480)},  # Lower resolution for preview
                     buffer_count=2
                 )
-            else:
-                video_config = self.picam2.create_video_configuration(
-                    main={'size': (res_x, res_y)},
-                    controls={'FrameRate': fps},
-                    buffer_count=2  # Optimize buffer for recording
-                )
-            
-            # Configure for recording (preview not needed during experiment)
-            self.picam2.stop()
-            self.picam2.configure(video_config)
-            self.picam2.start()
-            
-            logger.info(f"Camera configured for recording: {res_x}x{res_y} @ {fps} FPS ({capture_type})")
+                
+                # Recording configuration optimized for maximum FPS
+                grayscale = "Grayscale" in capture_type
+                if grayscale:
+                    video_config = self.picam2.create_video_configuration(
+                        main={'size': (res_x, res_y), 'format': 'YUV420'},
+                        controls={'FrameRate': fps},
+                        buffer_count=2
+                    )
+                else:
+                    video_config = self.picam2.create_video_configuration(
+                        main={'size': (res_x, res_y)},
+                        controls={'FrameRate': fps},
+                        buffer_count=2  # Optimize buffer for recording
+                    )
+                
+                # Configure for recording (preview not needed during experiment)
+                self.picam2.stop()
+                self.picam2.configure(video_config)
+                self.picam2.start()
+                
+                logger.info(f"Camera configured for recording: {res_x}x{res_y} @ {fps} FPS ({capture_type})")
 
         # Select H264 encoder for video recording
         # Pass fps parameter to ensure FPS metadata is written to the H264 stream
@@ -1793,6 +1924,7 @@ class ExperimentWindow:
             loop_date_str = date_str
             loop_output_folder = output_folder
             loop_experiment_name = experiment_name
+            loop_capture_mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
             
             # Apply preliminary motion settings before homing
             try:
@@ -1835,9 +1967,6 @@ class ExperimentWindow:
 
                 ts   = time.strftime("%H%M%S")
                 ds   = loop_date_str  # Use YYYYMMDD format (set at start of experiment)
-                ext = ".h264"  # H264 is the only export format
-                fname = f"{ds}_{ts}_{loop_experiment_name}_{y_lbl}{x_lbl}{ext}"
-                path = os.path.join(loop_output_folder, fname)
                 
                 # Ensure directory exists (should already be created, but double-check)
                 success, error_msg = ensure_directory_exists(loop_output_folder)
@@ -1847,7 +1976,102 @@ class ExperimentWindow:
                     self.running = False
                     break
 
-                # Video recording (H264)
+                # Branch execution based on capture mode
+                if loop_capture_mode == "Image Capture":
+                    # === IMAGE CAPTURE MODE ===
+                    # Wait for vibrations to settle
+                    time.sleep(self.pre_recording_delay)
+                    
+                    # Track current GPIO state for image filenames
+                    current_gpio_state = "OFF"  # Default to OFF
+                    image_counter = 0
+                    
+                    # Execute action phases for image capture
+                    for phase_idx, (action, phase_time) in enumerate(self.action_phases_list, 1):
+                        if not self.running:
+                            break
+                        
+                        logger.debug(f"Image Capture - Phase {phase_idx}: {action} for {phase_time}s")
+                        
+                        if action == "DELAY":
+                            # Just wait for the specified time
+                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: DELAY {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
+                            phase_start = time.time()
+                            while time.time() - phase_start < phase_time and self.running:
+                                time.sleep(0.05 if not self.paused else 0.1)
+                        
+                        elif action == "CAPTURE IMAGE":
+                            # Capture image with GPIO state in filename
+                            image_counter += 1
+                            ext = ".png"
+                            gpio_label = f"GPIO_{current_gpio_state}"
+                            fname = f"{ds}_{ts}_{loop_experiment_name}_{y_lbl}{x_lbl}_{gpio_label}_img{image_counter}{ext}"
+                            path = os.path.join(loop_output_folder, fname)
+                            
+                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Capturing image {image_counter} (GPIO {current_gpio_state}) (Phase {phase_idx}/{len(self.action_phases_list)})")
+                            
+                            # Capture image using capture manager or picam2
+                            try:
+                                if self.capture_manager is not None:
+                                    success = self.capture_manager.capture_image(path)
+                                elif self.picam2 is not None:
+                                    self.picam2.capture_file(path)
+                                    success = True
+                                else:
+                                    logger.error("No camera available for image capture")
+                                    success = False
+                                
+                                if success:
+                                    logger.info(f"Captured image: {fname}")
+                                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Image {image_counter} saved")
+                                else:
+                                    logger.error(f"Failed to capture image: {fname}")
+                                    self.status_lbl.config(text=f"Error: Failed to capture image {image_counter}", fg="red")
+                            except Exception as e:
+                                logger.error(f"Error capturing image: {e}")
+                                self.status_lbl.config(text=f"Error capturing image: {e}", fg="red")
+                        
+                        elif action == "GPIO ON":
+                            # Set GPIO ON
+                            self.laser.switch(1)
+                            self.laser_on = True
+                            current_gpio_state = "ON"
+                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: GPIO ON for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
+                            
+                            # Wait for phase duration
+                            phase_start = time.time()
+                            while time.time() - phase_start < phase_time and self.running:
+                                time.sleep(0.05 if not self.paused else 0.1)
+                        
+                        elif action == "GPIO OFF":
+                            # Set GPIO OFF
+                            self.laser.switch(0)
+                            self.laser_on = False
+                            current_gpio_state = "OFF"
+                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: GPIO OFF for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
+                            
+                            # Wait for phase duration
+                            phase_start = time.time()
+                            while time.time() - phase_start < phase_time and self.running:
+                                time.sleep(0.05 if not self.paused else 0.1)
+                        
+                        else:
+                            logger.warning(f"Unknown action in Image Capture mode: {action}")
+                    
+                    # Turn off GPIO at end of well if still on
+                    if self.laser_on:
+                        self.laser.switch(0)
+                        self.laser_on = False
+                    
+                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Done ({image_counter} images captured)")
+                
+                else:
+                    # === VIDEO CAPTURE MODE (existing implementation) ===
+                    ext = ".h264"  # H264 is the only export format
+                    fname = f"{ds}_{ts}_{loop_experiment_name}_{y_lbl}{x_lbl}{ext}"
+                    path = os.path.join(loop_output_folder, fname)
+
+                    # Video recording (H264)
                     # Calculate total expected duration from all phases
                     total_duration = sum(time for _, time in self.action_phases_list)
                     
