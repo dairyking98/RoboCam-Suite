@@ -94,11 +94,33 @@ class RoboCam:
                 else:
                     raise ConnectionError("No serial port found. Check USB connection to printer.")
                 
-                # Announce control
-                self.send_gcode("M105")  # creality ender 5 s1, to announce control via serial
+                # Announce control (M105 may not be supported by all firmware)
+                logger.debug("DEBUG: Initialization - Attempting to send M105 command to announce control...")
+                try:
+                    self.send_gcode("M105")  # creality ender 5 s1, to announce control via serial
+                    logger.debug("DEBUG: Initialization - M105 command sent successfully")
+                except (TimeoutError, RuntimeError) as e:
+                    # M105 may not be supported by all firmware - log warning but continue
+                    logger.warning(f"M105 command failed (firmware may not support it): {e}")
+                    logger.warning("Continuing initialization despite M105 failure - this is usually OK")
+                    logger.debug("DEBUG: Initialization - M105 failed but continuing...")
+                except Exception as e:
+                    # For other errors, log but continue - connection is established
+                    logger.warning(f"M105 command had unexpected error: {e}")
+                    logger.debug("DEBUG: Initialization - M105 error but continuing...")
                 
                 # Update position
-                self.X, self.Y, self.Z = self.update_current_position()
+                logger.debug("DEBUG: Initialization - Updating current position...")
+                try:
+                    self.X, self.Y, self.Z = self.update_current_position()
+                    logger.debug(f"DEBUG: Initialization - Position updated: X={self.X}, Y={self.Y}, Z={self.Z}")
+                except Exception as e:
+                    logger.warning(f"Failed to get initial position, but connection is established: {e}")
+                    logger.debug("DEBUG: Initialization - Position update failed but continuing...")
+                    # Set position to None - will be updated on next successful query
+                    self.X = None
+                    self.Y = None
+                    self.Z = None
             except Exception as e:
                 # Don't raise ConnectionError in simulation mode
                 if self.simulate_3d:
@@ -139,30 +161,69 @@ class RoboCam:
         if timeout is None:
             timeout = self.timeout
         
-        logger.debug(f'Sending G-code command: "{command}"')
+        logger.debug(f'DEBUG: send_gcode - Sending command: "{command}" (timeout={timeout}s)')
+        logger.debug(f'DEBUG: send_gcode - Connection state: is_open={self.printer_on_serial.is_open}, bytes_waiting={self.printer_on_serial.in_waiting}')
         
         try:
-            self.printer_on_serial.write((command + '\n').encode('utf-8'))
+            command_bytes = (command + '\n').encode('utf-8')
+            logger.debug(f'DEBUG: send_gcode - Command bytes: {command_bytes.hex()} (length: {len(command_bytes)})')
+            
+            bytes_written = self.printer_on_serial.write(command_bytes)
+            logger.debug(f'DEBUG: send_gcode - Wrote {bytes_written} bytes to serial port')
+            self.printer_on_serial.flush()  # Ensure command is sent immediately
+            logger.debug(f'DEBUG: send_gcode - Command flushed, waiting {self.command_delay}s for processing...')
+            
             time.sleep(self.command_delay)  # Initial delay for command processing
             
             start_time = time.time()
+            response_count = 0
+            logger.debug(f'DEBUG: send_gcode - Starting response wait loop (timeout: {timeout}s)...')
+            
             while True:
-                if time.time() - start_time > timeout:
+                elapsed = time.time() - start_time
+                if elapsed > timeout:
+                    logger.error(f'DEBUG: send_gcode - TIMEOUT after {elapsed:.2f}s waiting for response to "{command}"')
+                    logger.error(f'DEBUG: send_gcode - Received {response_count} responses before timeout')
                     raise TimeoutError(f"G-code command '{command}' timed out after {timeout}s")
                 
-                if self.printer_on_serial.in_waiting > 0:
-                    response = self.printer_on_serial.readline().decode('utf-8').strip()
-                    logger.debug(f'Printer response: {response}')
+                bytes_waiting = self.printer_on_serial.in_waiting
+                if bytes_waiting > 0:
+                    response_count += 1
+                    raw_response = self.printer_on_serial.readline()
+                    try:
+                        response = raw_response.decode('utf-8', errors='replace').strip()
+                        logger.debug(f'DEBUG: send_gcode - Response #{response_count} ({elapsed:.3f}s): {repr(response)}')
+                        logger.debug(f'DEBUG: send_gcode - Raw response hex: {raw_response.hex()}')
+                    except Exception as e:
+                        logger.warning(f'DEBUG: send_gcode - Failed to decode response: {e}, raw: {raw_response.hex()}')
+                        continue
                     
                     if "ok" in response.lower():
+                        logger.debug(f'DEBUG: send_gcode - Received "ok" response for "{command}" after {elapsed:.3f}s')
                         break
                     elif "error" in response.lower():
+                        logger.error(f'DEBUG: send_gcode - Printer returned ERROR for "{command}": {response}')
                         raise RuntimeError(f"Printer error for command '{command}': {response}")
+                    else:
+                        logger.debug(f'DEBUG: send_gcode - Non-ok response (continuing to wait): {response}')
+                else:
+                    # Log periodically when waiting
+                    if int(elapsed * 10) % 5 == 0:  # Every 0.5 seconds
+                        logger.debug(f'DEBUG: send_gcode - Waiting for response... ({elapsed:.2f}s elapsed, {timeout - elapsed:.2f}s remaining)')
                 
                 time.sleep(0.01)  # Small delay to avoid busy waiting
                 
         except serial.SerialException as e:
+            logger.error(f'DEBUG: send_gcode - Serial exception: {type(e).__name__}: {e}')
+            logger.exception("DEBUG: send_gcode - Serial exception details:")
             raise ConnectionError(f"Serial communication error: {e}") from e
+        except TimeoutError:
+            logger.error(f'DEBUG: send_gcode - TimeoutError for command "{command}"')
+            raise
+        except Exception as e:
+            logger.error(f'DEBUG: send_gcode - Unexpected error: {type(e).__name__}: {e}')
+            logger.exception("DEBUG: send_gcode - Exception details:")
+            raise
 
     def find_serial_port(self) -> Optional[str]:
         """
@@ -179,21 +240,33 @@ class RoboCam:
             serial.SerialException: If port enumeration fails
         """
         try:
+            logger.debug("DEBUG: Starting serial port discovery...")
             ports = serial.tools.list_ports.comports()
+            logger.debug(f"DEBUG: Found {len(ports)} total serial ports")
+            
+            for port in ports:
+                logger.debug(f"DEBUG: Available port: {port.device} - {port.description} (VID:{port.vid}, PID:{port.pid})")
+            
             usb_ports = [port for port in ports if 'USB' in port.description.upper()]
+            logger.debug(f"DEBUG: Found {len(usb_ports)} USB serial ports")
             
             if not usb_ports:
                 logger.warning("No USB serial ports found.")
                 return None
 
             for usb_port in usb_ports:
+                logger.debug(f"DEBUG: Testing USB port: {usb_port.device} ({usb_port.description})")
+                logger.debug(f"DEBUG: Attempting to open port with baudrate={self.baud_rate}, timeout={self.timeout}s")
                 try:
                     ser = serial.Serial(usb_port.device, self.baud_rate, timeout=self.timeout)
+                    logger.debug(f"DEBUG: Successfully opened port {usb_port.device}")
+                    logger.debug(f"DEBUG: Port settings: baudrate={ser.baudrate}, timeout={ser.timeout}, parity={ser.parity}")
                     ser.close()  # Close the port now that we know it works
                     logger.info(f"Selected port: {usb_port.device} - {usb_port.description}")
+                    logger.debug(f"DEBUG: Port closed after test, returning port path")
                     return usb_port.device
                 except serial.SerialException as e:
-                    logger.debug(f"Failed to connect on {usb_port.device}: {e}")
+                    logger.warning(f"DEBUG: Failed to connect on {usb_port.device}: {e}")
                     continue
 
             logger.warning("No available ports responded.")
@@ -201,6 +274,7 @@ class RoboCam:
             
         except Exception as e:
             logger.error(f"Error finding serial port: {e}")
+            logger.exception("DEBUG: Exception details:")
             return None
 
     def wait_for_connection(self, serial_port: str) -> serial.Serial:
@@ -221,26 +295,46 @@ class RoboCam:
             Retries connection with configurable delay and max retries.
             Waits 1 second after connection for printer to initialize.
         """
+        logger.debug(f"DEBUG: wait_for_connection called for port: {serial_port}")
+        logger.debug(f"DEBUG: Connection settings: baudrate={self.baud_rate}, timeout={self.timeout}s, max_retries={self.max_retries}")
+        
         retries = 0
         while retries < self.max_retries:
             try:
+                logger.debug(f"DEBUG: Attempt {retries + 1}/{self.max_retries}: Opening serial connection...")
                 self.printer_on_serial = serial.Serial(
                     serial_port, 
                     self.baud_rate, 
                     timeout=self.timeout
                 )
                 logger.info(f"Connected to {serial_port} at {self.baud_rate} baud. Allow 1 seconds for printer to load.")
+                logger.debug(f"DEBUG: Serial connection opened successfully")
+                logger.debug(f"DEBUG: Connection state - is_open: {self.printer_on_serial.is_open}, bytes_waiting: {self.printer_on_serial.in_waiting}")
+                
+                # Wait for printer to initialize
+                logger.debug("DEBUG: Waiting 1 second for printer initialization...")
                 time.sleep(1)
+                
+                # Check for initial data from printer
+                bytes_waiting = self.printer_on_serial.in_waiting
+                logger.debug(f"DEBUG: After 1s wait, bytes waiting in buffer: {bytes_waiting}")
+                
                 # Dump printer output on startup
+                logger.debug("DEBUG: Dumping initial printer output...")
                 self.dump_printer_output()
+                
+                logger.debug("DEBUG: Connection established successfully")
                 return self.printer_on_serial
             except serial.SerialException as e:
                 retries += 1
+                logger.warning(f"DEBUG: Serial connection attempt {retries} failed: {type(e).__name__}: {e}")
                 if retries >= self.max_retries:
+                    logger.error(f"DEBUG: Max retries ({self.max_retries}) reached. Connection failed.")
                     raise ConnectionError(
                         f"Failed to connect to {serial_port} after {self.max_retries} attempts: {e}"
                     ) from e
                 logger.info(f"Waiting for connection on {serial_port}... (attempt {retries}/{self.max_retries})")
+                logger.debug(f"DEBUG: Waiting {self.connection_retry_delay}s before retry...")
                 time.sleep(self.connection_retry_delay)
         
         raise ConnectionError(f"Failed to connect to {serial_port} after {self.max_retries} attempts")
@@ -253,9 +347,25 @@ class RoboCam:
             Clears the serial buffer by reading all available data.
             Useful after connection to clear startup messages.
         """
+        bytes_read = 0
+        lines_read = 0
+        logger.debug(f"DEBUG: dump_printer_output - initial bytes waiting: {self.printer_on_serial.in_waiting}")
+        
         while self.printer_on_serial.in_waiting > 0:  # Check if there's data waiting to be read
-            response = self.printer_on_serial.readline().decode('utf-8').strip()
-            logger.debug(f'Printer output, dumping: {response}')
+            try:
+                raw_response = self.printer_on_serial.readline()
+                bytes_read += len(raw_response)
+                lines_read += 1
+                response = raw_response.decode('utf-8', errors='replace').strip()
+                logger.debug(f'DEBUG: Printer output line {lines_read}: {repr(response)} (raw: {raw_response.hex()})')
+            except Exception as e:
+                logger.warning(f"DEBUG: Error reading printer output: {e}")
+                break
+        
+        if lines_read > 0:
+            logger.debug(f"DEBUG: Dumped {lines_read} lines, {bytes_read} bytes total from printer buffer")
+        else:
+            logger.debug("DEBUG: No output to dump from printer")
     
     def set_acceleration(self, acceleration: float) -> None:
         """
