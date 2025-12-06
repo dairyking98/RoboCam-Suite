@@ -110,23 +110,26 @@ class RoboCam:
                     self.Y = None
                     self.Z = None
                 
-                # Test M154 (auto-report position) - useful for movement completion detection
-                logger.debug("DEBUG: Initialization - Testing M154 (auto-report position)...")
+                # Test M400 (wait for movement completion) - critical for reliable movements
+                logger.debug("DEBUG: Initialization - Testing M400 (wait for movement completion)...")
                 try:
-                    # Enable M154 auto-reporting (M154 S1 enables, M154 S0 disables)
-                    # This can help detect movement completion if supported
-                    self.send_gcode("M154 S1", timeout=3.0)  # Enable auto-reporting
-                    logger.info("M154 auto-report position enabled (firmware supports it)")
-                    if not hasattr(self, '_m154_supported'):
-                        self._m154_supported = True
+                    # Test M400 by sending it with a short timeout
+                    # M400 should respond quickly if supported, or timeout/error if not
+                    logger.debug("DEBUG: Sending M400 test command...")
+                    self.send_gcode("M400", timeout=5.0)  # 5 second timeout for test
+                    logger.info("M400 wait command supported (firmware supports movement completion detection)")
+                    self._m400_supported = True
+                    logger.debug("DEBUG: M400 initialization successful - will use for movement completion")
                 except (TimeoutError, RuntimeError) as e:
-                    logger.debug(f"DEBUG: M154 not supported or failed (this is OK): {e}")
-                    if not hasattr(self, '_m154_supported'):
-                        self._m154_supported = False
+                    # M400 not supported or timed out
+                    logger.warning(f"M400 command not supported or failed during initialization: {e}")
+                    logger.warning("Firmware may not support M400 - will use delay-based fallback for movements")
+                    self._m400_supported = False
+                    logger.debug("DEBUG: M400 initialization failed - will use delay fallback")
                 except Exception as e:
-                    logger.debug(f"DEBUG: M154 test had error (this is OK): {e}")
-                    if not hasattr(self, '_m154_supported'):
-                        self._m154_supported = False
+                    logger.warning(f"M400 test had unexpected error: {e}")
+                    logger.warning("Assuming M400 not supported - will use delay-based fallback")
+                    self._m400_supported = False
                 
                 # Optionally try M105 as a secondary test (but don't fail if it doesn't work)
                 logger.debug("DEBUG: Initialization - Optionally testing M105 (temperature query)...")
@@ -393,9 +396,17 @@ class RoboCam:
         if timeout is None:
             timeout = self.movement_wait_timeout
         
-        # Track whether M400 is supported (cache for this session)
+        # Track whether M400 is supported (should be set during initialization)
+        # If not set yet, test it now (fallback for backwards compatibility)
         if not hasattr(self, '_m400_supported'):
-            self._m400_supported = True  # Assume supported initially
+            logger.debug("DEBUG: wait_for_movement_completion - M400 support not yet determined, testing now...")
+            try:
+                self.send_gcode("M400", timeout=5.0)
+                self._m400_supported = True
+                logger.debug("DEBUG: M400 support confirmed during movement")
+            except Exception:
+                self._m400_supported = False
+                logger.debug("DEBUG: M400 not supported - using fallback")
         
         if self._m400_supported:
             # Try M400 first
@@ -413,67 +424,7 @@ class RoboCam:
                 logger.warning(f"M400 command had unexpected error, using fallback: {e}")
                 self._m400_supported = False
         
-        # Fallback: Try M154 auto-reporting if enabled, otherwise use delay
-        # Check if M154 is supported and enabled
-        if hasattr(self, '_m154_supported') and self._m154_supported:
-            logger.debug("DEBUG: wait_for_movement_completion - Trying M154 auto-report method...")
-            try:
-                # With M154 enabled, the printer should auto-report positions during movement
-                # We can monitor the serial buffer for position updates
-                # Wait a short time for position reports, then check if movement is done
-                start_time = time.time()
-                last_position_report = None
-                stable_count = 0
-                check_interval = 0.1  # Check every 100ms
-                
-                while time.time() - start_time < timeout:
-                    # Check if there's position data in the buffer (from M154 auto-reports)
-                    if self.printer_on_serial.in_waiting > 0:
-                        try:
-                            # Read available lines looking for position reports
-                            while self.printer_on_serial.in_waiting > 0:
-                                line = self.printer_on_serial.readline().decode('utf-8', errors='replace').strip()
-                                logger.debug(f"DEBUG: wait_for_movement_completion - M154 report: {line}")
-                                # Check if this is a position report (starts with X:)
-                                if line.startswith('X:'):
-                                    # Parse position
-                                    matches = re.findall(r'(X|Y|Z):([0-9.-]+)', line)
-                                    if matches:
-                                        pos_dict = {axis: float(val) for axis, val in matches}
-                                        current_pos = (
-                                            pos_dict.get('X'),
-                                            pos_dict.get('Y'),
-                                            pos_dict.get('Z')
-                                        )
-                                        
-                                        if last_position_report is not None:
-                                            # Check if position changed
-                                            pos_changed = (
-                                                abs(current_pos[0] - last_position_report[0]) > 0.01 or
-                                                abs(current_pos[1] - last_position_report[1]) > 0.01 or
-                                                abs(current_pos[2] - last_position_report[2]) > 0.01
-                                            )
-                                            
-                                            if not pos_changed:
-                                                stable_count += 1
-                                                if stable_count >= 3:  # Stable for 3 reports
-                                                    logger.debug("DEBUG: wait_for_movement_completion - Movement complete (M154 position stable)")
-                                                    return
-                                            else:
-                                                stable_count = 0
-                                        
-                                        last_position_report = current_pos
-                        except Exception as e:
-                            logger.debug(f"DEBUG: wait_for_movement_completion - Error reading M154 reports: {e}")
-                    
-                    time.sleep(check_interval)
-                
-                # If timeout, use delay fallback
-                logger.debug("DEBUG: wait_for_movement_completion - M154 method timed out, using delay fallback")
-            except Exception as e:
-                logger.debug(f"DEBUG: wait_for_movement_completion - M154 method failed: {e}, using delay fallback")
-        
-        # Final fallback: Use a conservative delay
+        # Fallback: Use a conservative delay if M400 is not supported
         # Since we can't reliably detect movement completion without M400,
         # we use a calculated delay based on movement parameters stored during the move
         # For now, use a conservative fixed delay as safety margin
