@@ -459,7 +459,12 @@ class ExperimentWindow:
         
         tk.Label(camera_frame, text="Export Type:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
         self.export_var = tk.StringVar(value=DEFAULT_EXPORT)
-        tk.OptionMenu(camera_frame, self.export_var, "H264").grid(row=row, column=3, sticky="w", padx=2, pady=2)
+        # Create export type menu - will be updated based on capture mode
+        export_menu_frame = tk.Frame(camera_frame)
+        export_menu_frame.grid(row=row, column=3, sticky="w", padx=2, pady=2)
+        self.export_menu = tk.OptionMenu(export_menu_frame, self.export_var, "H264")
+        self.export_menu.pack(side=tk.LEFT)
+        self.export_menu_frame = export_menu_frame  # Store frame for later updates
         
         row += 1
         tk.Label(camera_frame, text="Capture Type:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
@@ -1376,6 +1381,9 @@ class ExperimentWindow:
         # Update time entry visibility for all phases based on new mode
         for phase_data in self.action_phases:
             self._on_action_change(phase_data)
+        
+        # Update export type dropdown based on mode
+        self._update_export_type_options()
     
     def _update_action_phase_options(self) -> None:
         """Update action dropdown options for all phases based on current mode."""
@@ -1417,6 +1425,32 @@ class ExperimentWindow:
             else:
                 # Update time entry visibility for current action
                 self._on_action_change(phase_data)
+    
+    def _update_export_type_options(self) -> None:
+        """Update export type dropdown options based on capture mode."""
+        mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
+        current_export = self.export_var.get()
+        
+        if mode == "Image Capture":
+            # Image Capture mode: show image formats
+            export_options = ["PNG", "JPEG"]
+            default_export = "PNG"
+        else:
+            # Video Capture mode: show video formats
+            export_options = ["H264"]
+            default_export = "H264"
+        
+        # Destroy old menu
+        if hasattr(self, 'export_menu'):
+            self.export_menu.destroy()
+        
+        # Create new menu with updated options
+        self.export_menu = tk.OptionMenu(self.export_menu_frame, self.export_var, *export_options)
+        self.export_menu.pack(side=tk.LEFT)
+        
+        # Set to default if current value is not in new options
+        if current_export not in export_options:
+            self.export_var.set(default_export)
     
     def _on_action_change(self, phase_data: dict, *args) -> None:
         """Callback when action dropdown changes - show/hide time entry based on action type and mode."""
@@ -2115,7 +2149,9 @@ class ExperimentWindow:
                         elif action == "CAPTURE IMAGE":
                             # Capture image with GPIO state in filename
                             image_counter += 1
-                            ext = ".png"
+                            # Get export format from settings (default to PNG)
+                            export_format = self.export_var.get() if hasattr(self, 'export_var') else "PNG"
+                            ext = ".png" if export_format.upper() == "PNG" else ".jpg"
                             gpio_label = f"GPIO_{current_gpio_state}"
                             fname = f"{ds}_{ts}_{loop_experiment_name}_{y_lbl}{x_lbl}_{gpio_label}_img{image_counter}{ext}"
                             path = os.path.join(loop_output_folder, fname)
