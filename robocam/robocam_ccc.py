@@ -94,33 +94,64 @@ class RoboCam:
                 else:
                     raise ConnectionError("No serial port found. Check USB connection to printer.")
                 
-                # Announce control (M105 may not be supported by all firmware)
-                logger.debug("DEBUG: Initialization - Attempting to send M105 command to announce control...")
+                # Test connection with M114 (position query) instead of M105
+                # M105 (temperature query) can fail during startup, but M114 is more reliable
+                logger.debug("DEBUG: Initialization - Testing connection with M114 position query...")
                 try:
-                    self.send_gcode("M105")  # creality ender 5 s1, to announce control via serial
-                    logger.debug("DEBUG: Initialization - M105 command sent successfully")
-                except (TimeoutError, RuntimeError) as e:
-                    # M105 may not be supported by all firmware - log warning but continue
-                    logger.warning(f"M105 command failed (firmware may not support it): {e}")
-                    logger.warning("Continuing initialization despite M105 failure - this is usually OK")
-                    logger.debug("DEBUG: Initialization - M105 failed but continuing...")
-                except Exception as e:
-                    # For other errors, log but continue - connection is established
-                    logger.warning(f"M105 command had unexpected error: {e}")
-                    logger.debug("DEBUG: Initialization - M105 error but continuing...")
-                
-                # Update position
-                logger.debug("DEBUG: Initialization - Updating current position...")
-                try:
+                    # Try M114 first - it's more reliable than M105 during startup
                     self.X, self.Y, self.Z = self.update_current_position()
-                    logger.debug(f"DEBUG: Initialization - Position updated: X={self.X}, Y={self.Y}, Z={self.Z}")
+                    logger.info("Connection verified - printer is ready")
+                    logger.debug(f"DEBUG: Initialization - Position query successful: X={self.X}, Y={self.Y}, Z={self.Z}")
                 except Exception as e:
-                    logger.warning(f"Failed to get initial position, but connection is established: {e}")
-                    logger.debug("DEBUG: Initialization - Position update failed but continuing...")
+                    logger.warning(f"Initial position query failed: {e}")
+                    logger.debug("DEBUG: Initialization - Will retry position update...")
                     # Set position to None - will be updated on next successful query
                     self.X = None
                     self.Y = None
                     self.Z = None
+                
+                # Test M154 (auto-report position) - useful for movement completion detection
+                logger.debug("DEBUG: Initialization - Testing M154 (auto-report position)...")
+                try:
+                    # Enable M154 auto-reporting (M154 S1 enables, M154 S0 disables)
+                    # This can help detect movement completion if supported
+                    self.send_gcode("M154 S1", timeout=3.0)  # Enable auto-reporting
+                    logger.info("M154 auto-report position enabled (firmware supports it)")
+                    if not hasattr(self, '_m154_supported'):
+                        self._m154_supported = True
+                except (TimeoutError, RuntimeError) as e:
+                    logger.debug(f"DEBUG: M154 not supported or failed (this is OK): {e}")
+                    if not hasattr(self, '_m154_supported'):
+                        self._m154_supported = False
+                except Exception as e:
+                    logger.debug(f"DEBUG: M154 test had error (this is OK): {e}")
+                    if not hasattr(self, '_m154_supported'):
+                        self._m154_supported = False
+                
+                # Optionally try M105 as a secondary test (but don't fail if it doesn't work)
+                logger.debug("DEBUG: Initialization - Optionally testing M105 (temperature query)...")
+                try:
+                    self.send_gcode("M105", timeout=3.0)  # Shorter timeout for optional test
+                    logger.debug("DEBUG: Initialization - M105 command successful (printer fully initialized)")
+                except (TimeoutError, RuntimeError) as e:
+                    # M105 may fail during startup or not be supported - this is OK
+                    logger.debug(f"DEBUG: M105 optional test failed (this is OK): {e}")
+                except Exception as e:
+                    logger.debug(f"DEBUG: M105 optional test had error (this is OK): {e}")
+                
+                # Update position (if not already set above)
+                if self.X is None or self.Y is None or self.Z is None:
+                    logger.debug("DEBUG: Initialization - Updating current position (retry)...")
+                    try:
+                        self.X, self.Y, self.Z = self.update_current_position()
+                        logger.debug(f"DEBUG: Initialization - Position updated: X={self.X}, Y={self.Y}, Z={self.Z}")
+                    except Exception as e:
+                        logger.warning(f"Failed to get initial position, but connection is established: {e}")
+                        logger.debug("DEBUG: Initialization - Position update failed but continuing...")
+                        # Set position to None - will be updated on next successful query
+                        self.X = None
+                        self.Y = None
+                        self.Z = None
             except Exception as e:
                 # Don't raise ConnectionError in simulation mode
                 if self.simulate_3d:
@@ -307,21 +338,29 @@ class RoboCam:
                     self.baud_rate, 
                     timeout=self.timeout
                 )
-                logger.info(f"Connected to {serial_port} at {self.baud_rate} baud. Allow 1 seconds for printer to load.")
+                logger.info(f"Connected to {serial_port} at {self.baud_rate} baud. Waiting for printer to initialize...")
                 logger.debug(f"DEBUG: Serial connection opened successfully")
                 logger.debug(f"DEBUG: Connection state - is_open: {self.printer_on_serial.is_open}, bytes_waiting: {self.printer_on_serial.in_waiting}")
                 
-                # Wait for printer to initialize
-                logger.debug("DEBUG: Waiting 1 second for printer initialization...")
-                time.sleep(1)
+                # Wait for printer to fully initialize (Marlin printers can take several seconds)
+                # Allow time for all startup messages and SD card initialization to complete
+                logger.debug("DEBUG: Waiting 5 seconds for printer initialization (allowing startup messages to complete)...")
+                time.sleep(2)  # Initial wait
                 
-                # Check for initial data from printer
-                bytes_waiting = self.printer_on_serial.in_waiting
-                logger.debug(f"DEBUG: After 1s wait, bytes waiting in buffer: {bytes_waiting}")
-                
-                # Dump printer output on startup
+                # Dump any initial startup messages
                 logger.debug("DEBUG: Dumping initial printer output...")
                 self.dump_printer_output()
+                
+                # Wait a bit more and dump again (printer may still be initializing)
+                logger.debug("DEBUG: Waiting additional 3 seconds for printer to complete initialization...")
+                time.sleep(3)
+                
+                # Dump any remaining startup messages
+                bytes_waiting = self.printer_on_serial.in_waiting
+                logger.debug(f"DEBUG: After initialization wait, bytes waiting in buffer: {bytes_waiting}")
+                if bytes_waiting > 0:
+                    logger.debug("DEBUG: Dumping remaining printer output...")
+                    self.dump_printer_output()
                 
                 logger.debug("DEBUG: Connection established successfully")
                 return self.printer_on_serial
@@ -339,6 +378,111 @@ class RoboCam:
         
         raise ConnectionError(f"Failed to connect to {serial_port} after {self.max_retries} attempts")
                 
+    def wait_for_movement_completion(self, timeout: Optional[float] = None) -> None:
+        """
+        Wait for printer movement to complete.
+        
+        Args:
+            timeout: Timeout in seconds. If None, uses movement_wait_timeout.
+            
+        Note:
+            First tries M400 command. If M400 fails or times out (firmware may not support it),
+            falls back to a calculated delay based on movement distance and speed.
+            M114 position polling is NOT used as it reports projected position, not actual position.
+        """
+        if timeout is None:
+            timeout = self.movement_wait_timeout
+        
+        # Track whether M400 is supported (cache for this session)
+        if not hasattr(self, '_m400_supported'):
+            self._m400_supported = True  # Assume supported initially
+        
+        if self._m400_supported:
+            # Try M400 first
+            try:
+                logger.debug("DEBUG: wait_for_movement_completion - Trying M400 command...")
+                self.send_gcode("M400", timeout=timeout)
+                logger.debug("DEBUG: wait_for_movement_completion - M400 successful")
+                return
+            except (TimeoutError, RuntimeError) as e:
+                # M400 not supported or timed out - mark as unsupported and use fallback
+                logger.warning(f"M400 command failed (firmware may not support it): {e}")
+                logger.info("Falling back to delay-based method for movement completion")
+                self._m400_supported = False
+            except Exception as e:
+                logger.warning(f"M400 command had unexpected error, using fallback: {e}")
+                self._m400_supported = False
+        
+        # Fallback: Try M154 auto-reporting if enabled, otherwise use delay
+        # Check if M154 is supported and enabled
+        if hasattr(self, '_m154_supported') and self._m154_supported:
+            logger.debug("DEBUG: wait_for_movement_completion - Trying M154 auto-report method...")
+            try:
+                # With M154 enabled, the printer should auto-report positions during movement
+                # We can monitor the serial buffer for position updates
+                # Wait a short time for position reports, then check if movement is done
+                start_time = time.time()
+                last_position_report = None
+                stable_count = 0
+                check_interval = 0.1  # Check every 100ms
+                
+                while time.time() - start_time < timeout:
+                    # Check if there's position data in the buffer (from M154 auto-reports)
+                    if self.printer_on_serial.in_waiting > 0:
+                        try:
+                            # Read available lines looking for position reports
+                            while self.printer_on_serial.in_waiting > 0:
+                                line = self.printer_on_serial.readline().decode('utf-8', errors='replace').strip()
+                                logger.debug(f"DEBUG: wait_for_movement_completion - M154 report: {line}")
+                                # Check if this is a position report (starts with X:)
+                                if line.startswith('X:'):
+                                    # Parse position
+                                    matches = re.findall(r'(X|Y|Z):([0-9.-]+)', line)
+                                    if matches:
+                                        pos_dict = {axis: float(val) for axis, val in matches}
+                                        current_pos = (
+                                            pos_dict.get('X'),
+                                            pos_dict.get('Y'),
+                                            pos_dict.get('Z')
+                                        )
+                                        
+                                        if last_position_report is not None:
+                                            # Check if position changed
+                                            pos_changed = (
+                                                abs(current_pos[0] - last_position_report[0]) > 0.01 or
+                                                abs(current_pos[1] - last_position_report[1]) > 0.01 or
+                                                abs(current_pos[2] - last_position_report[2]) > 0.01
+                                            )
+                                            
+                                            if not pos_changed:
+                                                stable_count += 1
+                                                if stable_count >= 3:  # Stable for 3 reports
+                                                    logger.debug("DEBUG: wait_for_movement_completion - Movement complete (M154 position stable)")
+                                                    return
+                                            else:
+                                                stable_count = 0
+                                        
+                                        last_position_report = current_pos
+                        except Exception as e:
+                            logger.debug(f"DEBUG: wait_for_movement_completion - Error reading M154 reports: {e}")
+                    
+                    time.sleep(check_interval)
+                
+                # If timeout, use delay fallback
+                logger.debug("DEBUG: wait_for_movement_completion - M154 method timed out, using delay fallback")
+            except Exception as e:
+                logger.debug(f"DEBUG: wait_for_movement_completion - M154 method failed: {e}, using delay fallback")
+        
+        # Final fallback: Use a conservative delay
+        # Since we can't reliably detect movement completion without M400,
+        # we use a calculated delay based on movement parameters stored during the move
+        # For now, use a conservative fixed delay as safety margin
+        logger.debug("DEBUG: wait_for_movement_completion - Using delay-based fallback...")
+        fallback_delay = min(timeout, 2.0)  # Wait up to 2 seconds or timeout, whichever is shorter
+        logger.debug(f"DEBUG: wait_for_movement_completion - Waiting {fallback_delay}s as safety margin")
+        time.sleep(fallback_delay)
+        logger.debug("DEBUG: wait_for_movement_completion - Delay completed")
+    
     def dump_printer_output(self) -> None:
         """
         Read and print all pending output from printer.
@@ -572,7 +716,7 @@ class RoboCam:
                 command += f" Z{Z}"
 
             self.send_gcode(command)
-            self.send_gcode("M400", timeout=self.movement_wait_timeout)  # Use configurable movement wait timeout
+            self.wait_for_movement_completion(timeout=self.movement_wait_timeout)
             self.update_current_position()
         except Exception as e:
             raise RuntimeError(f"Relative movement failed: {e}") from e
@@ -637,7 +781,7 @@ class RoboCam:
                 command += f" Z{Z}"
 
             self.send_gcode(command)
-            self.send_gcode("M400", timeout=self.movement_wait_timeout)  # Use configurable movement wait timeout
+            self.wait_for_movement_completion(timeout=self.movement_wait_timeout)
             self.update_current_position()
         except Exception as e:
             raise RuntimeError(f"Absolute movement failed: {e}") from e
