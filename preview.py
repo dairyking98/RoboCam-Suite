@@ -191,8 +191,17 @@ class PreviewApp:
                         print(f"Failed to get initial position: {e}")
                         position_available = False
                 
-                # If position still not available, prompt user to home
-                if not position_available:
+                # Check if position is suspiciously at 0,0,0 (might be uninitialized)
+                # Even if position_available is True, 0,0,0 before homing is suspicious
+                position_is_zero = (
+                    position_available and
+                    abs(self.robocam.X) < 0.01 and
+                    abs(self.robocam.Y) < 0.01 and
+                    abs(self.robocam.Z) < 0.01
+                )
+                
+                # If position not available OR position is exactly 0,0,0 (uninitialized), prompt to home
+                if not position_available or position_is_zero:
                     response = messagebox.askyesno(
                         "Home Printer",
                         "Current printer position is unavailable.\n\n"
