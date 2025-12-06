@@ -168,6 +168,57 @@ class PreviewApp:
         # Initialize RoboCam with error handling
         try:
             self.robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate_3d=self._simulate_3d)
+            
+            # Check if position is available - if not, prompt to home
+            if not self._simulate_3d and self.robocam is not None:
+                # Try to get current position
+                position_available = (
+                    self.robocam.X is not None and
+                    self.robocam.Y is not None and
+                    self.robocam.Z is not None
+                )
+                
+                if not position_available:
+                    # Try to update position once more
+                    try:
+                        self.robocam.update_current_position()
+                        position_available = (
+                            self.robocam.X is not None and
+                            self.robocam.Y is not None and
+                            self.robocam.Z is not None
+                        )
+                    except Exception as e:
+                        print(f"Failed to get initial position: {e}")
+                        position_available = False
+                
+                # If position still not available, prompt user to home
+                if not position_available:
+                    response = messagebox.askyesno(
+                        "Home Printer",
+                        "Current printer position is unavailable.\n\n"
+                        "Please home the printer first to establish a known position.\n\n"
+                        "Would you like to home the printer now?\n\n"
+                        "(Click 'No' to continue without homing, but coordinates may be inaccurate.)"
+                    )
+                    if response:
+                        # User wants to home - do it
+                        try:
+                            self.robocam.home()
+                            # Update position after homing
+                            self.robocam.update_current_position()
+                            messagebox.showinfo(
+                                "Homing Complete",
+                                f"Printer homed successfully.\n\n"
+                                f"Current position: X={self.robocam.X:.2f}, "
+                                f"Y={self.robocam.Y:.2f}, Z={self.robocam.Z:.2f}"
+                            )
+                            self.homed = True
+                        except Exception as e:
+                            messagebox.showerror(
+                                "Homing Failed",
+                                f"Failed to home printer: {e}\n\n"
+                                f"Please try homing manually using the Home button."
+                            )
         except Exception as e:
             error_msg = str(e).lower()
             if self._simulate_3d:
