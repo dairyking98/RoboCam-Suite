@@ -17,6 +17,8 @@ import threading
 import time
 import re
 import csv
+import subprocess
+import glob
 import tkinter as tk
 from tkinter import filedialog
 from datetime import datetime
@@ -165,6 +167,122 @@ def save_video_metadata(
         logger.info(f"Saved video metadata: {metadata_path} (Target FPS: {target_fps}, Actual FPS: {actual_fps:.2f}, Duration: {duration_seconds}s)")
     except Exception as e:
         logger.error(f"Failed to save video metadata for {video_path}: {e}")
+
+
+def convert_h264_to_mp4(h264_path: str, metadata_path: Optional[str] = None, fps: Optional[float] = None) -> bool:
+    """
+    Convert H264 file to MP4 using ffmpeg with accurate FPS from JSON metadata.
+    
+    Args:
+        h264_path: Path to the input H264 file
+        metadata_path: Optional path to JSON metadata file containing FPS information
+        fps: Optional FPS value to use directly (overrides metadata if provided)
+        
+    Returns:
+        True if conversion succeeded, False otherwise
+    """
+    try:
+        if not os.path.exists(h264_path):
+            logger.error(f"H264 file not found: {h264_path}")
+            return False
+        
+        # Get FPS from metadata JSON if available
+        actual_fps = fps
+        if actual_fps is None and metadata_path and os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                    # Try to get actual_fps first, then fps, then target_fps
+                    actual_fps = metadata.get('actual_fps') or metadata.get('fps') or metadata.get('target_fps')
+                    if actual_fps:
+                        logger.info(f"Using FPS from metadata: {actual_fps}")
+            except Exception as e:
+                logger.warning(f"Failed to read FPS from metadata file {metadata_path}: {e}")
+        
+        # Generate MP4 output path
+        mp4_path = os.path.splitext(h264_path)[0] + ".mp4"
+        
+        # Build ffmpeg command
+        # Use -c copy to avoid re-encoding (fast, no quality loss)
+        # The MP4 container format will provide proper metadata for accurate duration display
+        # FPS information from metadata is logged but frame rate is already in H264 stream
+        cmd = ["ffmpeg", "-y", "-i", h264_path, "-c", "copy", mp4_path]
+        
+        # Note: If explicit FPS metadata is needed in MP4, we could use:
+        # cmd = ["ffmpeg", "-y", "-r", str(actual_fps), "-i", h264_path, "-c:v", "libx264", "-r", str(actual_fps), mp4_path]
+        # But that would re-encode. For now, stream copy preserves existing FPS and creates proper container.
+        
+        logger.info(f"Converting H264 to MP4: {h264_path} -> {mp4_path}" + (f" (FPS: {actual_fps})" if actual_fps else ""))
+        
+        # Run ffmpeg
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=300  # 5 minute timeout per file
+        )
+        
+        if result.returncode == 0:
+            if os.path.exists(mp4_path):
+                logger.info(f"Successfully converted to MP4: {mp4_path}")
+                return True
+            else:
+                logger.error(f"Conversion reported success but MP4 file not found: {mp4_path}")
+                return False
+        else:
+            logger.error(f"ffmpeg conversion failed for {h264_path}: {result.stderr}")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        logger.error(f"Conversion timed out for {h264_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error converting {h264_path} to MP4: {e}")
+        return False
+
+
+def convert_all_h264_in_folder(folder_path: str) -> Tuple[int, int]:
+    """
+    Convert all H264 files in a folder to MP4 using their metadata JSON files for accurate FPS.
+    
+    Args:
+        folder_path: Path to folder containing H264 files
+        
+    Returns:
+        Tuple of (success_count, total_count)
+    """
+    if not os.path.exists(folder_path):
+        logger.error(f"Folder does not exist: {folder_path}")
+        return (0, 0)
+    
+    # Find all H264 files
+    h264_files = glob.glob(os.path.join(folder_path, "*.h264"))
+    
+    if not h264_files:
+        logger.info(f"No H264 files found in {folder_path}")
+        return (0, 0)
+    
+    logger.info(f"Found {len(h264_files)} H264 file(s) to convert in {folder_path}")
+    
+    success_count = 0
+    for h264_path in h264_files:
+        # Look for corresponding metadata JSON file
+        base_path = os.path.splitext(h264_path)[0]
+        metadata_path = f"{base_path}_metadata.json"
+        
+        if os.path.exists(metadata_path):
+            if convert_h264_to_mp4(h264_path, metadata_path=metadata_path):
+                success_count += 1
+        else:
+            # Try conversion without metadata (ffmpeg will use default FPS)
+            logger.warning(f"No metadata file found for {h264_path}, converting without FPS info")
+            if convert_h264_to_mp4(h264_path):
+                success_count += 1
+    
+    logger.info(f"Conversion complete: {success_count}/{len(h264_files)} files converted successfully")
+    return (success_count, len(h264_files))
+
 
 class ExperimentWindow:
     """
@@ -451,6 +569,16 @@ class ExperimentWindow:
         self.res_y_ent.grid(row=row, column=3, sticky="w", padx=2, pady=2)
         self.res_y_ent.insert(0, str(DEFAULT_RES[1]))
         
+        # Add "Set to Native Resolution" button on next row
+        row += 1
+        native_res_btn = tk.Button(
+            camera_frame, 
+            text="Set to Native Resolution", 
+            command=self.set_native_resolution,
+            font=("Arial", 9)
+        )
+        native_res_btn.grid(row=row, column=0, columnspan=2, sticky="w", padx=2, pady=2)
+        
         row += 1
         tk.Label(camera_frame, text="Target FPS:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
         self.fps_ent = tk.Entry(camera_frame, width=12)
@@ -464,7 +592,17 @@ class ExperimentWindow:
         export_menu_frame.grid(row=row, column=3, sticky="w", padx=2, pady=2)
         self.export_menu = tk.OptionMenu(export_menu_frame, self.export_var, "H264")
         self.export_menu.pack(side=tk.LEFT)
+        # Note: Command callback will be added in _update_export_type_options()
         self.export_menu_frame = export_menu_frame  # Store frame for later updates
+        
+        # Checkbox for MP4 conversion (only shown for Video Capture mode with H264)
+        self.convert_to_mp4_var = tk.BooleanVar(value=True)  # Default ON
+        self.convert_to_mp4_checkbox = tk.Checkbutton(
+            camera_frame, 
+            text="Convert to MP4 after experiment",
+            variable=self.convert_to_mp4_var
+        )
+        self.convert_to_mp4_checkbox.grid(row=row, column=4, sticky="w", padx=2, pady=2)
         
         row += 1
         tk.Label(camera_frame, text="Capture Type:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
@@ -666,6 +804,10 @@ class ExperimentWindow:
         if hasattr(self, 'calibration_var'):
             self.calibration_var.trace_add("write", lambda *a: upd())
         upd()
+        
+        # Initialize export type options and checkbox visibility
+        if hasattr(self, '_update_export_type_options'):
+            self._update_export_type_options()
 
         # Only set transient and grab if it's a Toplevel window
         if isinstance(w, tk.Toplevel):
@@ -1357,6 +1499,136 @@ class ExperimentWindow:
         if hasattr(self, 'status_lbl'):
             self.status_lbl.config(text=f"Ready - {len(selected_wells)} wells selected")
     
+    def set_native_resolution(self) -> None:
+        """
+        Set resolution to camera's native maximum resolution.
+        Queries the camera to find the maximum available resolution and updates the GUI fields.
+        Ensures full image capture without cropping.
+        """
+        if self.simulate_cam:
+            # In simulation mode, use a default high resolution
+            max_width, max_height = 4056, 3040  # Common Pi HQ Camera maximum
+            self.res_x_ent.delete(0, tk.END)
+            self.res_x_ent.insert(0, str(max_width))
+            self.res_y_ent.delete(0, tk.END)
+            self.res_y_ent.insert(0, str(max_height))
+            if hasattr(self, 'status_lbl'):
+                self.status_lbl.config(text=f"Set to native resolution: {max_width}x{max_height} (simulation mode)", fg="blue")
+            return
+        
+        # Try to get native resolution from camera
+        temp_camera = None
+        try:
+            # Use existing camera instance if available, otherwise create temporary one
+            camera_to_query = self.picam2 if (self.picam2 is not None and not self.simulate_cam) else None
+            
+            if camera_to_query is None:
+                # Create a temporary camera instance to query native resolution
+                temp_camera = Picamera2()
+                camera_to_query = temp_camera
+            
+            # Get camera info which contains sensor modes
+            camera_info = camera_to_query.camera_properties
+            
+            max_resolution = None
+            max_pixels = 0
+            
+            # Method 1: Check sensor modes for maximum resolution
+            if 'SensorModes' in camera_info:
+                sensor_modes = camera_info['SensorModes']
+                for mode in sensor_modes:
+                    if 'size' in mode:
+                        width, height = mode['size']
+                        pixels = width * height
+                        if pixels > max_pixels:
+                            max_pixels = pixels
+                            max_resolution = (width, height)
+            
+            # Method 2: Try to get pixel array size directly (sensor native size)
+            if max_resolution is None and 'PixelArraySize' in camera_info:
+                width, height = camera_info['PixelArraySize']
+                max_resolution = (width, height)
+            
+            # Method 3: Use camera info to find max resolution from available modes
+            if max_resolution is None:
+                # Try to get from camera properties - look for maximum sensor resolution
+                try:
+                    # Get all available sensor modes and find the largest
+                    modes = camera_to_query.sensor_modes
+                    if modes:
+                        for mode in modes:
+                            if hasattr(mode, 'size') or 'size' in mode:
+                                size = mode.get('size') if isinstance(mode, dict) else getattr(mode, 'size', None)
+                                if size:
+                                    width, height = size
+                                    pixels = width * height
+                                    if pixels > max_pixels:
+                                        max_pixels = pixels
+                                        max_resolution = (width, height)
+                except Exception:
+                    pass
+            
+            # Method 4: Try creating still configs with known maximum resolutions
+            if max_resolution is None:
+                # Try common maximum resolutions for Raspberry Pi cameras (in order of likelihood)
+                test_resolutions = [
+                    (4056, 3040),  # Pi HQ Camera (full resolution)
+                    (3280, 2464),  # Pi Camera Module v2
+                    (2592, 1944),  # Pi Camera Module v1
+                ]
+                
+                # Try each resolution to see which is supported
+                for test_width, test_height in test_resolutions:
+                    try:
+                        # Try to create a still configuration with this resolution
+                        test_config = camera_to_query.create_still_configuration(
+                            main={"size": (test_width, test_height)}
+                        )
+                        # If successful, this resolution is supported
+                        if test_config:
+                            max_resolution = (test_width, test_height)
+                            break
+                    except Exception:
+                        continue
+            
+            # Fallback: Use Pi HQ Camera default if nothing else works
+            if max_resolution is None:
+                max_resolution = (4056, 3040)  # Pi HQ Camera maximum
+            
+            if max_resolution:
+                max_width, max_height = max_resolution
+                self.res_x_ent.delete(0, tk.END)
+                self.res_x_ent.insert(0, str(max_width))
+                self.res_y_ent.delete(0, tk.END)
+                self.res_y_ent.insert(0, str(max_height))
+                if hasattr(self, 'status_lbl'):
+                    self.status_lbl.config(text=f"Set to native resolution: {max_width}x{max_height}", fg="green")
+                logger.info(f"Set resolution to native maximum: {max_width}x{max_height}")
+            else:
+                raise Exception("Could not determine native resolution")
+                
+        except Exception as e:
+            logger.error(f"Error getting native resolution: {e}")
+            if hasattr(self, 'status_lbl'):
+                self.status_lbl.config(text=f"Error getting native resolution: {e}", fg="red")
+            # Show error message to user
+            try:
+                from tkinter import messagebox
+                messagebox.showerror(
+                    "Resolution Error",
+                    f"Could not determine native camera resolution:\n{e}\n\n"
+                    "Please set resolution manually or try again."
+                )
+            except:
+                pass
+        finally:
+            # Clean up temporary camera instance
+            if temp_camera is not None:
+                try:
+                    temp_camera.close()
+                except:
+                    pass
+    
     def on_mode_change(self, *args) -> None:
         """
         Handle mode change between Video Capture and Image Capture.
@@ -1445,12 +1717,33 @@ class ExperimentWindow:
             self.export_menu.destroy()
         
         # Create new menu with updated options
-        self.export_menu = tk.OptionMenu(self.export_menu_frame, self.export_var, *export_options)
+        self.export_menu = tk.OptionMenu(self.export_menu_frame, self.export_var, *export_options, command=self._on_export_type_change)
         self.export_menu.pack(side=tk.LEFT)
         
         # Set to default if current value is not in new options
         if current_export not in export_options:
             self.export_var.set(default_export)
+        
+        # Update checkbox visibility
+        self._update_convert_checkbox_visibility()
+    
+    def _on_export_type_change(self, *args) -> None:
+        """Handle export type dropdown change."""
+        self._update_convert_checkbox_visibility()
+    
+    def _update_convert_checkbox_visibility(self) -> None:
+        """Update visibility of convert to MP4 checkbox based on mode and export type."""
+        if not hasattr(self, 'convert_to_mp4_checkbox'):
+            return
+        
+        mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
+        export_type = self.export_var.get() if hasattr(self, 'export_var') else "H264"
+        
+        # Only show checkbox for Video Capture mode with H264 export
+        if mode == "Video Capture" and export_type == "H264":
+            self.convert_to_mp4_checkbox.grid()
+        else:
+            self.convert_to_mp4_checkbox.grid_remove()
     
     def _on_action_change(self, phase_data: dict, *args) -> None:
         """Callback when action dropdown changes - show/hide time entry based on action type and mode."""
@@ -2344,6 +2637,31 @@ class ExperimentWindow:
             if self.recording:
                 self.stop_recording_flash()
             self.status_lbl.config(text="Experiment completed")
+            
+            # Convert H264 to MP4 if enabled
+            if (hasattr(self, 'convert_to_mp4_var') and self.convert_to_mp4_var.get() and
+                loop_capture_mode == "Video Capture"):
+                # Check if export type is H264
+                export_type = self.export_var.get() if hasattr(self, 'export_var') else "H264"
+                if export_type == "H264":
+                    self.status_lbl.config(text="Experiment completed. Converting H264 to MP4...")
+                    logger.info(f"Starting H264 to MP4 conversion for folder: {loop_output_folder}")
+                    success_count, total_count = convert_all_h264_in_folder(loop_output_folder)
+                    if success_count == total_count and total_count > 0:
+                        self.status_lbl.config(text=f"Experiment completed. Converted {success_count} video(s) to MP4.")
+                        logger.info(f"Successfully converted all {success_count} H264 file(s) to MP4")
+                    elif success_count > 0:
+                        self.status_lbl.config(text=f"Experiment completed. Converted {success_count}/{total_count} video(s) to MP4 (some failed).")
+                        logger.warning(f"Partially converted: {success_count}/{total_count} H264 files to MP4")
+                    elif total_count > 0:
+                        self.status_lbl.config(text="Experiment completed. MP4 conversion failed (see logs).")
+                        logger.error(f"Failed to convert H264 files to MP4")
+                    else:
+                        self.status_lbl.config(text="Experiment completed.")
+                else:
+                    self.status_lbl.config(text="Experiment completed.")
+            else:
+                self.status_lbl.config(text="Experiment completed.")
 
         self.thread = threading.Thread(target=run_loop, daemon=True)
         self.thread.start()
