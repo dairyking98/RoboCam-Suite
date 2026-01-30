@@ -6,6 +6,7 @@ Provides a unified interface for different capture types:
 - Picamera2 (Grayscale)
 - Picamera2 (Grayscale - High FPS) - using Picamera2 directly
 - rpicam-vid (Grayscale - High FPS) - using rpicam-vid subprocess
+- USB (Grayscale) - Monochrome USB cameras (e.g. Mars 662M) via OpenCV; grayscale only
 
 Author: RoboCam-Suite
 """
@@ -21,6 +22,7 @@ from picamera2.outputs import FileOutput
 from robocam.pihqcamera import PiHQCamera
 from robocam.picamera2_highfps_capture import Picamera2HighFpsCapture
 from robocam.rpicam_vid_capture import RpicamVidCapture
+from robocam.usbcamera import USBCamera
 from robocam.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -52,40 +54,47 @@ class CaptureManager:
         "Picamera2 (Color)",
         "Picamera2 (Grayscale)",
         "Picamera2 (Grayscale - High FPS)",
-        "rpicam-vid (Grayscale - High FPS)"
+        "rpicam-vid (Grayscale - High FPS)",
+        "USB (Grayscale)",  # Mars 662M etc. are monochrome; grayscale only
     ]
-    
+    # Types available when USB (monochrome) camera backend is detected
+    CAPTURE_TYPES_USB = ["USB (Grayscale)"]
+
     def __init__(self, capture_type: str = "Picamera2 (Color)",
                  resolution: Tuple[int, int] = (1920, 1080),
                  fps: float = 30.0,
-                 picam2: Optional[Picamera2] = None) -> None:
+                 picam2: Optional[Picamera2] = None,
+                 usb_camera: Optional[USBCamera] = None) -> None:
         """
         Initialize capture manager.
-        
+
         Args:
             capture_type: Capture type from CAPTURE_TYPES
             resolution: Capture resolution (width, height)
             fps: Target frames per second
-            picam2: Optional existing Picamera2 instance to use (avoids creating duplicate instance)
+            picam2: Optional existing Picamera2 instance (for Pi HQ modes)
+            usb_camera: Optional USBCamera instance (for USB modes)
         """
         if capture_type not in self.CAPTURE_TYPES:
             raise ValueError(f"Invalid capture type: {capture_type}. Must be one of {self.CAPTURE_TYPES}")
-        
+
         self.capture_type: str = capture_type
         self.resolution: Tuple[int, int] = resolution
         self.fps: float = fps
         self.width, self.height = resolution
-        
+
         # Initialize capture instances based on type
-        self.picam2: Optional[Picamera2] = picam2  # Use provided instance or create new one
+        self.picam2: Optional[Picamera2] = picam2
         self.pihq_camera: Optional[PiHQCamera] = None
         self.picamera2_highfps: Optional[Picamera2HighFpsCapture] = None
         self.rpicam_vid: Optional[RpicamVidCapture] = None
-        
+        self.usb_camera: Optional[USBCamera] = usb_camera
+        self._usb_camera_owned: bool = False
+
         self._recording: bool = False
         self._recorded_frames: List[np.ndarray] = []
         self._video_output_path: Optional[str] = None
-        
+
         # Initialize based on capture type
         self._initialize_capture()
     
@@ -116,6 +125,19 @@ class CaptureManager:
             if not self.rpicam_vid.start_capture():
                 logger.error("Failed to start rpicam-vid capture")
                 raise RuntimeError("rpicam-vid capture failed to start")
+        elif "USB" in self.capture_type:
+            # USB monochrome camera (e.g. Mars 662M) - grayscale only
+            if self.usb_camera is None:
+                self.usb_camera = USBCamera(
+                    resolution=self.resolution,
+                    fps=self.fps
+                )
+                self._usb_camera_owned = True
+            else:
+                self.usb_camera.preset_resolution = self.resolution
+                self.usb_camera.fps = self.fps
+                self._usb_camera_owned = False
+            logger.info("Initialized USB (Grayscale) capture (monochrome)")
         else:
             # Picamera2 modes (Color or Grayscale)
             grayscale = "Grayscale" in self.capture_type
@@ -179,6 +201,11 @@ class CaptureManager:
                 else:
                     # PNG (default)
                     cv2.imwrite(output_path, frame)
+                logger.info(f"Saved image: {output_path}")
+                return True
+            elif self.usb_camera is not None:
+                # Capture single frame from USB camera
+                self.usb_camera.take_photo_and_save(output_path)
                 logger.info(f"Saved image: {output_path}")
                 return True
             elif self.rpicam_vid is not None:
@@ -253,6 +280,11 @@ class CaptureManager:
                 self.rpicam_vid.start_recording()
                 logger.info(f"Started rpicam-vid recording: {output_path}")
                 return True
+            elif self.usb_camera is not None:
+                # USB: buffer frames; encode on stop (same pattern as high-FPS)
+                self._recorded_frames = []
+                logger.info(f"Started USB recording: {output_path}")
+                return True
             else:
                 # Use Picamera2
                 if self.pihq_camera is not None:
@@ -293,6 +325,12 @@ class CaptureManager:
             return False
         elif self.rpicam_vid is not None:
             frame = self.rpicam_vid.read_frame()
+            if frame is not None:
+                self._recorded_frames.append(frame.copy())
+                return True
+            return False
+        elif self.usb_camera is not None:
+            frame = self.usb_camera.read_frame()
             if frame is not None:
                 self._recorded_frames.append(frame.copy())
                 return True
@@ -344,27 +382,44 @@ class CaptureManager:
             elif self.rpicam_vid is not None:
                 # Stop recording and encode frames to video (rpicam-vid)
                 self.rpicam_vid.stop_recording()
-                
+
                 if not self._recorded_frames:
                     logger.warning("No frames recorded")
                     return None
-                
+
                 # Use frames from buffer
                 self.rpicam_vid.frames = self._recorded_frames.copy()
-                
+
                 # Save frames to video
                 success = self.rpicam_vid.save_frames_to_video(
                     self._video_output_path,
                     fps=self.fps,
                     codec=codec
                 )
-                
+
                 if success:
                     logger.info(f"Saved video: {self._video_output_path}")
                     return self._video_output_path
                 else:
                     logger.error("Failed to save video")
                     return None
+            elif self.usb_camera is not None:
+                # Encode buffered frames to video (USB)
+                if not self._recorded_frames:
+                    logger.warning("No frames recorded")
+                    return None
+                w, h = self.width, self.height
+                is_color = self._recorded_frames[0].ndim == 3
+                fourcc = cv2.VideoWriter_fourcc(*("FFV1" if codec == "FFV1" else "MJPG"))
+                writer = cv2.VideoWriter(self._video_output_path, fourcc, self.fps, (w, h), is_color)
+                if not writer.isOpened():
+                    logger.error("Failed to open VideoWriter for USB recording")
+                    return None
+                for frame in self._recorded_frames:
+                    writer.write(frame)
+                writer.release()
+                logger.info(f"Saved video: {self._video_output_path}")
+                return self._video_output_path
             else:
                 # Stop Picamera2 recording
                 if self.pihq_camera is not None:
@@ -481,9 +536,16 @@ class CaptureManager:
         if self.picam2 is not None:
             try:
                 self.picam2.stop()
-            except:
+            except Exception:
                 pass
             self.picam2 = None
-        
+
+        if self.usb_camera is not None and getattr(self, "_usb_camera_owned", True):
+            try:
+                self.usb_camera.release()
+            except Exception:
+                pass
+            self.usb_camera = None
+
         self._recorded_frames = []
 

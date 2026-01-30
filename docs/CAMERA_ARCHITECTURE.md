@@ -4,6 +4,15 @@
 
 This document explains the trade-offs between using a single Picamera2 instance versus multiple instances for preview and recording.
 
+## Camera Backend Detection (Pi HQ vs USB)
+
+RoboCam-Suite supports **two camera backends**; the system uses the **first one found** (only one camera is expected at a time):
+
+1. **Raspberry Pi HQ (libcamera/Picamera2)** – tried first.
+2. **USB camera (e.g. Mars 662M USB3.0)** – tried if Pi HQ is not available (OpenCV/V4L2). Mars 662M is **monochrome**; USB backend is grayscale only (no color).
+
+Detection is in `robocam/camera_backend.py` via `detect_camera()`. USB cameras use `robocam/usbcamera.py` (`USBCamera`). Supported Mars 662M resolutions: 1936×1100, 1920×1080, 1280×720 at high FPS (see specs). Preview and capture work with either backend; USB mode only shows **"USB (Grayscale)"** (monochrome only).
+
 ## Current Implementation
 
 ### calibrate.py

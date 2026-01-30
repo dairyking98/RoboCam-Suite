@@ -26,7 +26,9 @@ from typing import Optional, Dict, List, Tuple, Any
 from picamera2 import Picamera2
 from picamera2.encoders import H264Encoder
 from picamera2.outputs import FileOutput
+from robocam.camera_backend import detect_camera
 from robocam.robocam_ccc import RoboCam
+from robocam.usbcamera import USBCamera
 from robocam.laser import Laser
 from robocam.config import get_config
 from robocam.logging_config import get_logger
@@ -314,19 +316,22 @@ class ExperimentWindow:
         z_val (float): Z coordinate (focus height)
     """
     
-    def __init__(self, parent: tk.Tk, picam2: Optional[Picamera2], robocam: RoboCam, simulate_3d: bool = False, simulate_cam: bool = False) -> None:
+    def __init__(self, parent: tk.Tk, picam2: Optional[Picamera2], robocam: RoboCam,
+                 usb_camera=None, simulate_3d: bool = False, simulate_cam: bool = False) -> None:
         """
         Initialize experiment window.
-        
+
         Args:
             parent: Parent tkinter window
-            picam2: Picamera2 instance for video/still capture (None if simulate_cam is True)
+            picam2: Picamera2 instance (Pi HQ); None if using USB or simulate_cam
             robocam: RoboCam instance for printer control
+            usb_camera: USBCamera instance when USB camera is used (e.g. Mars 662M)
             simulate_3d: If True, run in 3D printer simulation mode (for display purposes)
             simulate_cam: If True, run in camera simulation mode (no camera operations)
         """
         self.parent: tk.Tk = parent
         self.picam2: Optional[Picamera2] = picam2
+        self.usb_camera = usb_camera
         self.robocam: RoboCam = robocam
         self.simulate_3d: bool = simulate_3d
         self.simulate_cam: bool = simulate_cam
@@ -606,8 +611,11 @@ class ExperimentWindow:
         
         row += 1
         tk.Label(camera_frame, text="Capture Type:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        self.capture_type_var = tk.StringVar(value="Picamera2 (Color)")
-        capture_type_menu = tk.OptionMenu(camera_frame, self.capture_type_var, *CaptureManager.CAPTURE_TYPES)
+        # Show USB types only when USB camera is in use (first camera found)
+        capture_types = CaptureManager.CAPTURE_TYPES_USB if self.usb_camera else CaptureManager.CAPTURE_TYPES
+        default_capture = "USB (Grayscale)" if self.usb_camera else "Picamera2 (Color)"
+        self.capture_type_var = tk.StringVar(value=default_capture)
+        capture_type_menu = tk.OptionMenu(camera_frame, self.capture_type_var, *capture_types)
         capture_type_menu.grid(row=row, column=3, sticky="w", padx=2, pady=2)
 
         # === SECTION 5: MOTION SETTINGS ===
@@ -1519,14 +1527,35 @@ class ExperimentWindow:
         # Try to get native resolution from camera
         temp_camera = None
         try:
-            # Use existing camera instance if available, otherwise create temporary one
+            # USB camera: use supported resolutions (e.g. Mars 662M max 1936×1100)
+            if self.usb_camera is not None and not self.simulate_cam:
+                from robocam.usbcamera import USB_CAMERA_SUPPORTED_RESOLUTIONS
+                if USB_CAMERA_SUPPORTED_RESOLUTIONS:
+                    max_width, max_height = USB_CAMERA_SUPPORTED_RESOLUTIONS[0]
+                    self.res_x_ent.delete(0, tk.END)
+                    self.res_x_ent.insert(0, str(max_width))
+                    self.res_y_ent.delete(0, tk.END)
+                    self.res_y_ent.insert(0, str(max_height))
+                    if hasattr(self, 'status_lbl'):
+                        self.status_lbl.config(text=f"Set to USB camera resolution: {max_width}x{max_height}", fg="green")
+                    logger.info(f"Set resolution to USB camera max: {max_width}x{max_height}")
+                    return
+                max_resolution = (1920, 1080)  # fallback
+                max_width, max_height = max_resolution
+                self.res_x_ent.delete(0, tk.END)
+                self.res_x_ent.insert(0, str(max_width))
+                self.res_y_ent.delete(0, tk.END)
+                self.res_y_ent.insert(0, str(max_height))
+                if hasattr(self, 'status_lbl'):
+                    self.status_lbl.config(text=f"Set to {max_width}x{max_height}", fg="green")
+                return
+
+            # Pi HQ: use existing camera or create temporary one to query
             camera_to_query = self.picam2 if (self.picam2 is not None and not self.simulate_cam) else None
-            
             if camera_to_query is None:
-                # Create a temporary camera instance to query native resolution
                 temp_camera = Picamera2()
                 camera_to_query = temp_camera
-            
+
             # Get camera info which contains sensor modes
             camera_info = camera_to_query.camera_properties
             
@@ -2213,7 +2242,7 @@ class ExperimentWindow:
         capture_type = self.capture_type_var.get()
         capture_mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
         
-        # Initialize capture manager if using high-FPS modes or for Image Capture
+        # Initialize capture manager if using high-FPS, USB, or for Image Capture
         self.capture_manager: Optional[CaptureManager] = None
         if "High FPS" in capture_type:
             # Use capture manager for high-FPS modes
@@ -2222,6 +2251,20 @@ class ExperimentWindow:
                     capture_type=capture_type,
                     resolution=(res_x, res_y),
                     fps=fps
+                )
+                logger.info(f"Initialized {capture_type} capture manager: {res_x}x{res_y} @ {fps} FPS")
+            except Exception as e:
+                logger.error(f"Failed to initialize capture manager: {e}")
+                self.status_lbl.config(text=f"Error: Failed to initialize {capture_type}", fg="red")
+                return
+        elif "USB" in capture_type and self.usb_camera is not None:
+            # Use capture manager for USB camera (e.g. Mars 662M)
+            try:
+                self.capture_manager = CaptureManager(
+                    capture_type=capture_type,
+                    resolution=(res_x, res_y),
+                    fps=fps,
+                    usb_camera=self.usb_camera
                 )
                 logger.info(f"Initialized {capture_type} capture manager: {res_x}x{res_y} @ {fps} FPS")
             except Exception as e:
@@ -2500,7 +2543,8 @@ class ExperimentWindow:
                 
                 else:
                     # === VIDEO CAPTURE MODE (existing implementation) ===
-                    ext = ".h264"  # H264 is the only export format
+                    use_usb_capture = self.capture_manager is not None and "USB" in self.capture_manager.get_capture_type()
+                    ext = ".avi" if use_usb_capture else ".h264"  # USB uses AVI (FFV1); Pi HQ uses H264
                     fname = f"{ds}_{ts}_{loop_experiment_name}_{y_lbl}{x_lbl}{ext}"
                     path = os.path.join(loop_output_folder, fname)
 
@@ -2516,56 +2560,47 @@ class ExperimentWindow:
                     
                     recording_start_time = time.time()
                     
-                    # Check if using high-FPS capture manager
-                    if self.capture_manager is not None and "High FPS" in self.capture_manager.get_capture_type():
-                        # Use high-FPS capture manager
-                        # Use FFV1 lossless codec for maximum quality
+                    # Check if using capture manager (high-FPS or USB) - frame buffering and encode on stop
+                    use_capture_manager_video = (
+                        self.capture_manager is not None
+                        and ("High FPS" in self.capture_manager.get_capture_type() or "USB" in self.capture_manager.get_capture_type())
+                    )
+                    if use_capture_manager_video:
+                        # Use capture manager (high-FPS or USB): buffer frames, encode on stop
                         codec = "FFV1"
-                        
-                        # Start recording with capture manager
                         success = self.capture_manager.start_video_recording(path, codec=codec)
                         if not success:
-                            logger.error("Failed to start high-FPS recording")
+                            logger.error("Failed to start recording")
                             self.status_lbl.config(text="Recording failed", fg="red")
                             continue
-                        
                         self.recording = True
                         self.start_recording_flash()
-                        
-                        # Execute all action phases while capturing frames
                         for phase_idx, (action, phase_time) in enumerate(self.action_phases_list, 1):
                             if not self.running:
                                 break
-                            
-                            # Determine GPIO state
                             state = 1 if action == "GPIO ON" else 0
                             self.laser.switch(state)
                             self.laser_on = (state == 1)
-                            
-                            # Wait for phase duration and capture frames continuously
                             phase_start = time.time()
                             action_name = "ON" if action == "GPIO ON" else "OFF"
                             self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
-                            
-                            # Capture frames during phase
-                            frame_interval = 1.0 / fps  # Time between frames
+                            frame_interval = 1.0 / fps
                             last_frame_time = time.time()
                             while time.time() - phase_start < phase_time and self.running:
                                 current_time = time.time()
                                 if current_time - last_frame_time >= frame_interval:
                                     self.capture_manager.capture_frame_for_video()
                                     last_frame_time = current_time
-                                time.sleep(0.01)  # Small sleep to avoid busy waiting
-                        
-                        # Stop recording and encode to video
+                                time.sleep(0.01)
                         output_path = self.capture_manager.stop_video_recording(codec=codec)
                         if output_path is None:
-                            logger.error("Failed to save high-FPS video")
+                            logger.error("Failed to save video")
                             self.recording = False
                             self.stop_recording_flash()
                             continue
                     else:
                         # Use Picamera2 encoder-based recording
+                        output_path = path  # For metadata; H264 path
                         output = FileOutput(path)
                         if self.picam2 is not None:
                             self.picam2.start_recording(self.encoder, output)
@@ -2616,8 +2651,8 @@ class ExperimentWindow:
                     # Save metadata file with FPS and recording information
                     well_label = f"{y_lbl}{x_lbl}"
                     timestamp_str = f"{ds}_{ts}"
-                    # Use output_path if high-FPS mode was used, otherwise use path
-                    video_path_for_metadata = output_path if (self.capture_manager is not None and "High FPS" in self.capture_manager.get_capture_type()) else path
+                    # Use output_path if capture manager was used (high-FPS or USB), otherwise use path
+                    video_path_for_metadata = output_path if (self.capture_manager is not None and ("High FPS" in self.capture_manager.get_capture_type() or "USB" in self.capture_manager.get_capture_type())) else path
                     save_video_metadata(
                         video_path=video_path_for_metadata,
                         target_fps=fps,
@@ -2720,8 +2755,7 @@ class ExperimentWindow:
             self.laser_on = False
         if self.recording:
             try:
-                if self.capture_manager is not None and "High FPS" in self.capture_manager.get_capture_type():
-                    # Stop high-FPS recording
+                if self.capture_manager is not None and ("High FPS" in self.capture_manager.get_capture_type() or "USB" in self.capture_manager.get_capture_type()):
                     self.capture_manager.stop_video_recording(codec="FFV1")
                 elif self.picam2 is not None:
                     self.picam2.stop_recording()
@@ -2764,13 +2798,26 @@ if __name__ == "__main__":
     baudrate = config.get("hardware.printer.baudrate", 115200)
     robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate_3d=args.simulate_3d)
     
-    # Initialize camera only if not in camera simulation mode
+    # Initialize camera: use first found (Pi HQ or USB; only one in system at a time)
+    picam2: Optional[Picamera2] = None
+    usb_camera = None
     if args.simulate_cam:
-        picam2: Optional[Picamera2] = None
         print("Camera simulation mode: Skipping camera initialization")
     else:
-        picam2: Picamera2 = Picamera2()
-    
-    app: ExperimentWindow = ExperimentWindow(root, picam2, robocam, simulate_3d=args.simulate_3d, simulate_cam=args.simulate_cam)
+        backend = detect_camera()
+        if backend == "pihq":
+            picam2 = Picamera2()
+            print("Camera started (Pi HQ)")
+        elif backend == "usb":
+            usb_camera = USBCamera(resolution=(1920, 1080), fps=30.0)
+            print("Camera started (USB)")
+        else:
+            raise RuntimeError("No camera found. Connect a Raspberry Pi HQ camera or a USB camera (e.g. Mars 662M).")
+
+    app: ExperimentWindow = ExperimentWindow(
+        root, picam2, robocam,
+        usb_camera=usb_camera,
+        simulate_3d=args.simulate_3d, simulate_cam=args.simulate_cam
+    )
     app.open()  # Open experiment window directly
     root.mainloop()

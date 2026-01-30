@@ -16,12 +16,13 @@ import json
 import re
 from datetime import datetime
 from typing import Optional, List, Tuple, Dict, Any
-from picamera2 import Picamera2
+from robocam.camera_backend import detect_camera
 from robocam.robocam_ccc import RoboCam
 from robocam.camera_preview import FPSTracker
 from robocam.config import get_config
 from robocam.capture_interface import CaptureManager
 from robocam.preview_window import PreviewWindow
+from robocam.usbcamera import USBCamera
 
 # Preview resolution for camera display (will be loaded from config)
 default_preview_resolution: tuple[int, int] = (800, 600)
@@ -86,58 +87,72 @@ class PreviewApp:
         else:
             preview_resolution = default_preview_resolution
 
-        # Picamera2 setup
+        # Camera setup: use first camera found (Pi HQ or USB; only one in system at a time)
         self.preview_window: Optional[PreviewWindow] = None
+        self.picam2 = None
+        self.usb_camera = None
+        self.fps_tracker: Optional[FPSTracker] = None
+
         if self._simulate_cam:
-            # In camera simulation mode, skip camera initialization
             print("Camera simulation mode: Skipping camera initialization")
-            self.picam2: Optional[Picamera2] = None
-            self.fps_tracker: Optional[FPSTracker] = None
         else:
-            # Normal camera setup
-            self.picam2 = Picamera2()
-            self.picam2_config = self.picam2.create_preview_configuration(
-                main={"size": preview_resolution},
-                controls={"FrameRate": default_fps},
-                buffer_count=2
-            )
-            self.picam2.configure(self.picam2_config)
-            
-            # Set up FPS tracking
-            self.fps_tracker: FPSTracker = FPSTracker()
-            
-            def frame_callback(request):
-                """Callback fired for each camera frame."""
-                self.fps_tracker.update()
-            
-            self.picam2.post_callback = frame_callback
-            
-            # Start camera
-            try:
-                self.picam2.start()
-                print("Camera started")
-            except Exception as exc:
-                msg = f"Camera start failed: {exc}"
-                raise RuntimeError(msg) from exc
+            backend = detect_camera()
+            if backend == "pihq":
+                from picamera2 import Picamera2
+                self.picam2 = Picamera2()
+                self.picam2_config = self.picam2.create_preview_configuration(
+                    main={"size": preview_resolution},
+                    controls={"FrameRate": default_fps},
+                    buffer_count=2
+                )
+                self.picam2.configure(self.picam2_config)
+                self.fps_tracker = FPSTracker()
+                def frame_callback(request):
+                    if self.fps_tracker:
+                        self.fps_tracker.update()
+                self.picam2.post_callback = frame_callback
+                try:
+                    self.picam2.start()
+                    print("Camera started (Pi HQ)")
+                except Exception as exc:
+                    msg = f"Camera start failed: {exc}"
+                    raise RuntimeError(msg) from exc
+            elif backend == "usb":
+                self.usb_camera = USBCamera(
+                    resolution=preview_resolution,
+                    fps=default_fps
+                )
+                self.fps_tracker = FPSTracker()
+                print("Camera started (USB)")
+            else:
+                raise RuntimeError("No camera found. Connect a Raspberry Pi HQ camera or a USB camera (e.g. Mars 662M).")
 
         # UI Elements
         self.create_widgets()
-        
+
         # Initialize capture manager (only if not in camera simulation mode)
         self.capture_manager: Optional[CaptureManager] = None
-        if not self._simulate_cam:
+        if not self._simulate_cam and (self.picam2 is not None or self.usb_camera is not None):
             try:
-                self.capture_manager = CaptureManager(
-                    capture_type="Picamera2 (Color)",
-                    resolution=preview_resolution,
-                    fps=default_fps,
-                    picam2=self.picam2  # Pass existing picam2 instance
-                )
+                if self.usb_camera is not None:
+                    self.capture_manager = CaptureManager(
+                        capture_type="USB (Grayscale)",
+                        resolution=preview_resolution,
+                        fps=default_fps,
+                        usb_camera=self.usb_camera
+                    )
+                else:
+                    self.capture_manager = CaptureManager(
+                        capture_type="Picamera2 (Color)",
+                        resolution=preview_resolution,
+                        fps=default_fps,
+                        picam2=self.picam2
+                    )
             except Exception as e:
                 print(f"Warning: Failed to initialize capture manager: {e}")
-        
-        # Create separate preview window (after widgets are created and capture manager is ready)
-        if not self._simulate_cam and self.picam2 is not None:
+
+        # Create separate preview window (after widgets and capture manager)
+        if not self._simulate_cam and (self.picam2 is not None or self.usb_camera is not None):
             try:
                 self.preview_window = PreviewWindow(
                     parent=self.root,
@@ -145,7 +160,8 @@ class PreviewApp:
                     capture_manager=self.capture_manager,
                     initial_resolution=preview_resolution,
                     initial_fps=default_fps,
-                    simulate_cam=self._simulate_cam
+                    simulate_cam=self._simulate_cam,
+                    usb_camera=self.usb_camera
                 )
                 print("Preview window created")
             except Exception as e:
@@ -1019,9 +1035,9 @@ class PreviewApp:
             except Exception as e:
                 print(f"Error cleaning up capture manager: {e}")
         
-        # Stop camera
+        # Stop camera (Pi HQ only; USB is cleaned up by capture_manager)
         try:
-            if self.picam2:
+            if self.picam2 is not None:
                 self.picam2.stop()
         except Exception:
             pass
