@@ -33,6 +33,10 @@ from robocam.laser import Laser
 from robocam.config import get_config
 from robocam.logging_config import get_logger
 from robocam.capture_interface import CaptureManager
+from robocam.resolution_aspect import (
+    correct_resolution_for_camera,
+    get_default_resolution_for_camera,
+)
 
 logger = get_logger(__name__)
 
@@ -567,12 +571,17 @@ class ExperimentWindow:
         tk.Label(camera_frame, text="Resolution X:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
         self.res_x_ent = tk.Entry(camera_frame, width=12)
         self.res_x_ent.grid(row=row, column=1, sticky="w", padx=2, pady=2)
-        self.res_x_ent.insert(0, str(DEFAULT_RES[0]))
+        # Use camera-appropriate default (Pi HQ 4:3, USB/Mars 16:9)
+        default_res = get_default_resolution_for_camera(is_pihq=(self.usb_camera is None))
+        self.res_x_ent.insert(0, str(default_res[0]))
         
         tk.Label(camera_frame, text="Resolution Y:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
         self.res_y_ent = tk.Entry(camera_frame, width=12)
         self.res_y_ent.grid(row=row, column=3, sticky="w", padx=2, pady=2)
-        self.res_y_ent.insert(0, str(DEFAULT_RES[1]))
+        self.res_y_ent.insert(0, str(default_res[1]))
+        # Validate aspect ratio when user leaves resolution fields
+        self.res_x_ent.bind("<FocusOut>", self._on_resolution_focus_out)
+        self.res_y_ent.bind("<FocusOut>", self._on_resolution_focus_out)
         
         # Add "Set to Native Resolution" button on next row
         row += 1
@@ -935,6 +944,8 @@ class ExperimentWindow:
             self.res_x_ent.insert(0, str(resolution[0]))
             self.res_y_ent.delete(0, tk.END)
             self.res_y_ent.insert(0, str(resolution[1]))
+            # Validate aspect ratio for loaded resolution (may correct and notify)
+            self._validate_and_correct_resolution()
             
             self.fps_ent.delete(0, tk.END)
             self.fps_ent.insert(0, str(settings.get("fps", 30.0)))
@@ -1506,6 +1517,46 @@ class ExperimentWindow:
         self.run_btn.config(state="normal")
         if hasattr(self, 'status_lbl'):
             self.status_lbl.config(text=f"Ready - {len(selected_wells)} wells selected")
+    
+    def _is_pihq_camera(self) -> bool:
+        """True if using Pi HQ camera (4:3), False if USB/Mars 662M (16:9)."""
+        return self.usb_camera is None  # Pi HQ when no USB camera (incl. simulate_cam)
+    
+    def _validate_and_correct_resolution(self) -> Tuple[int, int]:
+        """
+        Validate resolution matches camera aspect ratio. If not, correct it,
+        update the entry fields, and show a notification.
+        
+        Returns:
+            (res_x, res_y) - the validated (possibly corrected) resolution.
+        """
+        try:
+            res_x = int(self.res_x_ent.get().strip())
+            res_y = int(self.res_y_ent.get().strip())
+        except ValueError:
+            default = get_default_resolution_for_camera(self._is_pihq_camera())
+            return default
+        
+        is_pihq = self._is_pihq_camera()
+        new_x, new_y, was_corrected = correct_resolution_for_camera(res_x, res_y, is_pihq)
+        
+        if was_corrected:
+            self.res_x_ent.delete(0, tk.END)
+            self.res_x_ent.insert(0, str(new_x))
+            self.res_y_ent.delete(0, tk.END)
+            self.res_y_ent.insert(0, str(new_y))
+            camera_name = "Pi HQ (4:3)" if is_pihq else "USB/Mars 662M (16:9)"
+            msg = f"Resolution adjusted for {camera_name}: {res_x}×{res_y} → {new_x}×{new_y}"
+            logger.info(msg)
+            if hasattr(self, 'status_lbl'):
+                self.status_lbl.config(text=msg, fg="blue")
+        
+        return (new_x, new_y)
+    
+    def _on_resolution_focus_out(self, event: tk.Event) -> None:
+        """Validate and correct resolution when user leaves resolution field."""
+        if hasattr(self, 'res_x_ent') and hasattr(self, 'res_y_ent'):
+            self._validate_and_correct_resolution()
     
     def set_native_resolution(self) -> None:
         """
@@ -2195,10 +2246,9 @@ class ExperimentWindow:
                 self.status_lbl.config(text=error_msg, fg="red")
                 return
             
-            # Get other settings
+            # Get other settings (validate resolution for camera aspect ratio)
             try:
-                res_x = int(self.res_x_ent.get().strip())
-                res_y = int(self.res_y_ent.get().strip())
+                res_x, res_y = self._validate_and_correct_resolution()
                 fps = float(self.fps_ent.get().strip())
                 export = self.export_var.get()
             except Exception as e:
