@@ -29,6 +29,8 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLAYERONE_SDK_LOCAL = os.path.join(_PROJECT_ROOT, "playerone_sdk")
 PLAYERONE_SDK_LOCAL_PYTHON = os.path.join(PLAYERONE_SDK_LOCAL, "python")
 PLAYERONE_SDK_LOCAL_NATIVE = os.path.join(PLAYERONE_SDK_LOCAL, "native")
+# Full SDK in project root (e.g. PlayerOne_Camera_SDK_Linux_V3.10.0/python)
+PLAYERONE_SDK_FULL_PYTHON = os.path.join(_PROJECT_ROOT, "PlayerOne_Camera_SDK_Linux_V3.10.0", "python")
 
 # Mars 662M (and similar) supported resolutions
 PLAYERONE_SUPPORTED_RESOLUTIONS = [
