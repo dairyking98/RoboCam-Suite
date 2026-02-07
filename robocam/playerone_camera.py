@@ -190,23 +190,26 @@ class PlayerOneCamera:
         try:
             import pyPOACamera as poa  # type: ignore[import-not-found]
             self._poa = poa
-            count = poa.POAGetCameraCount()
+            count = poa.GetCameraCount()
             if not count or count <= self.camera_index:
                 raise RuntimeError("No Player One camera at index %d (count=%s)" % (self.camera_index, count))
-            # Open camera
-            props = poa.POAGetCameraProperties(self.camera_index)
-            if props is None:
-                raise RuntimeError("Failed to get camera properties")
-            self._camera_id = self.camera_index
-            err = poa.POAOpenCamera(self.camera_index)
+            # Get camera ID from properties (index != camera ID)
+            err, props = poa.GetCameraProperties(self.camera_index)
             if err != poa.POAErrors.POA_OK:
-                raise RuntimeError("POAOpenCamera failed: %s" % getattr(err, "name", err))
+                raise RuntimeError("GetCameraProperties failed: %s" % getattr(err, "name", err))
+            self._camera_id = props.cameraID
+            err = poa.OpenCamera(self._camera_id)
+            if err != poa.POAErrors.POA_OK:
+                raise RuntimeError("OpenCamera failed: %s" % getattr(err, "name", err))
+            err = poa.InitCamera(self._camera_id)
+            if err != poa.POAErrors.POA_OK:
+                raise RuntimeError("InitCamera failed: %s" % getattr(err, "name", err))
             # Set image size and format
             w, h = self.preset_resolution
-            poa.POASetImageStartPos(self.camera_index, 0, 0)
-            poa.POASetImageSize(self.camera_index, w, h)
-            poa.POASetImageBin(self.camera_index, 1)
-            poa.POASetImageFormat(self.camera_index, poa.POAImgFormat.POA_RAW8)
+            poa.SetImageStartPos(self._camera_id, 0, 0)
+            poa.SetImageSize(self._camera_id, w, h)
+            poa.SetImageBin(self._camera_id, 1)
+            poa.SetImageFormat(self._camera_id, poa.POAImgFormat.POA_RAW8)
             self._img_width = w
             self._img_height = h
             self._opened = True
