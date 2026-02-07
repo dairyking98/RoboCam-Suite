@@ -29,6 +29,7 @@ from picamera2.outputs import FileOutput
 from robocam.camera_backend import detect_camera
 from robocam.robocam_ccc import RoboCam
 from robocam.usbcamera import USBCamera
+from robocam.playerone_camera import PlayerOneCamera
 from robocam.laser import Laser
 from robocam.config import get_config
 from robocam.logging_config import get_logger
@@ -620,9 +621,14 @@ class ExperimentWindow:
         
         row += 1
         tk.Label(camera_frame, text="Capture Type:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        # Show USB types only when USB camera is in use (first camera found)
-        capture_types = CaptureManager.CAPTURE_TYPES_USB if self.usb_camera else CaptureManager.CAPTURE_TYPES
-        default_capture = "USB (Grayscale)" if self.usb_camera else "Picamera2 (Color)"
+        # Show USB/Player One types when that backend is in use
+        if self.usb_camera is not None:
+            is_playerone = type(self.usb_camera).__name__ == "PlayerOneCamera"
+            capture_types = CaptureManager.CAPTURE_TYPES_PLAYERONE if is_playerone else CaptureManager.CAPTURE_TYPES_USB
+            default_capture = "Player One (Grayscale)" if is_playerone else "USB (Grayscale)"
+        else:
+            capture_types = CaptureManager.CAPTURE_TYPES
+            default_capture = "Picamera2 (Color)"
         self.capture_type_var = tk.StringVar(value=default_capture)
         capture_type_menu = tk.OptionMenu(camera_frame, self.capture_type_var, *capture_types)
         capture_type_menu.grid(row=row, column=3, sticky="w", padx=2, pady=2)
@@ -2307,8 +2313,21 @@ class ExperimentWindow:
                 logger.error(f"Failed to initialize capture manager: {e}")
                 self.status_lbl.config(text=f"Error: Failed to initialize {capture_type}", fg="red")
                 return
+        elif "Player One" in capture_type and self.usb_camera is not None and type(self.usb_camera).__name__ == "PlayerOneCamera":
+            try:
+                self.capture_manager = CaptureManager(
+                    capture_type=capture_type,
+                    resolution=(res_x, res_y),
+                    fps=fps,
+                    playerone_camera=self.usb_camera
+                )
+                logger.info(f"Initialized {capture_type} capture manager: {res_x}x{res_y} @ {fps} FPS")
+            except Exception as e:
+                logger.error(f"Failed to initialize capture manager: {e}")
+                self.status_lbl.config(text=f"Error: Failed to initialize {capture_type}", fg="red")
+                return
         elif "USB" in capture_type and self.usb_camera is not None:
-            # Use capture manager for USB camera (e.g. Mars 662M)
+            # Use capture manager for USB camera (V4L2)
             try:
                 self.capture_manager = CaptureManager(
                     capture_type=capture_type,
@@ -2858,9 +2877,10 @@ if __name__ == "__main__":
         if backend == "pihq":
             picam2 = Picamera2()
             print("Camera started (Pi HQ)")
-        elif backend == "usb":
-            usb_camera = USBCamera(resolution=(1920, 1080), fps=30.0)
-            print("Camera started (USB)")
+        elif isinstance(backend, tuple) and backend[0] == "usb":
+            usb_index = backend[1]
+            usb_camera = USBCamera(resolution=(1920, 1080), fps=30.0, camera_index=usb_index)
+            print(f"Camera started (USB, index {usb_index})")
         else:
             raise RuntimeError("No camera found. Connect a Raspberry Pi HQ camera or a USB camera (e.g. Mars 662M).")
 

@@ -17,7 +17,19 @@ import threading
 import subprocess as sp
 import numpy as np
 import atexit
-from PIL import Image, ImageTk
+
+# PIL.ImageTk required for USB preview (convert frames to tkinter PhotoImage)
+try:
+    from PIL import Image, ImageTk
+except ImportError as e:
+    raise ImportError(
+        "PIL.ImageTk is not available (needed for USB camera preview).\n"
+        "Install Pillow and ensure tkinter is available:\n"
+        "  1. pip install --upgrade Pillow\n"
+        "  2. Test tkinter: python -c \"import tkinter\"\n"
+        "  3. If it still fails, reinstall Python with 'tcl/tk and IDLE' checked."
+    ) from e
+
 from robocam.capture_interface import CaptureManager
 from robocam.camera_preview import FPSTracker, start_best_preview
 from robocam.logging_config import get_logger
@@ -96,14 +108,16 @@ class PreviewWindow:
                 except Exception as e:
                     logger.error(f"PreviewWindow: Failed to start camera: {e}")
                     self.picam2 = None
-            elif backend == "usb":
+            elif isinstance(backend, tuple) and backend[0] == "usb":
                 from robocam.usbcamera import USBCamera
+                usb_index = backend[1]
                 self.usb_camera = USBCamera(
                     resolution=initial_resolution,
-                    fps=initial_fps
+                    fps=initial_fps,
+                    camera_index=usb_index
                 )
                 self.picam2 = None
-                logger.info("PreviewWindow: Created and started USB camera instance")
+                logger.info("PreviewWindow: Created and started USB camera instance (index %d)", usb_index)
             else:
                 self.picam2 = None
                 logger.warning("PreviewWindow: No camera found")
@@ -114,13 +128,23 @@ class PreviewWindow:
         if capture_manager is None and not simulate_cam:
             if self.usb_camera is not None:
                 try:
-                    self.capture_manager = CaptureManager(
-                        capture_type="USB (Grayscale)",
-                        resolution=initial_resolution,
-                        fps=initial_fps,
-                        usb_camera=self.usb_camera
-                    )
-                    logger.info("PreviewWindow: Created CaptureManager (USB monochrome)")
+                    is_playerone = type(self.usb_camera).__name__ == "PlayerOneCamera"
+                    if is_playerone:
+                        self.capture_manager = CaptureManager(
+                            capture_type="Player One (Grayscale)",
+                            resolution=initial_resolution,
+                            fps=initial_fps,
+                            playerone_camera=self.usb_camera
+                        )
+                        logger.info("PreviewWindow: Created CaptureManager (Player One)")
+                    else:
+                        self.capture_manager = CaptureManager(
+                            capture_type="USB (Grayscale)",
+                            resolution=initial_resolution,
+                            fps=initial_fps,
+                            usb_camera=self.usb_camera
+                        )
+                        logger.info("PreviewWindow: Created CaptureManager (USB monochrome)")
                 except Exception as e:
                     logger.warning(f"PreviewWindow: Failed to create capture manager: {e}")
                     self.capture_manager = None
@@ -185,10 +209,15 @@ class PreviewWindow:
         self.grayscale_image_id = None
         # Canvas is hidden by default, only shown for grayscale captured images
         
-        # Capture Type (USB backend only shows USB types)
+        # Capture Type (USB/Player One backend shows only that type)
         tk.Label(settings_frame, text="Capture Type:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
-        capture_types = CaptureManager.CAPTURE_TYPES_USB if self.usb_camera else CaptureManager.CAPTURE_TYPES
-        default_type = "USB (Grayscale)" if self.usb_camera else "Picamera2 (Color)"
+        if self.usb_camera is not None:
+            is_playerone = type(self.usb_camera).__name__ == "PlayerOneCamera"
+            capture_types = CaptureManager.CAPTURE_TYPES_PLAYERONE if is_playerone else CaptureManager.CAPTURE_TYPES_USB
+            default_type = "Player One (Grayscale)" if is_playerone else "USB (Grayscale)"
+        else:
+            capture_types = CaptureManager.CAPTURE_TYPES
+            default_type = "Picamera2 (Color)"
         self.capture_type_var = tk.StringVar(value=default_type)
         if capture_manager:
             capture_type_menu = tk.OptionMenu(

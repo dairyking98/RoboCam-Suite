@@ -23,6 +23,7 @@ from robocam.config import get_config
 from robocam.capture_interface import CaptureManager
 from robocam.preview_window import PreviewWindow
 from robocam.usbcamera import USBCamera
+from robocam.playerone_camera import PlayerOneCamera
 
 # Preview resolution for camera display (will be loaded from config)
 default_preview_resolution: tuple[int, int] = (800, 600)
@@ -117,15 +118,25 @@ class PreviewApp:
                 except Exception as exc:
                     msg = f"Camera start failed: {exc}"
                     raise RuntimeError(msg) from exc
-            elif backend == "usb":
-                self.usb_camera = USBCamera(
+            elif isinstance(backend, tuple) and backend[0] == "playerone":
+                self.usb_camera = PlayerOneCamera(
                     resolution=preview_resolution,
-                    fps=default_fps
+                    fps=default_fps,
+                    camera_index=backend[1]
                 )
                 self.fps_tracker = FPSTracker()
-                print("Camera started (USB)")
+                print("Camera started (Player One)")
+            elif isinstance(backend, tuple) and backend[0] == "usb":
+                usb_index = backend[1]
+                self.usb_camera = USBCamera(
+                    resolution=preview_resolution,
+                    fps=default_fps,
+                    camera_index=usb_index
+                )
+                self.fps_tracker = FPSTracker()
+                print(f"Camera started (USB, index {usb_index})")
             else:
-                raise RuntimeError("No camera found. Connect a Raspberry Pi HQ camera or a USB camera (e.g. Mars 662M).")
+                raise RuntimeError("No camera found. Connect a Raspberry Pi HQ camera, Player One (Mars 662M), or USB camera.")
 
         # UI Elements
         self.create_widgets()
@@ -135,11 +146,13 @@ class PreviewApp:
         if not self._simulate_cam and (self.picam2 is not None or self.usb_camera is not None):
             try:
                 if self.usb_camera is not None:
+                    is_playerone = type(self.usb_camera).__name__ == "PlayerOneCamera"
                     self.capture_manager = CaptureManager(
-                        capture_type="USB (Grayscale)",
+                        capture_type="Player One (Grayscale)" if is_playerone else "USB (Grayscale)",
                         resolution=preview_resolution,
                         fps=default_fps,
-                        usb_camera=self.usb_camera
+                        playerone_camera=self.usb_camera if is_playerone else None,
+                        usb_camera=None if is_playerone else self.usb_camera
                     )
                 else:
                     self.capture_manager = CaptureManager(

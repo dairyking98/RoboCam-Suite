@@ -11,6 +11,10 @@ echo "Installing system dependencies..."
 sudo apt-get update
 sudo apt-get install -y python3-libcamera libcap-dev python3-dev build-essential
 
+# ImageTk for preview (USB camera and tkinter) - system PIL needs python3-pil.imagetk
+echo "Installing python3-pil.imagetk and python3-tk (for PIL.ImageTk in preview)..."
+sudo apt-get install -y python3-pil.imagetk python3-tk 2>/dev/null || echo "  (optional; if preview still fails, install manually: sudo apt-get install python3-pil.imagetk python3-tk)"
+
 echo ""
 echo "System dependencies installed."
 echo ""
@@ -43,6 +47,10 @@ pip install --upgrade pip
 echo ""
 echo "Reinstalling requirements..."
 pip install -r requirements.txt
+
+echo ""
+echo "Ensuring Pillow (with ImageTk) in venv for preview..."
+pip install --force-reinstall Pillow 2>/dev/null || true
 
 echo ""
 echo "Verifying installation..."

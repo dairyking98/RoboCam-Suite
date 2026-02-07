@@ -23,6 +23,7 @@ from robocam.pihqcamera import PiHQCamera
 from robocam.picamera2_highfps_capture import Picamera2HighFpsCapture
 from robocam.rpicam_vid_capture import RpicamVidCapture
 from robocam.usbcamera import USBCamera
+from robocam.playerone_camera import PlayerOneCamera
 from robocam.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -55,10 +56,13 @@ class CaptureManager:
         "Picamera2 (Grayscale)",
         "Picamera2 (Grayscale - High FPS)",
         "rpicam-vid (Grayscale - High FPS)",
-        "USB (Grayscale)",  # Mars 662M etc. are monochrome; grayscale only
+        "USB (Grayscale)",  # V4L2 monochrome
+        "Player One (Grayscale)",  # Mars 662M etc. via SDK
     ]
-    # Types available when USB (monochrome) camera backend is detected
+    # Types available when USB (V4L2 monochrome) camera backend is detected
     CAPTURE_TYPES_USB = ["USB (Grayscale)"]
+    # Types available when Player One (SDK) camera backend is detected
+    CAPTURE_TYPES_PLAYERONE = ["Player One (Grayscale)"]
 
     def __init__(self, capture_type: str = "Picamera2 (Color)",
                  resolution: Tuple[int, int] = (1920, 1080),
@@ -125,8 +129,21 @@ class CaptureManager:
             if not self.rpicam_vid.start_capture():
                 logger.error("Failed to start rpicam-vid capture")
                 raise RuntimeError("rpicam-vid capture failed to start")
+        elif "Player One" in self.capture_type:
+            # Player One (Mars 662M etc.) via SDK - grayscale only
+            if self.playerone_camera is None:
+                self.playerone_camera = PlayerOneCamera(
+                    resolution=self.resolution,
+                    fps=self.fps
+                )
+                self._playerone_camera_owned = True
+            else:
+                self.playerone_camera.preset_resolution = self.resolution
+                self.playerone_camera.fps = self.fps
+                self._playerone_camera_owned = False
+            logger.info("Initialized Player One (Grayscale) capture")
         elif "USB" in self.capture_type:
-            # USB monochrome camera (e.g. Mars 662M) - grayscale only
+            # USB monochrome camera (V4L2) - grayscale only
             if self.usb_camera is None:
                 self.usb_camera = USBCamera(
                     resolution=self.resolution,
@@ -280,6 +297,10 @@ class CaptureManager:
                 self.rpicam_vid.start_recording()
                 logger.info(f"Started rpicam-vid recording: {output_path}")
                 return True
+            elif self.playerone_camera is not None:
+                self._recorded_frames = []
+                logger.info(f"Started Player One recording: {output_path}")
+                return True
             elif self.usb_camera is not None:
                 # USB: buffer frames; encode on stop (same pattern as high-FPS)
                 self._recorded_frames = []
@@ -403,8 +424,8 @@ class CaptureManager:
                 else:
                     logger.error("Failed to save video")
                     return None
-            elif self.usb_camera is not None:
-                # Encode buffered frames to video (USB)
+            elif self.playerone_camera is not None or self.usb_camera is not None:
+                # Encode buffered frames to video (Player One or USB)
                 if not self._recorded_frames:
                     logger.warning("No frames recorded")
                     return None
@@ -413,7 +434,7 @@ class CaptureManager:
                 fourcc = cv2.VideoWriter_fourcc(*("FFV1" if codec == "FFV1" else "MJPG"))
                 writer = cv2.VideoWriter(self._video_output_path, fourcc, self.fps, (w, h), is_color)
                 if not writer.isOpened():
-                    logger.error("Failed to open VideoWriter for USB recording")
+                    logger.error("Failed to open VideoWriter for recording")
                     return None
                 for frame in self._recorded_frames:
                     writer.write(frame)
@@ -539,6 +560,13 @@ class CaptureManager:
             except Exception:
                 pass
             self.picam2 = None
+
+        if self.playerone_camera is not None and getattr(self, "_playerone_camera_owned", True):
+            try:
+                self.playerone_camera.release()
+            except Exception:
+                pass
+            self.playerone_camera = None
 
         if self.usb_camera is not None and getattr(self, "_usb_camera_owned", True):
             try:

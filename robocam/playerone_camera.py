@@ -1,0 +1,240 @@
+"""
+Player One Camera Module - Mars 662M and similar via Player One SDK.
+
+Uses the Player One Camera SDK (libPlayerOne_camera.so on Linux) for cameras
+that are not standard UVC (e.g. Mars 662M). Exposes the same interface as
+USBCamera so preview and capture work with RoboCam-Suite.
+
+Requires: Player One Linux SDK installed (see docs/PLAYER_ONE_MARS_SDK.md).
+Optional: SDK Python folder in PLAYERONE_SDK_PYTHON or ~/PlayerOne_Camera_SDK_Linux_*/python
+for high-level API; otherwise uses ctypes and the installed .so.
+
+Author: RoboCam-Suite
+"""
+
+import os
+import sys
+import time
+import glob
+import ctypes
+from typing import Optional, Tuple
+import numpy as np
+from robocam.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+# Mars 662M (and similar) supported resolutions
+PLAYERONE_SUPPORTED_RESOLUTIONS = [
+    (1936, 1100),
+    (1920, 1080),
+    (1280, 720),
+]
+
+
+def get_playerone_sdk_python_path() -> Optional[str]:
+    """Return path to SDK python folder, or None if not found."""
+    path = os.environ.get("PLAYERONE_SDK_PYTHON")
+    if path and os.path.isdir(path):
+        return path
+    default = os.path.expanduser("~/PlayerOne_Camera_SDK_Linux_V3.10.0/python")
+    if os.path.isdir(default):
+        return default
+    try:
+        candidates = glob.glob(os.path.expanduser("~/PlayerOne_Camera_SDK_Linux_*/python"))
+        if candidates:
+            return candidates[0]
+    except Exception:
+        pass
+    return None
+
+
+def get_playerone_camera_count() -> int:
+    """Return number of connected Player One cameras (0 if SDK not available)."""
+    sdk_path = get_playerone_sdk_python_path()
+    if sdk_path is None:
+        return 0
+    try:
+        prev = list(sys.path)
+        if sdk_path not in sys.path:
+            sys.path.insert(0, sdk_path)
+        try:
+            import pyPOACamera as poa
+            count = poa.POAGetCameraCount()
+            return int(count) if count is not None else 0
+        finally:
+            sys.path[:] = prev
+    except Exception as e:
+        logger.debug("Player One SDK not available: %s", e)
+        return 0
+
+
+class _DummyCap:
+    """Dummy object so PreviewWindow's usb_camera.cap.isOpened() works."""
+    def __init__(self, opened: bool):
+        self._opened = opened
+    def isOpened(self) -> bool:
+        return self._opened
+
+
+class PlayerOneCamera:
+    """
+    Camera interface for Player One Mars 662M (and similar) via SDK.
+
+    Mirrors USBCamera interface: read_frame(), preset_resolution, fps,
+    take_photo_and_save, start_recording_video, write_frame, stop_recording_video,
+    release. Uses SDK Python bindings when available.
+    """
+
+    def __init__(
+        self,
+        resolution: Tuple[int, int] = (1920, 1080),
+        fps: float = 30.0,
+        camera_index: int = 0,
+    ) -> None:
+        self.preset_resolution: Tuple[int, int] = resolution
+        self.fps: float = fps
+        self.camera_index: int = camera_index
+        self._opened: bool = False
+        self._writer: Optional[object] = None
+        self._recording_path: Optional[str] = None
+        self._poa = None  # pyPOACamera module or ctypes wrapper
+        self._camera_id: Optional[int] = None
+        self._img_width: int = resolution[0]
+        self._img_height: int = resolution[1]
+        self._video_frames: list = []
+        # For preview_window: same as OpenCV VideoCapture for duck typing
+        self.cap: _DummyCap = _DummyCap(False)
+        self._open()
+
+    def _open(self) -> None:
+        sdk_path = get_playerone_sdk_python_path()
+        if sdk_path is None:
+            raise RuntimeError(
+                "Player One SDK Python not found. Set PLAYERONE_SDK_PYTHON to the SDK python folder "
+                "(e.g. ~/PlayerOne_Camera_SDK_Linux_V3.10.0/python). See docs/PLAYER_ONE_MARS_SDK.md."
+            )
+        prev = list(sys.path)
+        if sdk_path not in sys.path:
+            sys.path.insert(0, sdk_path)
+        try:
+            import pyPOACamera as poa  # type: ignore[import-not-found]
+            self._poa = poa
+            count = poa.POAGetCameraCount()
+            if not count or count <= self.camera_index:
+                raise RuntimeError("No Player One camera at index %d (count=%s)" % (self.camera_index, count))
+            # Open camera
+            props = poa.POAGetCameraProperties(self.camera_index)
+            if props is None:
+                raise RuntimeError("Failed to get camera properties")
+            self._camera_id = self.camera_index
+            err = poa.POAOpenCamera(self.camera_index)
+            if err != poa.POAErrors.POA_OK:
+                raise RuntimeError("POAOpenCamera failed: %s" % getattr(err, "name", err))
+            # Set image size and format
+            w, h = self.preset_resolution
+            poa.POASetImageStartPos(self.camera_index, 0, 0)
+            poa.POASetImageSize(self.camera_index, w, h)
+            poa.POASetImageBin(self.camera_index, 1)
+            poa.POASetImageFormat(self.camera_index, poa.POAImgFormat.POA_RAW8)
+            self._img_width = w
+            self._img_height = h
+            self._opened = True
+            self.cap = _DummyCap(True)
+            logger.info("Player One camera opened: %dx%d", w, h)
+        finally:
+            sys.path[:] = prev
+
+    def start(self) -> None:
+        if not self._opened and self._poa is not None:
+            self._open()
+
+    def set_resolution(self, width: int, height: int) -> None:
+        self.preset_resolution = (width, height)
+        if self._opened and self._poa is not None:
+            self._poa.POASetImageSize(self.camera_index, width, height)
+            self._img_width = width
+            self._img_height = height
+
+    def take_photo_and_save(self, file_path: Optional[str] = None) -> None:
+        if file_path is None:
+            file_path = "%s.png" % time.strftime("%Y%m%d_%H%M%S")
+        frame = self.read_frame()
+        if frame is None:
+            raise RuntimeError("Failed to read frame from Player One camera")
+        import cv2
+        ext = file_path.rsplit(".", 1)[-1].lower() if "." in file_path else "png"
+        if ext in ("jpg", "jpeg"):
+            cv2.imwrite(file_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        else:
+            cv2.imwrite(file_path, frame)
+
+    def capture_grayscale_frame(self) -> Optional[np.ndarray]:
+        return self.read_frame()
+
+    def read_frame(self) -> Optional[np.ndarray]:
+        if not self._opened or self._poa is None:
+            return None
+        poa = self._poa
+        # Start exposure (video mode = True for continuous)
+        poa.POAStartExposure(self.camera_index, True)
+        # Wait for frame (short timeout)
+        for _ in range(100):
+            ready = poa.POAImageReady(self.camera_index)
+            if ready:
+                break
+            time.sleep(0.01)
+        else:
+            return None
+        # Get image data
+        w, h = self._img_width, self._img_height
+        size = w * h
+        buf = (ctypes.c_uint8 * size)()
+        err = poa.POAGetImageData(self.camera_index, buf, size, 500)
+        if err != poa.POAErrors.POA_OK:
+            return None
+        return np.ctypeslib.as_array(buf).copy().reshape((h, w))
+
+    def start_recording_video(self, video_path: Optional[str] = None, fps: Optional[float] = None) -> None:
+        if video_path is None:
+            video_path = "%s.avi" % time.strftime("%Y%m%d_%H%M%S")
+        if not self._opened:
+            raise RuntimeError("Player One camera not open")
+        if self._writer is not None:
+            self.stop_recording_video()
+        self._video_frames = []
+        self._recording_path = video_path
+        logger.info("Player One recording started: %s", video_path)
+
+    def stop_recording_video(self) -> None:
+        if self._writer is not None:
+            self._writer = None
+        if self._recording_path and self._video_frames:
+            import cv2
+            w, h = self._img_width, self._img_height
+            fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+            writer = cv2.VideoWriter(self._recording_path, fourcc, self.fps, (w, h), False)
+            for f in self._video_frames:
+                writer.write(f)
+            writer.release()
+            logger.info("Player One recording stopped: %s", self._recording_path)
+        self._recording_path = None
+        self._video_frames = []
+
+    def write_frame(self, frame: np.ndarray) -> bool:
+        if self._recording_path is None:
+            return False
+        self._video_frames.append(frame.copy())
+        return True
+
+    def release(self) -> None:
+        if self._writer is not None or self._video_frames:
+            self.stop_recording_video()
+        if self._opened and self._poa is not None:
+            try:
+                self._poa.POACloseCamera(self.camera_index)
+            except Exception:
+                pass
+            self._opened = False
+        self.cap = _DummyCap(False)
+        self._poa = None
+        logger.info("Player One camera released")

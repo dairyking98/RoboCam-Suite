@@ -4,14 +4,15 @@
 
 This document explains the trade-offs between using a single Picamera2 instance versus multiple instances for preview and recording.
 
-## Camera Backend Detection (Pi HQ vs USB)
+## Camera Backend Detection (Pi HQ, Player One, USB)
 
-RoboCam-Suite supports **two camera backends**; the system uses the **first one found** (only one camera is expected at a time):
+RoboCam-Suite supports **three camera backends**; the system uses the **first one found** (only one camera is expected at a time):
 
 1. **Raspberry Pi HQ (libcamera/Picamera2)** – tried first.
-2. **USB camera (e.g. Mars 662M USB3.0)** – tried if Pi HQ is not available (OpenCV/V4L2). Mars 662M is **monochrome**; USB backend is grayscale only (no color).
+2. **Player One (Mars 662M etc.)** – tried if Pi HQ is not available; uses the **Player One Camera SDK** (not V4L2). Requires SDK installed per `docs/PLAYER_ONE_MARS_SDK.md`. Grayscale only.
+3. **USB camera (V4L2/OpenCV)** – tried last; generic UVC webcams. Grayscale only in RoboCam-Suite.
 
-Detection is in `robocam/camera_backend.py` via `detect_camera()`. USB cameras use `robocam/usbcamera.py` (`USBCamera`). Supported Mars 662M resolutions: 1936×1100, 1920×1080, 1280×720 at high FPS (see specs). Preview and capture work with either backend; USB mode only shows **"USB (Grayscale)"** (monochrome only).
+Detection is in `robocam/camera_backend.py` via `detect_camera()`. Player One cameras use `robocam/playerone_camera.py` (`PlayerOneCamera`). USB (V4L2) cameras use `robocam/usbcamera.py` (`USBCamera`). Supported Mars 662M resolutions (Player One): 1936×1100, 1920×1080, 1280×720. Preview and capture work with any backend; Player One and USB modes show **"Player One (Grayscale)"** or **"USB (Grayscale)"** (monochrome only).
 
 ## Current Implementation
 
@@ -78,7 +79,9 @@ CaptureManager
   ├── Picamera2 (Color) → PiHQCamera(grayscale=False)
   ├── Picamera2 (Grayscale) → PiHQCamera(grayscale=True)
   ├── Picamera2 (Grayscale - High FPS) → Picamera2HighFpsCapture (requires ffmpeg)
-  └── rpicam-vid (Grayscale - High FPS) → RpicamVidCapture
+  ├── rpicam-vid (Grayscale - High FPS) → RpicamVidCapture
+  ├── USB (Grayscale) → USBCamera (V4L2)
+  └── Player One (Grayscale) → PlayerOneCamera (Player One SDK)
 ```
 
 **Benefits**:

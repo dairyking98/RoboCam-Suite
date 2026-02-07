@@ -1,5 +1,8 @@
 """
-USB Camera Module - OpenCV/V4L2 Monochrome USB Cameras (e.g. Mars 662M)
+USB Camera Module - OpenCV/V4L2 Monochrome USB Cameras (e.g. Mars 662M).
+
+On Linux (e.g. Raspberry Pi), uses CAP_V4L2 so /dev/video0, /dev/video1, etc.
+are opened correctly.
 
 Wrapper for monochrome USB cameras via OpenCV (cv2.VideoCapture). Mars 662M
 USB3.0 is a monochrome camera; all capture is grayscale only. Supported
@@ -11,6 +14,7 @@ resolutions and FPS from published specs:
 Author: RoboCam-Suite
 """
 
+import sys
 import time
 from typing import Optional, Tuple
 import numpy as np
@@ -75,8 +79,11 @@ class USBCamera:
         self._open()
 
     def _open(self) -> None:
-        """Open camera and set resolution/FPS."""
-        self.cap = cv2.VideoCapture(self.camera_index)
+        """Open camera and set resolution/FPS. Uses V4L2 on Linux for reliable USB access."""
+        if sys.platform == "linux":
+            self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_V4L2)
+        else:
+            self.cap = cv2.VideoCapture(self.camera_index)
         if not self.cap.isOpened():
             raise RuntimeError("Failed to open USB camera (index %d)" % self.camera_index)
         w, h = self.preset_resolution
