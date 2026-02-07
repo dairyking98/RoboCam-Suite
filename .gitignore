@@ -64,3 +64,7 @@ a.out
 docs/_build/
 *.pdf
 
+# Player One SDK: track lib/ with real .so files so push-from-Windows works on Pi (no symlinks)
+!PlayerOne_Camera_SDK_Linux_V3.10.0/lib/
+!PlayerOne_Camera_SDK_Linux_V3.10.0/lib/**
+!PlayerOne_Camera_SDK_Linux_V3.10.0/lib/**/*.so*

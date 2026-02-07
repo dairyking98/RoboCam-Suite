@@ -38,6 +38,10 @@ Typical layout inside the tarball:
 - `include/` – C/C++ headers
 - Sometimes `README` or `ReleaseNotes` with exact steps
 
+RoboCam-Suite uses only **real `.so` files** in `lib/` (no symlinks). The repo tracks `PlayerOne_Camera_SDK_Linux_V3.10.0/lib/`, so once that folder is committed, **push from Windows works on the Pi**.
+
+**If you extracted the tar on Windows:** ensure the real `.so` files are in the project SDK `lib/`. Run `scripts/populate_playerone_lib.sh` on the Pi once if `lib/` is missing, then commit and push so push-from-Windows works on the Pi.
+
 **Generic steps (run these from inside the extracted SDK folder):**
 
 ```bash
@@ -146,7 +150,51 @@ If you see `OSError: libPlayerOne_camera.so: cannot open shared object file`, th
 LD_LIBRARY_PATH=/usr/local/lib python POA_Camera_Test.py
 ```
 
-#### 5.4 OpenCV GUI error (cv2.namedWindow) on “Video Mode”
+#### 5.4 Where to put the SDK (RoboCam-Suite)
+
+**Option 1: Full SDK folder in project root (simplest)**
+
+Drop the **entire** extracted SDK folder inside RoboCam-Suite, e.g.:
+
+```
+RoboCam-Suite/
+  PlayerOne_Camera_SDK_Linux_V3.10.0/   ← full SDK (lib/, python/, include/, ...)
+  preview.py
+  ...
+```
+
+RoboCam-Suite will use **`PlayerOne_Camera_SDK_Linux_V3.10.0/python`** for the Python bindings and add **`lib/arm64`** (or **`lib/aarch64`**, **`lib/armhf`**) to the library path. No copying of files needed. Just patch **`PlayerOne_Camera_SDK_Linux_V3.10.0/python/pyPOACamera.py`** for Linux (step 5.2) so it loads the library by name (e.g. `LoadLibrary("libPlayerOne_camera.so")`). Run `./start_preview.sh` from the project root.
+
+**Option 2: Project-local `playerone_sdk/` (minimal copy)**
+
+RoboCam-Suite also looks for a **`playerone_sdk/`** layout (library in `playerone_sdk/native/`, Python in `playerone_sdk/python/`). Use this if you prefer to copy only the needed files.
+
+1. From the **RoboCam-Suite** root (same folder as `preview.py`), create the layout and copy files from your extracted SDK (e.g. `~/PlayerOne_Camera_SDK_Linux_V3.10.0`):
+
+   ```bash
+   mkdir -p playerone_sdk/native playerone_sdk/python
+   cp ~/PlayerOne_Camera_SDK_Linux_V3.10.0/lib/arm64/libPlayerOne_camera.so playerone_sdk/native/
+   cp ~/PlayerOne_Camera_SDK_Linux_V3.10.0/python/*.py playerone_sdk/python/
+   ```
+
+2. If the SDK Python code expects a different library name (e.g. `libPlayerOneCamera.so`), copy the .so with that name into `playerone_sdk/native/` (e.g. `cp libPlayerOne_camera.so libPlayerOneCamera.so`).
+
+3. Patch **`playerone_sdk/python/pyPOACamera.py`** so on Linux it loads the library **by name only** (no `./`), e.g. `LoadLibrary("libPlayerOne_camera.so")` or `LoadLibrary("libPlayerOneCamera.so")`. See step 5.2 for the exact block.
+
+4. Run the app from the project root: `./start_preview.sh` or `./start_experiment.sh`. The launcher scripts add `playerone_sdk/native` to `LD_LIBRARY_PATH` so the .so is found.
+
+See **`playerone_sdk/README.md`** in the project for the same steps.
+
+**Alternative: system path**  
+Install the .so in `/usr/local/lib/` (step 2), copy it with the name the SDK expects if different, patch pyPOACamera to load by name, and set `LD_LIBRARY_PATH=/usr/local/lib` when running (the launcher scripts already do this).
+
+#### 5.4.1 Pushed from Windows – will it work on the Pi?
+
+**Yes, once the repo has real `.so` files in `PlayerOne_Camera_SDK_Linux_V3.10.0/lib/`.** The repo tracks that folder (no symlinks). Push from Windows works on the Pi after that.
+
+**If `lib/` is not in the repo yet:** run `scripts/populate_playerone_lib.sh` on the Pi once. It downloads the SDK tarball, extracts it, and copies `lib/` into the project SDK folder. Then run `git add PlayerOne_Camera_SDK_Linux_V3.10.0/lib/`, commit, and push. After that, push-from-Windows works on the Pi.
+
+#### 5.5 OpenCV GUI error (cv2.namedWindow) on “Video Mode”
 
 The test script opens a live preview window with OpenCV (`cv2.namedWindow`). If you see:
 
@@ -167,7 +215,7 @@ then your OpenCV build has no GUI support (e.g. **opencv-python-headless**). The
   ```
   Then run `POA_Camera_Test.py` again (with a display connected, or over X11 forwarding if SSH). Note: RoboCam-Suite uses **opencv-python-headless** on purpose; install **opencv-python** only in a separate venv or environment used for this SDK test if you want to avoid conflicts.
 
-#### 5.5 Alternative: C examples or INDI
+#### 5.6 Alternative: C examples or INDI
 
 If you prefer not to patch Python: the SDK may include C/C++ code under `examples/` — build and run one of those to test the camera. Otherwise use **INDI** (Option 2 below) for a ready-made Linux workflow without the Python wrapper.
 

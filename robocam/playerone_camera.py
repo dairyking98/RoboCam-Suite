@@ -23,6 +23,13 @@ from robocam.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Project root (RoboCam-Suite directory)
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Project-local SDK path (preferred when present)
+PLAYERONE_SDK_LOCAL = os.path.join(_PROJECT_ROOT, "playerone_sdk")
+PLAYERONE_SDK_LOCAL_PYTHON = os.path.join(PLAYERONE_SDK_LOCAL, "python")
+PLAYERONE_SDK_LOCAL_NATIVE = os.path.join(PLAYERONE_SDK_LOCAL, "native")
+
 # Mars 662M (and similar) supported resolutions
 PLAYERONE_SUPPORTED_RESOLUTIONS = [
     (1936, 1100),
@@ -32,7 +39,23 @@ PLAYERONE_SUPPORTED_RESOLUTIONS = [
 
 
 def get_playerone_sdk_python_path() -> Optional[str]:
-    """Return path to SDK python folder, or None if not found."""
+    """Return path to SDK python folder, or None if not found.
+    Prefers: project root PlayerOne_Camera_SDK_Linux_V3.10.0/python, then any
+    PlayerOne_Camera_SDK_Linux_*/python in project root, then playerone_sdk/python,
+    then PLAYERONE_SDK_PYTHON, then ~/PlayerOne_....
+    """
+    if os.path.isdir(PLAYERONE_SDK_FULL_PYTHON):
+        return PLAYERONE_SDK_FULL_PYTHON
+    try:
+        for d in os.listdir(_PROJECT_ROOT):
+            if d.startswith("PlayerOne_Camera_SDK_Linux_") and os.path.isdir(os.path.join(_PROJECT_ROOT, d)):
+                py_path = os.path.join(_PROJECT_ROOT, d, "python")
+                if os.path.isdir(py_path):
+                    return py_path
+    except Exception:
+        pass
+    if os.path.isdir(PLAYERONE_SDK_LOCAL_PYTHON):
+        return PLAYERONE_SDK_LOCAL_PYTHON
     path = os.environ.get("PLAYERONE_SDK_PYTHON")
     if path and os.path.isdir(path):
         return path
@@ -48,17 +71,62 @@ def get_playerone_sdk_python_path() -> Optional[str]:
     return None
 
 
+def _ensure_pypoa_patched_for_linux(sdk_python_path: str) -> bool:
+    """If on Linux, patch pyPOACamera.py to load .so instead of .dll. Idempotent. Returns True if patched or already ok."""
+    if sys.platform == "win32":
+        return True
+    py_path = os.path.join(sdk_python_path, "pyPOACamera.py")
+    if not os.path.isfile(py_path):
+        return False
+    try:
+        with open(py_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        # Already patched: has platform check and .so load
+        if "sys.platform" in content and "LoadLibrary" in content and ".so" in content:
+            return True
+        # Need to patch: still loading .dll only
+        if "PlayerOneCamera.dll" not in content or "dll = cdll.LoadLibrary" not in content:
+            return True
+        # Ensure sys is imported near the top (after existing imports)
+        if "import sys" not in content:
+            content = content.replace(
+                "from enum import Enum\n",
+                "from enum import Enum\nimport sys\n",
+                1,
+            )
+        # Replace the single-line LoadLibrary(.dll) with platform-specific block
+        new_content = content
+        for line in content.split("\n"):
+            if "dll" in line and "LoadLibrary" in line and "PlayerOneCamera.dll" in line:
+                # Replace this line with Linux/Windows branch
+                replacement = (
+                    'dll = (cdll.LoadLibrary("./PlayerOneCamera.dll") if sys.platform == "win32" '
+                    'else cdll.LoadLibrary("libPlayerOneCamera.so"))'
+                )
+                new_content = content.replace(line, replacement, 1)
+                break
+        if new_content != content:
+            with open(py_path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(new_content)
+            logger.info("Patched %s for Linux (.so load)", py_path)
+        return True
+    except Exception as e:
+        logger.debug("Could not patch pyPOACamera.py: %s", e)
+        return False
+
+
 def get_playerone_camera_count() -> int:
     """Return number of connected Player One cameras (0 if SDK not available)."""
     sdk_path = get_playerone_sdk_python_path()
     if sdk_path is None:
         return 0
+    _ensure_pypoa_patched_for_linux(sdk_path)
     try:
         prev = list(sys.path)
         if sdk_path not in sys.path:
             sys.path.insert(0, sdk_path)
         try:
-            import pyPOACamera as poa
+            import pyPOACamera as poa  # type: ignore[import-not-found]
             count = poa.POAGetCameraCount()
             return int(count) if count is not None else 0
         finally:
@@ -113,6 +181,7 @@ class PlayerOneCamera:
                 "Player One SDK Python not found. Set PLAYERONE_SDK_PYTHON to the SDK python folder "
                 "(e.g. ~/PlayerOne_Camera_SDK_Linux_V3.10.0/python). See docs/PLAYER_ONE_MARS_SDK.md."
             )
+        _ensure_pypoa_patched_for_linux(sdk_path)
         prev = list(sys.path)
         if sdk_path not in sys.path:
             sys.path.insert(0, sdk_path)
