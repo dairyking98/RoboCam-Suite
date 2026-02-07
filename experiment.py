@@ -34,9 +34,12 @@ from robocam.laser import Laser
 from robocam.config import get_config
 from robocam.logging_config import get_logger
 from robocam.capture_interface import CaptureManager
-from robocam.resolution_aspect import (
-    correct_resolution_for_camera,
-    get_default_resolution_for_camera,
+from robocam.resolution_aspect import get_default_resolution_for_camera
+from robocam.resolution_presets import (
+    get_capture_resolution_presets,
+    format_resolution_option,
+    resolution_to_preset_option,
+    parse_resolution_option,
 )
 
 logger = get_logger(__name__)
@@ -569,30 +572,19 @@ class ExperimentWindow:
         self.experiment_name_ent.grid(row=row, column=3, sticky="ew", padx=2, pady=2)
         
         row += 1
-        tk.Label(camera_frame, text="Resolution X:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        self.res_x_ent = tk.Entry(camera_frame, width=12)
-        self.res_x_ent.grid(row=row, column=1, sticky="w", padx=2, pady=2)
-        # Use camera-appropriate default (Pi HQ 4:3, USB/Mars 16:9)
-        default_res = get_default_resolution_for_camera(is_pihq=(self.usb_camera is None))
-        self.res_x_ent.insert(0, str(default_res[0]))
-        
-        tk.Label(camera_frame, text="Resolution Y:").grid(row=row, column=2, sticky="w", padx=2, pady=2)
-        self.res_y_ent = tk.Entry(camera_frame, width=12)
-        self.res_y_ent.grid(row=row, column=3, sticky="w", padx=2, pady=2)
-        self.res_y_ent.insert(0, str(default_res[1]))
-        # Validate aspect ratio when user leaves resolution fields
-        self.res_x_ent.bind("<FocusOut>", self._on_resolution_focus_out)
-        self.res_y_ent.bind("<FocusOut>", self._on_resolution_focus_out)
-        
-        # Add "Set to Native Resolution" button on next row
-        row += 1
-        native_res_btn = tk.Button(
-            camera_frame, 
-            text="Set to Native Resolution", 
-            command=self.set_native_resolution,
-            font=("Arial", 9)
+        # Resolution: native presets only (no custom)
+        is_pihq = self.usb_camera is None
+        is_playerone = self.usb_camera is not None and type(self.usb_camera).__name__ == "PlayerOneCamera"
+        self._resolution_presets = get_capture_resolution_presets(is_pihq, is_playerone)
+        default_res = get_default_resolution_for_camera(is_pihq=is_pihq)
+        initial_opt = resolution_to_preset_option(default_res, self._resolution_presets)
+        self.resolution_var = tk.StringVar(value=initial_opt)
+        tk.Label(camera_frame, text="Resolution:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
+        resolution_menu = tk.OptionMenu(
+            camera_frame, self.resolution_var,
+            *[format_resolution_option(w, h) for w, h in self._resolution_presets]
         )
-        native_res_btn.grid(row=row, column=0, columnspan=2, sticky="w", padx=2, pady=2)
+        resolution_menu.grid(row=row, column=1, columnspan=2, sticky="w", padx=2, pady=2)
         
         row += 1
         tk.Label(camera_frame, text="Target FPS:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
@@ -819,9 +811,9 @@ class ExperimentWindow:
             full_path = f"Example: {fn}"
             self.status_lbl.config(text=full_path)
 
-        for wgt in (self.experiment_name_ent,
-                    self.res_x_ent, self.res_y_ent, self.fps_ent):
+        for wgt in (self.experiment_name_ent, self.fps_ent):
             wgt.bind("<KeyRelease>", upd)
+        self.resolution_var.trace_add("write", lambda *a: upd())
         self.export_var.trace_add("write", lambda *a: upd())
         # Also update when calibration changes
         if hasattr(self, 'calibration_var'):
@@ -946,12 +938,8 @@ class ExperimentWindow:
                 self.add_action_phase(phase_dict.get("action", "GPIO OFF"), phase_dict.get("time", 0.0))
             
             resolution = settings.get("resolution", list(DEFAULT_RES))
-            self.res_x_ent.delete(0, tk.END)
-            self.res_x_ent.insert(0, str(resolution[0]))
-            self.res_y_ent.delete(0, tk.END)
-            self.res_y_ent.insert(0, str(resolution[1]))
-            # Validate aspect ratio for loaded resolution (may correct and notify)
-            self._validate_and_correct_resolution()
+            res_tuple = (int(resolution[0]), int(resolution[1])) if len(resolution) >= 2 else get_default_resolution_for_camera(self._is_pihq_camera())
+            self.resolution_var.set(resolution_to_preset_option(res_tuple, self._resolution_presets))
             
             self.fps_ent.delete(0, tk.END)
             self.fps_ent.insert(0, str(settings.get("fps", 30.0)))
@@ -1528,192 +1516,14 @@ class ExperimentWindow:
         """True if using Pi HQ camera (4:3), False if USB/Mars 662M (16:9)."""
         return self.usb_camera is None  # Pi HQ when no USB camera (incl. simulate_cam)
     
-    def _validate_and_correct_resolution(self) -> Tuple[int, int]:
-        """
-        Validate resolution matches camera aspect ratio. If not, correct it,
-        update the entry fields, and show a notification.
-        
-        Returns:
-            (res_x, res_y) - the validated (possibly corrected) resolution.
-        """
-        try:
-            res_x = int(self.res_x_ent.get().strip())
-            res_y = int(self.res_y_ent.get().strip())
-        except ValueError:
-            default = get_default_resolution_for_camera(self._is_pihq_camera())
-            return default
-        
-        is_pihq = self._is_pihq_camera()
-        new_x, new_y, was_corrected = correct_resolution_for_camera(res_x, res_y, is_pihq)
-        
-        if was_corrected:
-            self.res_x_ent.delete(0, tk.END)
-            self.res_x_ent.insert(0, str(new_x))
-            self.res_y_ent.delete(0, tk.END)
-            self.res_y_ent.insert(0, str(new_y))
-            camera_name = "Pi HQ (4:3)" if is_pihq else "USB/Mars 662M (16:9)"
-            msg = f"Resolution adjusted for {camera_name}: {res_x}×{res_y} → {new_x}×{new_y}"
-            logger.info(msg)
-            if hasattr(self, 'status_lbl'):
-                self.status_lbl.config(text=msg, fg="blue")
-        
-        return (new_x, new_y)
-    
-    def _on_resolution_focus_out(self, event: tk.Event) -> None:
-        """Validate and correct resolution when user leaves resolution field."""
-        if hasattr(self, 'res_x_ent') and hasattr(self, 'res_y_ent'):
-            self._validate_and_correct_resolution()
-    
-    def set_native_resolution(self) -> None:
-        """
-        Set resolution to camera's native maximum resolution.
-        Queries the camera to find the maximum available resolution and updates the GUI fields.
-        Ensures full image capture without cropping.
-        """
-        if self.simulate_cam:
-            # In simulation mode, use a default high resolution
-            max_width, max_height = 4056, 3040  # Common Pi HQ Camera maximum
-            self.res_x_ent.delete(0, tk.END)
-            self.res_x_ent.insert(0, str(max_width))
-            self.res_y_ent.delete(0, tk.END)
-            self.res_y_ent.insert(0, str(max_height))
-            if hasattr(self, 'status_lbl'):
-                self.status_lbl.config(text=f"Set to native resolution: {max_width}x{max_height} (simulation mode)", fg="blue")
-            return
-        
-        # Try to get native resolution from camera
-        temp_camera = None
-        try:
-            # USB camera: use supported resolutions (e.g. Mars 662M max 1936×1100)
-            if self.usb_camera is not None and not self.simulate_cam:
-                from robocam.usbcamera import USB_CAMERA_SUPPORTED_RESOLUTIONS
-                if USB_CAMERA_SUPPORTED_RESOLUTIONS:
-                    max_width, max_height = USB_CAMERA_SUPPORTED_RESOLUTIONS[0]
-                    self.res_x_ent.delete(0, tk.END)
-                    self.res_x_ent.insert(0, str(max_width))
-                    self.res_y_ent.delete(0, tk.END)
-                    self.res_y_ent.insert(0, str(max_height))
-                    if hasattr(self, 'status_lbl'):
-                        self.status_lbl.config(text=f"Set to USB camera resolution: {max_width}x{max_height}", fg="green")
-                    logger.info(f"Set resolution to USB camera max: {max_width}x{max_height}")
-                    return
-                max_resolution = (1920, 1080)  # fallback
-                max_width, max_height = max_resolution
-                self.res_x_ent.delete(0, tk.END)
-                self.res_x_ent.insert(0, str(max_width))
-                self.res_y_ent.delete(0, tk.END)
-                self.res_y_ent.insert(0, str(max_height))
-                if hasattr(self, 'status_lbl'):
-                    self.status_lbl.config(text=f"Set to {max_width}x{max_height}", fg="green")
-                return
-
-            # Pi HQ: use existing camera or create temporary one to query
-            camera_to_query = self.picam2 if (self.picam2 is not None and not self.simulate_cam) else None
-            if camera_to_query is None:
-                temp_camera = Picamera2()
-                camera_to_query = temp_camera
-
-            # Get camera info which contains sensor modes
-            camera_info = camera_to_query.camera_properties
-            
-            max_resolution = None
-            max_pixels = 0
-            
-            # Method 1: Check sensor modes for maximum resolution
-            if 'SensorModes' in camera_info:
-                sensor_modes = camera_info['SensorModes']
-                for mode in sensor_modes:
-                    if 'size' in mode:
-                        width, height = mode['size']
-                        pixels = width * height
-                        if pixels > max_pixels:
-                            max_pixels = pixels
-                            max_resolution = (width, height)
-            
-            # Method 2: Try to get pixel array size directly (sensor native size)
-            if max_resolution is None and 'PixelArraySize' in camera_info:
-                width, height = camera_info['PixelArraySize']
-                max_resolution = (width, height)
-            
-            # Method 3: Use camera info to find max resolution from available modes
-            if max_resolution is None:
-                # Try to get from camera properties - look for maximum sensor resolution
-                try:
-                    # Get all available sensor modes and find the largest
-                    modes = camera_to_query.sensor_modes
-                    if modes:
-                        for mode in modes:
-                            if hasattr(mode, 'size') or 'size' in mode:
-                                size = mode.get('size') if isinstance(mode, dict) else getattr(mode, 'size', None)
-                                if size:
-                                    width, height = size
-                                    pixels = width * height
-                                    if pixels > max_pixels:
-                                        max_pixels = pixels
-                                        max_resolution = (width, height)
-                except Exception:
-                    pass
-            
-            # Method 4: Try creating still configs with known maximum resolutions
-            if max_resolution is None:
-                # Try common maximum resolutions for Raspberry Pi cameras (in order of likelihood)
-                test_resolutions = [
-                    (4056, 3040),  # Pi HQ Camera (full resolution)
-                    (3280, 2464),  # Pi Camera Module v2
-                    (2592, 1944),  # Pi Camera Module v1
-                ]
-                
-                # Try each resolution to see which is supported
-                for test_width, test_height in test_resolutions:
-                    try:
-                        # Try to create a still configuration with this resolution
-                        test_config = camera_to_query.create_still_configuration(
-                            main={"size": (test_width, test_height)}
-                        )
-                        # If successful, this resolution is supported
-                        if test_config:
-                            max_resolution = (test_width, test_height)
-                            break
-                    except Exception:
-                        continue
-            
-            # Fallback: Use Pi HQ Camera default if nothing else works
-            if max_resolution is None:
-                max_resolution = (4056, 3040)  # Pi HQ Camera maximum
-            
-            if max_resolution:
-                max_width, max_height = max_resolution
-                self.res_x_ent.delete(0, tk.END)
-                self.res_x_ent.insert(0, str(max_width))
-                self.res_y_ent.delete(0, tk.END)
-                self.res_y_ent.insert(0, str(max_height))
-                if hasattr(self, 'status_lbl'):
-                    self.status_lbl.config(text=f"Set to native resolution: {max_width}x{max_height}", fg="green")
-                logger.info(f"Set resolution to native maximum: {max_width}x{max_height}")
-            else:
-                raise Exception("Could not determine native resolution")
-                
-        except Exception as e:
-            logger.error(f"Error getting native resolution: {e}")
-            if hasattr(self, 'status_lbl'):
-                self.status_lbl.config(text=f"Error getting native resolution: {e}", fg="red")
-            # Show error message to user
-            try:
-                from tkinter import messagebox
-                messagebox.showerror(
-                    "Resolution Error",
-                    f"Could not determine native camera resolution:\n{e}\n\n"
-                    "Please set resolution manually or try again."
-                )
-            except:
-                pass
-        finally:
-            # Clean up temporary camera instance
-            if temp_camera is not None:
-                try:
-                    temp_camera.close()
-                except:
-                    pass
+    def _get_resolution(self) -> Tuple[int, int]:
+        """Return current capture resolution (width, height) from preset dropdown."""
+        parsed = parse_resolution_option(self.resolution_var.get())
+        if parsed is not None:
+            return parsed
+        if self._resolution_presets:
+            return self._resolution_presets[0]
+        return get_default_resolution_for_camera(self._is_pihq_camera())
     
     def on_mode_change(self, *args) -> None:
         """
@@ -2137,7 +1947,7 @@ class ExperimentWindow:
                 "calibration_file": self.calibration_file,
                 "selected_wells": selected_wells,
                 "action_phases": phases_data,
-                "resolution": [int(self.res_x_ent.get().strip()), int(self.res_y_ent.get().strip())],
+                "resolution": list(self._get_resolution()),
                 "fps": float(self.fps_ent.get().strip()),
                 "export_type": self.export_var.get(),
                 "motion_config_profile": self.motion_config_var.get(),
@@ -2252,9 +2062,9 @@ class ExperimentWindow:
                 self.status_lbl.config(text=error_msg, fg="red")
                 return
             
-            # Get other settings (validate resolution for camera aspect ratio)
+            # Get other settings (resolution from preset dropdown)
             try:
-                res_x, res_y = self._validate_and_correct_resolution()
+                res_x, res_y = self._get_resolution()
                 fps = float(self.fps_ent.get().strip())
                 export = self.export_var.get()
             except Exception as e:

@@ -33,6 +33,12 @@ except ImportError as e:
 from robocam.capture_interface import CaptureManager
 from robocam.camera_preview import FPSTracker, start_best_preview
 from robocam.logging_config import get_logger
+from robocam.resolution_presets import (
+    get_capture_resolution_presets,
+    format_resolution_option,
+    parse_resolution_option,
+    resolution_to_preset_option,
+)
 
 logger = get_logger(__name__)
 
@@ -234,37 +240,40 @@ class PreviewWindow:
             )
         capture_type_menu.grid(row=0, column=1, sticky="w", padx=2, pady=2)
         
-        # Resolution
-        tk.Label(settings_frame, text="Resolution X:").grid(row=1, column=0, sticky="w", padx=2, pady=2)
-        self.res_x_var = tk.StringVar(value=str(initial_resolution[0]))
-        res_x_entry = tk.Entry(settings_frame, textvariable=self.res_x_var, width=10)
-        res_x_entry.grid(row=1, column=1, sticky="w", padx=2, pady=2)
-        res_x_entry.bind("<KeyRelease>", self.on_settings_change)
-        
-        tk.Label(settings_frame, text="Resolution Y:").grid(row=2, column=0, sticky="w", padx=2, pady=2)
-        self.res_y_var = tk.StringVar(value=str(initial_resolution[1]))
-        res_y_entry = tk.Entry(settings_frame, textvariable=self.res_y_var, width=10)
-        res_y_entry.grid(row=2, column=1, sticky="w", padx=2, pady=2)
-        res_y_entry.bind("<KeyRelease>", self.on_settings_change)
+        # Resolution (native presets only)
+        is_pihq = self.usb_camera is None
+        is_playerone = self.usb_camera is not None and type(self.usb_camera).__name__ == "PlayerOneCamera"
+        self._resolution_presets = get_capture_resolution_presets(is_pihq, is_playerone)
+        self._resolution_options = [format_resolution_option(w, h) for w, h in self._resolution_presets]
+        initial_opt = resolution_to_preset_option(initial_resolution, self._resolution_presets)
+        self.resolution_var = tk.StringVar(value=initial_opt)
+        tk.Label(settings_frame, text="Resolution:").grid(row=1, column=0, sticky="w", padx=2, pady=2)
+        resolution_menu = tk.OptionMenu(
+            settings_frame,
+            self.resolution_var,
+            *self._resolution_options,
+            command=lambda _: self.on_settings_change()
+        )
+        resolution_menu.grid(row=1, column=1, sticky="w", padx=2, pady=2)
         
         # FPS
-        tk.Label(settings_frame, text="Target FPS:").grid(row=3, column=0, sticky="w", padx=2, pady=2)
+        tk.Label(settings_frame, text="Target FPS:").grid(row=2, column=0, sticky="w", padx=2, pady=2)
         self.fps_var = tk.StringVar(value=str(initial_fps))
         fps_entry = tk.Entry(settings_frame, textvariable=self.fps_var, width=10)
-        fps_entry.grid(row=3, column=1, sticky="w", padx=2, pady=2)
+        fps_entry.grid(row=2, column=1, sticky="w", padx=2, pady=2)
         fps_entry.bind("<KeyRelease>", self.on_settings_change)
         
         # Capture Mode
-        tk.Label(settings_frame, text="Mode:").grid(row=4, column=0, sticky="w", padx=2, pady=2)
+        tk.Label(settings_frame, text="Mode:").grid(row=3, column=0, sticky="w", padx=2, pady=2)
         self.capture_mode_var = tk.StringVar(value="Image")
         capture_mode_menu = tk.OptionMenu(settings_frame, self.capture_mode_var, "Image", "Video")
-        capture_mode_menu.grid(row=4, column=1, sticky="w", padx=2, pady=2)
+        capture_mode_menu.grid(row=3, column=1, sticky="w", padx=2, pady=2)
         
         # Image Format (only for Image mode)
-        tk.Label(settings_frame, text="Format:").grid(row=5, column=0, sticky="w", padx=2, pady=2)
+        tk.Label(settings_frame, text="Format:").grid(row=4, column=0, sticky="w", padx=2, pady=2)
         self.image_format_var = tk.StringVar(value="PNG")
         format_menu = tk.OptionMenu(settings_frame, self.image_format_var, "PNG", "JPEG")
-        format_menu.grid(row=5, column=1, sticky="w", padx=2, pady=2)
+        format_menu.grid(row=4, column=1, sticky="w", padx=2, pady=2)
         
         # Quick Capture Button
         self.quick_capture_btn = tk.Button(
@@ -275,7 +284,7 @@ class PreviewWindow:
             bg="#2196F3",
             fg="white"
         )
-        self.quick_capture_btn.grid(row=6, column=0, columnspan=2, padx=2, pady=10, sticky="ew")
+        self.quick_capture_btn.grid(row=5, column=0, columnspan=2, padx=2, pady=10, sticky="ew")
         
         # Measure FPS Button
         self.measure_fps_btn = tk.Button(
@@ -286,12 +295,12 @@ class PreviewWindow:
             bg="#4CAF50",
             fg="white"
         )
-        self.measure_fps_btn.grid(row=7, column=0, columnspan=2, padx=2, pady=5, sticky="ew")
+        self.measure_fps_btn.grid(row=6, column=0, columnspan=2, padx=2, pady=5, sticky="ew")
         
         # Preview FPS label
-        tk.Label(settings_frame, text="Preview FPS:").grid(row=8, column=0, sticky="w", padx=2, pady=2)
+        tk.Label(settings_frame, text="Preview FPS:").grid(row=7, column=0, sticky="w", padx=2, pady=2)
         self.fps_label = tk.Label(settings_frame, text="0.0", font=("Courier", 10))
-        self.fps_label.grid(row=8, column=1, sticky="w", padx=2, pady=2)
+        self.fps_label.grid(row=7, column=1, sticky="w", padx=2, pady=2)
         
         # Status label
         self.status_label = tk.Label(
@@ -359,6 +368,15 @@ class PreviewWindow:
                 self.status_label.config(text=f"Error: {e}", fg="red")
                 logger.error(f"Error changing capture type: {e}")
     
+    def get_resolution(self) -> Tuple[int, int]:
+        """Return current capture resolution (width, height) from preset dropdown."""
+        parsed = parse_resolution_option(self.resolution_var.get())
+        if parsed is not None:
+            return parsed
+        if self._resolution_presets:
+            return self._resolution_presets[0]
+        return (800, 600)
+
     def on_settings_change(self, event=None) -> None:
         """Handle settings change (resolution, FPS)."""
         # Update preview when settings change
@@ -402,11 +420,10 @@ class PreviewWindow:
         try:
             # Get current resolution and FPS
             try:
-                res_x = int(self.res_x_var.get().strip())
-                res_y = int(self.res_y_var.get().strip())
+                res_x, res_y = self.get_resolution()
                 fps = float(self.fps_var.get().strip())
             except ValueError:
-                res_x, res_y = 800, 600
+                res_x, res_y = self.get_resolution()
                 fps = 30.0
             
             # Check if camera is already started and configured
@@ -837,11 +854,10 @@ class PreviewWindow:
                 
                 # Get current settings
                 try:
-                    res_x = int(self.res_x_var.get().strip())
-                    res_y = int(self.res_y_var.get().strip())
+                    res_x, res_y = self.get_resolution()
                     target_fps = float(self.fps_var.get().strip())
                 except ValueError:
-                    res_x, res_y = 640, 480
+                    res_x, res_y = self.get_resolution()
                     target_fps = 250.0  # Use 250 for maximum FPS like in gist
                 
                 # Get current capture type
@@ -865,11 +881,10 @@ class PreviewWindow:
                 
                 # Try to restore preview even on error
                 try:
-                    res_x = int(self.res_x_var.get().strip())
-                    res_y = int(self.res_y_var.get().strip())
+                    res_x, res_y = self.get_resolution()
                     fps = float(self.fps_var.get().strip())
                 except ValueError:
-                    res_x, res_y = 800, 600
+                    res_x, res_y = self.get_resolution()
                     fps = 30.0
                 
                 self._restore_preview_config(res_x, res_y, fps, was_preview_active)
@@ -1302,8 +1317,7 @@ class PreviewWindow:
                     pass
                 # Save resolution if available
                 try:
-                    res_x = int(self.res_x_var.get().strip())
-                    res_y = int(self.res_y_var.get().strip())
+                    res_x, res_y = self.get_resolution()
                     config.set("hardware.camera.last_measured_resolution", [res_x, res_y])
                 except ValueError:
                     pass
