@@ -129,7 +129,7 @@ def get_playerone_camera_count() -> int:
             sys.path.insert(0, sdk_path)
         try:
             import pyPOACamera as poa  # type: ignore[import-not-found]
-            count = poa.POAGetCameraCount()
+            count = poa.GetCameraCount()
             return int(count) if count is not None else 0
         finally:
             sys.path[:] = prev
@@ -222,7 +222,7 @@ class PlayerOneCamera:
     def set_resolution(self, width: int, height: int) -> None:
         self.preset_resolution = (width, height)
         if self._opened and self._poa is not None:
-            self._poa.POASetImageSize(self.camera_index, width, height)
+            self._poa.SetImageSize(self._camera_id, width, height)
             self._img_width = width
             self._img_height = height
 
@@ -246,24 +246,24 @@ class PlayerOneCamera:
         if not self._opened or self._poa is None:
             return None
         poa = self._poa
+        cid = self._camera_id
         # Start exposure (video mode = True for continuous)
-        poa.POAStartExposure(self.camera_index, True)
+        poa.StartExposure(cid, True)
         # Wait for frame (short timeout)
         for _ in range(100):
-            ready = poa.POAImageReady(self.camera_index)
+            _err, ready = poa.ImageReady(cid)
             if ready:
                 break
             time.sleep(0.01)
         else:
             return None
-        # Get image data
+        # Get image data (SDK expects numpy array)
         w, h = self._img_width, self._img_height
-        size = w * h
-        buf = (ctypes.c_uint8 * size)()
-        err = poa.POAGetImageData(self.camera_index, buf, size, 500)
+        buf = np.zeros(w * h, dtype=np.uint8)
+        err = poa.GetImageData(cid, buf, 500)
         if err != poa.POAErrors.POA_OK:
             return None
-        return np.ctypeslib.as_array(buf).copy().reshape((h, w))
+        return buf.reshape((h, w)).copy()
 
     def start_recording_video(self, video_path: Optional[str] = None, fps: Optional[float] = None) -> None:
         if video_path is None:
@@ -302,7 +302,7 @@ class PlayerOneCamera:
             self.stop_recording_video()
         if self._opened and self._poa is not None:
             try:
-                self._poa.POACloseCamera(self.camera_index)
+                self._poa.CloseCamera(self._camera_id)
             except Exception:
                 pass
             self._opened = False
