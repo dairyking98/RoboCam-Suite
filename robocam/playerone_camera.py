@@ -195,14 +195,27 @@ class PlayerOneCamera:
             # Get camera ID from properties (index != camera ID)
             err, props = poa.GetCameraProperties(self.camera_index)
             if err != poa.POAErrors.POA_OK:
-                raise RuntimeError("GetCameraProperties failed: %s" % getattr(err, "name", err))
+                raise RuntimeError(
+                    "GetCameraProperties failed: %s. "
+                    "If you see 'libusb requires write access to USB device nodes', add a udev rule so the camera is accessible without root. "
+                    "See docs/PLAYER_ONE_MARS_SDK.md step 3 (Mars 662M: vendor a0a0, product 6621). "
+                    "Run: echo 'SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"a0a0\", ATTRS{idProduct}==\"6621\", MODE=\"0666\"' | sudo tee /etc/udev/rules.d/99-playerone-mars662m.rules && sudo udevadm control --reload-rules && sudo udevadm trigger && unplug and replug the camera."
+                ) from None
             self._camera_id = props.cameraID
             err = poa.OpenCamera(self._camera_id)
             if err != poa.POAErrors.POA_OK:
-                raise RuntimeError("OpenCamera failed: %s" % getattr(err, "name", err))
+                raise RuntimeError(
+                    "OpenCamera failed: %s. "
+                    "Ensure USB permissions: see docs/PLAYER_ONE_MARS_SDK.md step 3 (udev rule for Mars 662M)."
+                    % getattr(err, "name", err)
+                ) from None
             err = poa.InitCamera(self._camera_id)
             if err != poa.POAErrors.POA_OK:
-                raise RuntimeError("InitCamera failed: %s" % getattr(err, "name", err))
+                raise RuntimeError(
+                    "InitCamera failed: %s. "
+                    "Ensure USB permissions: see docs/PLAYER_ONE_MARS_SDK.md step 3 (udev rule)."
+                    % getattr(err, "name", err)
+                ) from None
             # Set image size and format
             w, h = self.preset_resolution
             poa.SetImageStartPos(self._camera_id, 0, 0)
