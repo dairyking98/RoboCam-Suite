@@ -18,12 +18,12 @@ import subprocess as sp
 import numpy as np
 import atexit
 
-# PIL.ImageTk required for USB preview (convert frames to tkinter PhotoImage)
+# PIL.ImageTk required for Player One / external camera preview (convert frames to tkinter PhotoImage)
 try:
     from PIL import Image, ImageTk
 except ImportError as e:
     raise ImportError(
-        "PIL.ImageTk is not available (needed for USB camera preview).\n"
+        "PIL.ImageTk is not available (needed for Player One camera preview).\n"
         "Install Pillow and ensure tkinter is available:\n"
         "  1. pip install --upgrade Pillow\n"
         "  2. Test tkinter: python -c \"import tkinter\"\n"
@@ -79,7 +79,7 @@ class PreviewWindow:
             initial_resolution: Initial preview resolution (width, height)
             initial_fps: Initial preview FPS
             simulate_cam: If True, run in camera simulation mode
-            usb_camera: Optional USB camera instance (e.g. Mars 662M). Used when Pi HQ is not present.
+            usb_camera: Optional camera instance (Player One). Used when Pi HQ is not present.
         """
         self.parent = parent
         self._simulate_cam = simulate_cam
@@ -87,12 +87,12 @@ class PreviewWindow:
         self._preview_backend: Optional[str] = None
         self._measuring_fps = False
         self.usb_camera = usb_camera
-        self._usb_preview_job: Optional[str] = None  # after() id for USB preview loop
+        self._usb_preview_job: Optional[str] = None  # after() id for external camera preview loop
 
-        # Use first camera found: Pi HQ or USB (only one in system at a time)
+        # Use first camera found: Pi HQ or Player One (only one in system at a time)
         if usb_camera is not None:
             self.picam2 = None
-            logger.info("PreviewWindow: Using USB camera")
+            logger.info("PreviewWindow: Using Player One camera")
         elif picam2 is not None:
             self.picam2 = picam2
         elif not simulate_cam:
@@ -114,16 +114,16 @@ class PreviewWindow:
                 except Exception as e:
                     logger.error(f"PreviewWindow: Failed to start camera: {e}")
                     self.picam2 = None
-            elif isinstance(backend, tuple) and backend[0] == "usb":
-                from robocam.usbcamera import USBCamera
-                usb_index = backend[1]
-                self.usb_camera = USBCamera(
+            elif isinstance(backend, tuple) and backend[0] == "playerone":
+                from robocam.playerone_camera import PlayerOneCamera
+                po_index = backend[1]
+                self.usb_camera = PlayerOneCamera(
                     resolution=initial_resolution,
                     fps=initial_fps,
-                    camera_index=usb_index
+                    camera_index=po_index
                 )
                 self.picam2 = None
-                logger.info("PreviewWindow: Created and started USB camera instance (index %d)", usb_index)
+                logger.info("PreviewWindow: Created and started Player One camera instance (index %d)", po_index)
             else:
                 self.picam2 = None
                 logger.warning("PreviewWindow: No camera found")
@@ -134,23 +134,13 @@ class PreviewWindow:
         if capture_manager is None and not simulate_cam:
             if self.usb_camera is not None:
                 try:
-                    is_playerone = type(self.usb_camera).__name__ == "PlayerOneCamera"
-                    if is_playerone:
-                        self.capture_manager = CaptureManager(
-                            capture_type="Player One (Grayscale)",
-                            resolution=initial_resolution,
-                            fps=initial_fps,
-                            playerone_camera=self.usb_camera
-                        )
-                        logger.info("PreviewWindow: Created CaptureManager (Player One)")
-                    else:
-                        self.capture_manager = CaptureManager(
-                            capture_type="USB (Grayscale)",
-                            resolution=initial_resolution,
-                            fps=initial_fps,
-                            usb_camera=self.usb_camera
-                        )
-                        logger.info("PreviewWindow: Created CaptureManager (USB monochrome)")
+                    self.capture_manager = CaptureManager(
+                        capture_type="Player One (Grayscale)",
+                        resolution=initial_resolution,
+                        fps=initial_fps,
+                        playerone_camera=self.usb_camera
+                    )
+                    logger.info("PreviewWindow: Created CaptureManager (Player One)")
                 except Exception as e:
                     logger.warning(f"PreviewWindow: Failed to create capture manager: {e}")
                     self.capture_manager = None
@@ -215,12 +205,11 @@ class PreviewWindow:
         self.grayscale_image_id = None
         # Canvas is hidden by default, only shown for grayscale captured images
         
-        # Capture Type (USB/Player One backend shows only that type)
+        # Capture Type (Player One backend shows only Player One type)
         tk.Label(settings_frame, text="Capture Type:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
         if self.usb_camera is not None:
-            is_playerone = type(self.usb_camera).__name__ == "PlayerOneCamera"
-            capture_types = CaptureManager.CAPTURE_TYPES_PLAYERONE if is_playerone else CaptureManager.CAPTURE_TYPES_USB
-            default_type = "Player One (Grayscale)" if is_playerone else "USB (Grayscale)"
+            capture_types = CaptureManager.CAPTURE_TYPES_PLAYERONE
+            default_type = "Player One (Grayscale)"
         else:
             capture_types = CaptureManager.CAPTURE_TYPES
             default_type = "Picamera2 (Color)"
@@ -312,7 +301,7 @@ class PreviewWindow:
         )
         self.status_label.grid(row=9, column=0, columnspan=2, padx=2, pady=5, sticky="w")
         
-        # Initialize FPS tracking if camera is available (Pi HQ or USB)
+        # Initialize FPS tracking if camera is available (Pi HQ or Player One)
         if (self.picam2 is not None or self.usb_camera is not None) and not self._simulate_cam:
             self.fps_tracker = FPSTracker()
             if self.picam2 is not None:
@@ -389,7 +378,7 @@ class PreviewWindow:
 
         try:
             if self.usb_camera is not None:
-                # USB camera: live preview in canvas
+                # Player One / external camera: live preview in canvas
                 self._stop_native_preview()
                 self._stop_usb_preview()
                 self._hide_grayscale_preview()
@@ -594,17 +583,17 @@ class PreviewWindow:
             logger.error(f"Error stopping native preview: {e}")
 
     def _stop_usb_preview(self) -> None:
-        """Stop USB camera preview loop."""
+        """Stop Player One / external camera preview loop."""
         if self._usb_preview_job is not None:
             try:
                 self.window.after_cancel(self._usb_preview_job)
             except Exception:
                 pass
             self._usb_preview_job = None
-            logger.info("Stopped USB preview")
+            logger.info("Stopped external camera preview")
 
     def _usb_preview_loop(self) -> None:
-        """Read one frame from USB camera and display in canvas; schedule next."""
+        """Read one frame from Player One / external camera and display in canvas; schedule next."""
         if not self._running or self.usb_camera is None or self.usb_camera.cap is None or not self.usb_camera.cap.isOpened():
             self._usb_preview_job = None
             return
@@ -633,16 +622,16 @@ class PreviewWindow:
                     self.grayscale_canvas.coords(self.grayscale_image_id, cw // 2, ch // 2)
                 self.grayscale_canvas.photo = photo
         except Exception as e:
-            logger.debug(f"USB preview frame error: {e}")
+            logger.debug(f"External camera preview frame error: {e}")
         if self._running and self.usb_camera is not None:
             self._usb_preview_job = self.window.after(33, self._usb_preview_loop)
 
     def _start_usb_preview(self) -> None:
-        """Start USB camera live preview in canvas."""
+        """Start Player One / external camera live preview in canvas."""
         self._stop_usb_preview()
         if self.usb_camera is None:
             return
-        self.preview_info_label.config(text="USB camera live preview", fg="green")
+        self.preview_info_label.config(text="Player One camera live preview", fg="green")
         self._usb_preview_job = self.window.after(50, self._usb_preview_loop)
 
     def _show_grayscale_preview(self) -> None:
@@ -677,7 +666,7 @@ class PreviewWindow:
                         text="✓ Grayscale preview (captured image shown below)", fg="blue"
                     )
             except Exception as e:
-                logger.error(f"Error showing USB grayscale preview: {e}")
+                logger.error(f"Error showing Player One grayscale preview: {e}")
             return
         if self.picam2 is None:
             return
@@ -830,7 +819,7 @@ class PreviewWindow:
             return
         if self.usb_camera is not None:
             self.status_label.config(
-                text="USB camera: FPS is set in capture settings (Mars 662M: up to 110 FPS @ 1080p).",
+                text="Player One camera: FPS is set in capture settings (Mars 662M: up to 110 FPS @ 1080p).",
                 fg="gray"
             )
             return
@@ -1326,7 +1315,7 @@ class PreviewWindow:
             except Exception as e:
                 logger.warning(f"Could not save FPS to config: {e}")
         
-        # Stop native preview and USB preview
+        # Stop native preview and external camera preview
         self._stop_native_preview()
         self._stop_usb_preview()
 
@@ -1344,7 +1333,7 @@ class PreviewWindow:
             except Exception as e:
                 logger.error(f"Error cleaning up capture manager: {e}")
         
-        # Stop camera (if we created Pi HQ; USB is owned by capture_manager or caller)
+        # Stop camera (if we created Pi HQ; Player One is owned by capture_manager or caller)
         if self.picam2 is not None:
             try:
                 self.picam2.stop()

@@ -6,6 +6,11 @@ echo "RoboCam-Suite Dependency Fix Script"
 echo "==================================="
 echo ""
 
+# Run from repo root; auto-extract Player One SDK tarball on Linux if present
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+[ -f "scripts/ensure_playerone_sdk.sh" ] && . "scripts/ensure_playerone_sdk.sh"
+
 # Install required system dependencies
 echo "Installing system dependencies..."
 sudo apt-get update

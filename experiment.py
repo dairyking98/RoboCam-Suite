@@ -28,7 +28,6 @@ from picamera2.encoders import H264Encoder
 from picamera2.outputs import FileOutput
 from robocam.camera_backend import detect_camera
 from robocam.robocam_ccc import RoboCam
-from robocam.usbcamera import USBCamera
 from robocam.playerone_camera import PlayerOneCamera
 from robocam.laser import Laser
 from robocam.config import get_config
@@ -331,9 +330,9 @@ class ExperimentWindow:
 
         Args:
             parent: Parent tkinter window
-            picam2: Picamera2 instance (Pi HQ); None if using USB or simulate_cam
+            picam2: Picamera2 instance (Pi HQ); None if using Player One or simulate_cam
             robocam: RoboCam instance for printer control
-            usb_camera: USBCamera instance when USB camera is used (e.g. Mars 662M)
+            usb_camera: PlayerOneCamera instance when Player One camera is used (e.g. Mars 662M)
             simulate_3d: If True, run in 3D printer simulation mode (for display purposes)
             simulate_cam: If True, run in camera simulation mode (no camera operations)
         """
@@ -613,11 +612,10 @@ class ExperimentWindow:
         
         row += 1
         tk.Label(camera_frame, text="Capture Type:").grid(row=row, column=0, sticky="w", padx=2, pady=2)
-        # Show USB/Player One types when that backend is in use
+        # Show Player One types when that backend is in use
         if self.usb_camera is not None:
-            is_playerone = type(self.usb_camera).__name__ == "PlayerOneCamera"
-            capture_types = CaptureManager.CAPTURE_TYPES_PLAYERONE if is_playerone else CaptureManager.CAPTURE_TYPES_USB
-            default_capture = "Player One (Grayscale)" if is_playerone else "USB (Grayscale)"
+            capture_types = CaptureManager.CAPTURE_TYPES_PLAYERONE
+            default_capture = "Player One (Grayscale)"
         else:
             capture_types = CaptureManager.CAPTURE_TYPES
             default_capture = "Picamera2 (Color)"
@@ -1513,8 +1511,8 @@ class ExperimentWindow:
             self.status_lbl.config(text=f"Ready - {len(selected_wells)} wells selected")
     
     def _is_pihq_camera(self) -> bool:
-        """True if using Pi HQ camera (4:3), False if USB/Mars 662M (16:9)."""
-        return self.usb_camera is None  # Pi HQ when no USB camera (incl. simulate_cam)
+        """True if using Pi HQ camera (4:3), False if Player One / Mars 662M (16:9)."""
+        return self.usb_camera is None  # Pi HQ when no external camera (incl. simulate_cam)
     
     def _get_resolution(self) -> Tuple[int, int]:
         """Return current capture resolution (width, height) from preset dropdown."""
@@ -2108,7 +2106,7 @@ class ExperimentWindow:
         capture_type = self.capture_type_var.get()
         capture_mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
         
-        # Initialize capture manager if using high-FPS, USB, or for Image Capture
+        # Initialize capture manager if using high-FPS, Player One, or for Image Capture
         self.capture_manager: Optional[CaptureManager] = None
         if "High FPS" in capture_type:
             # Use capture manager for high-FPS modes
@@ -2130,20 +2128,6 @@ class ExperimentWindow:
                     resolution=(res_x, res_y),
                     fps=fps,
                     playerone_camera=self.usb_camera
-                )
-                logger.info(f"Initialized {capture_type} capture manager: {res_x}x{res_y} @ {fps} FPS")
-            except Exception as e:
-                logger.error(f"Failed to initialize capture manager: {e}")
-                self.status_lbl.config(text=f"Error: Failed to initialize {capture_type}", fg="red")
-                return
-        elif "USB" in capture_type and self.usb_camera is not None:
-            # Use capture manager for USB camera (V4L2)
-            try:
-                self.capture_manager = CaptureManager(
-                    capture_type=capture_type,
-                    resolution=(res_x, res_y),
-                    fps=fps,
-                    usb_camera=self.usb_camera
                 )
                 logger.info(f"Initialized {capture_type} capture manager: {res_x}x{res_y} @ {fps} FPS")
             except Exception as e:
@@ -2422,8 +2406,8 @@ class ExperimentWindow:
                 
                 else:
                     # === VIDEO CAPTURE MODE (existing implementation) ===
-                    use_usb_capture = self.capture_manager is not None and "USB" in self.capture_manager.get_capture_type()
-                    ext = ".avi" if use_usb_capture else ".h264"  # USB uses AVI (FFV1); Pi HQ uses H264
+                    use_playerone_capture = self.capture_manager is not None and "Player One" in self.capture_manager.get_capture_type()
+                    ext = ".avi" if use_playerone_capture else ".h264"  # Player One uses AVI (FFV1); Pi HQ uses H264
                     fname = f"{ds}_{ts}_{loop_experiment_name}_{y_lbl}{x_lbl}{ext}"
                     path = os.path.join(loop_output_folder, fname)
 
@@ -2439,13 +2423,13 @@ class ExperimentWindow:
                     
                     recording_start_time = time.time()
                     
-                    # Check if using capture manager (high-FPS or USB) - frame buffering and encode on stop
+                    # Check if using capture manager (high-FPS or Player One) - frame buffering and encode on stop
                     use_capture_manager_video = (
                         self.capture_manager is not None
-                        and ("High FPS" in self.capture_manager.get_capture_type() or "USB" in self.capture_manager.get_capture_type())
+                        and ("High FPS" in self.capture_manager.get_capture_type() or "Player One" in self.capture_manager.get_capture_type())
                     )
                     if use_capture_manager_video:
-                        # Use capture manager (high-FPS or USB): buffer frames, encode on stop
+                        # Use capture manager (high-FPS or Player One): buffer frames, encode on stop
                         codec = "FFV1"
                         success = self.capture_manager.start_video_recording(path, codec=codec)
                         if not success:
@@ -2530,8 +2514,8 @@ class ExperimentWindow:
                     # Save metadata file with FPS and recording information
                     well_label = f"{y_lbl}{x_lbl}"
                     timestamp_str = f"{ds}_{ts}"
-                    # Use output_path if capture manager was used (high-FPS or USB), otherwise use path
-                    video_path_for_metadata = output_path if (self.capture_manager is not None and ("High FPS" in self.capture_manager.get_capture_type() or "USB" in self.capture_manager.get_capture_type())) else path
+                    # Use output_path if capture manager was used (high-FPS or Player One), otherwise use path
+                    video_path_for_metadata = output_path if (self.capture_manager is not None and ("High FPS" in self.capture_manager.get_capture_type() or "Player One" in self.capture_manager.get_capture_type())) else path
                     save_video_metadata(
                         video_path=video_path_for_metadata,
                         target_fps=fps,
@@ -2634,7 +2618,7 @@ class ExperimentWindow:
             self.laser_on = False
         if self.recording:
             try:
-                if self.capture_manager is not None and ("High FPS" in self.capture_manager.get_capture_type() or "USB" in self.capture_manager.get_capture_type()):
+                if self.capture_manager is not None and ("High FPS" in self.capture_manager.get_capture_type() or "Player One" in self.capture_manager.get_capture_type()):
                     self.capture_manager.stop_video_recording(codec="FFV1")
                 elif self.picam2 is not None:
                     self.picam2.stop_recording()
@@ -2677,7 +2661,7 @@ if __name__ == "__main__":
     baudrate = config.get("hardware.printer.baudrate", 115200)
     robocam: RoboCam = RoboCam(baudrate=baudrate, config=config, simulate_3d=args.simulate_3d)
     
-    # Initialize camera: use first found (Pi HQ or USB; only one in system at a time)
+    # Initialize camera: use first found (Pi HQ or Player One; only one in system at a time)
     picam2: Optional[Picamera2] = None
     usb_camera = None
     if args.simulate_cam:
@@ -2687,12 +2671,11 @@ if __name__ == "__main__":
         if backend == "pihq":
             picam2 = Picamera2()
             print("Camera started (Pi HQ)")
-        elif isinstance(backend, tuple) and backend[0] == "usb":
-            usb_index = backend[1]
-            usb_camera = USBCamera(resolution=(1920, 1080), fps=30.0, camera_index=usb_index)
-            print(f"Camera started (USB, index {usb_index})")
+        elif isinstance(backend, tuple) and backend[0] == "playerone":
+            usb_camera = PlayerOneCamera(resolution=(1920, 1080), fps=30.0, camera_index=backend[1])
+            print("Camera started (Player One)")
         else:
-            raise RuntimeError("No camera found. Connect a Raspberry Pi HQ camera or a USB camera (e.g. Mars 662M).")
+            raise RuntimeError("No camera found. Connect a Raspberry Pi HQ camera or Player One (Mars 662M).")
 
     app: ExperimentWindow = ExperimentWindow(
         root, picam2, robocam,

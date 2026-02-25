@@ -4,6 +4,11 @@
 
 set -e  # Exit on error
 
+# Run from repo root; auto-extract Player One SDK tarball on Linux if present
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+[ -f "scripts/ensure_playerone_sdk.sh" ] && . "scripts/ensure_playerone_sdk.sh"
+
 echo "RoboCam-Suite Setup Script"
 echo "=========================="
 echo ""

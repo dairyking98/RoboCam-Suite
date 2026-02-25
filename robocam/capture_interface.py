@@ -6,7 +6,7 @@ Provides a unified interface for different capture types:
 - Picamera2 (Grayscale)
 - Picamera2 (Grayscale - High FPS) - using Picamera2 directly
 - rpicam-vid (Grayscale - High FPS) - using rpicam-vid subprocess
-- USB (Grayscale) - Monochrome USB cameras (e.g. Mars 662M) via OpenCV; grayscale only
+- Player One (Grayscale) - Mars 662M etc. via Player One SDK
 
 Author: RoboCam-Suite
 """
@@ -22,7 +22,6 @@ from picamera2.outputs import FileOutput
 from robocam.pihqcamera import PiHQCamera
 from robocam.picamera2_highfps_capture import Picamera2HighFpsCapture
 from robocam.rpicam_vid_capture import RpicamVidCapture
-from robocam.usbcamera import USBCamera
 from robocam.playerone_camera import PlayerOneCamera
 from robocam.logging_config import get_logger
 
@@ -56,11 +55,8 @@ class CaptureManager:
         "Picamera2 (Grayscale)",
         "Picamera2 (Grayscale - High FPS)",
         "rpicam-vid (Grayscale - High FPS)",
-        "USB (Grayscale)",  # V4L2 monochrome
         "Player One (Grayscale)",  # Mars 662M etc. via SDK
     ]
-    # Types available when USB (V4L2 monochrome) camera backend is detected
-    CAPTURE_TYPES_USB = ["USB (Grayscale)"]
     # Types available when Player One (SDK) camera backend is detected
     CAPTURE_TYPES_PLAYERONE = ["Player One (Grayscale)"]
 
@@ -68,7 +64,7 @@ class CaptureManager:
                  resolution: Tuple[int, int] = (1920, 1080),
                  fps: float = 30.0,
                  picam2: Optional[Picamera2] = None,
-                 usb_camera: Optional[USBCamera] = None) -> None:
+                 playerone_camera: Optional[PlayerOneCamera] = None) -> None:
         """
         Initialize capture manager.
 
@@ -77,7 +73,7 @@ class CaptureManager:
             resolution: Capture resolution (width, height)
             fps: Target frames per second
             picam2: Optional existing Picamera2 instance (for Pi HQ modes)
-            usb_camera: Optional USBCamera instance (for USB modes)
+            playerone_camera: Optional PlayerOneCamera instance (for Player One modes)
         """
         if capture_type not in self.CAPTURE_TYPES:
             raise ValueError(f"Invalid capture type: {capture_type}. Must be one of {self.CAPTURE_TYPES}")
@@ -92,8 +88,8 @@ class CaptureManager:
         self.pihq_camera: Optional[PiHQCamera] = None
         self.picamera2_highfps: Optional[Picamera2HighFpsCapture] = None
         self.rpicam_vid: Optional[RpicamVidCapture] = None
-        self.usb_camera: Optional[USBCamera] = usb_camera
-        self._usb_camera_owned: bool = False
+        self.playerone_camera: Optional[PlayerOneCamera] = playerone_camera
+        self._playerone_camera_owned: bool = False
 
         self._recording: bool = False
         self._recorded_frames: List[np.ndarray] = []
@@ -142,19 +138,6 @@ class CaptureManager:
                 self.playerone_camera.fps = self.fps
                 self._playerone_camera_owned = False
             logger.info("Initialized Player One (Grayscale) capture")
-        elif "USB" in self.capture_type:
-            # USB monochrome camera (V4L2) - grayscale only
-            if self.usb_camera is None:
-                self.usb_camera = USBCamera(
-                    resolution=self.resolution,
-                    fps=self.fps
-                )
-                self._usb_camera_owned = True
-            else:
-                self.usb_camera.preset_resolution = self.resolution
-                self.usb_camera.fps = self.fps
-                self._usb_camera_owned = False
-            logger.info("Initialized USB (Grayscale) capture (monochrome)")
         else:
             # Picamera2 modes (Color or Grayscale)
             grayscale = "Grayscale" in self.capture_type
@@ -220,9 +203,16 @@ class CaptureManager:
                     cv2.imwrite(output_path, frame)
                 logger.info(f"Saved image: {output_path}")
                 return True
-            elif self.usb_camera is not None:
-                # Capture single frame from USB camera
-                self.usb_camera.take_photo_and_save(output_path)
+            elif self.playerone_camera is not None:
+                # Capture single frame from Player One camera
+                frame = self.playerone_camera.read_frame()
+                if frame is None:
+                    logger.error("Failed to read frame from Player One camera")
+                    return False
+                if is_jpeg:
+                    cv2.imwrite(output_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                else:
+                    cv2.imwrite(output_path, frame)
                 logger.info(f"Saved image: {output_path}")
                 return True
             elif self.rpicam_vid is not None:
@@ -301,11 +291,6 @@ class CaptureManager:
                 self._recorded_frames = []
                 logger.info(f"Started Player One recording: {output_path}")
                 return True
-            elif self.usb_camera is not None:
-                # USB: buffer frames; encode on stop (same pattern as high-FPS)
-                self._recorded_frames = []
-                logger.info(f"Started USB recording: {output_path}")
-                return True
             else:
                 # Use Picamera2
                 if self.pihq_camera is not None:
@@ -350,8 +335,8 @@ class CaptureManager:
                 self._recorded_frames.append(frame.copy())
                 return True
             return False
-        elif self.usb_camera is not None:
-            frame = self.usb_camera.read_frame()
+        elif self.playerone_camera is not None:
+            frame = self.playerone_camera.read_frame()
             if frame is not None:
                 self._recorded_frames.append(frame.copy())
                 return True
@@ -424,8 +409,8 @@ class CaptureManager:
                 else:
                     logger.error("Failed to save video")
                     return None
-            elif self.playerone_camera is not None or self.usb_camera is not None:
-                # Encode buffered frames to video (Player One or USB)
+            elif self.playerone_camera is not None:
+                # Encode buffered frames to video (Player One)
                 if not self._recorded_frames:
                     logger.warning("No frames recorded")
                     return None
@@ -567,13 +552,6 @@ class CaptureManager:
             except Exception:
                 pass
             self.playerone_camera = None
-
-        if self.usb_camera is not None and getattr(self, "_usb_camera_owned", True):
-            try:
-                self.usb_camera.release()
-            except Exception:
-                pass
-            self.usb_camera = None
 
         self._recorded_frames = []
 

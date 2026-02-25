@@ -22,7 +22,6 @@ from robocam.camera_preview import FPSTracker
 from robocam.config import get_config
 from robocam.capture_interface import CaptureManager
 from robocam.preview_window import PreviewWindow
-from robocam.usbcamera import USBCamera
 from robocam.playerone_camera import PlayerOneCamera
 
 # Preview resolution for camera display (will be loaded from config)
@@ -88,7 +87,7 @@ class PreviewApp:
         else:
             preview_resolution = default_preview_resolution
 
-        # Camera setup: use first camera found (Pi HQ or USB; only one in system at a time)
+        # Camera setup: use first camera found (Pi HQ or Player One; only one in system at a time)
         self.preview_window: Optional[PreviewWindow] = None
         self.picam2 = None
         self.usb_camera = None
@@ -126,17 +125,8 @@ class PreviewApp:
                 )
                 self.fps_tracker = FPSTracker()
                 print("Camera started (Player One)")
-            elif isinstance(backend, tuple) and backend[0] == "usb":
-                usb_index = backend[1]
-                self.usb_camera = USBCamera(
-                    resolution=preview_resolution,
-                    fps=default_fps,
-                    camera_index=usb_index
-                )
-                self.fps_tracker = FPSTracker()
-                print(f"Camera started (USB, index {usb_index})")
             else:
-                raise RuntimeError("No camera found. Connect a Raspberry Pi HQ camera, Player One (Mars 662M), or USB camera.")
+                raise RuntimeError("No camera found. Connect a Raspberry Pi HQ camera or Player One (Mars 662M).")
 
         # UI Elements
         self.create_widgets()
@@ -148,11 +138,10 @@ class PreviewApp:
                 if self.usb_camera is not None:
                     is_playerone = type(self.usb_camera).__name__ == "PlayerOneCamera"
                     self.capture_manager = CaptureManager(
-                        capture_type="Player One (Grayscale)" if is_playerone else "USB (Grayscale)",
+                        capture_type="Player One (Grayscale)" if is_playerone else "Player One (Grayscale)",
                         resolution=preview_resolution,
                         fps=default_fps,
-                        playerone_camera=self.usb_camera if is_playerone else None,
-                        usb_camera=None if is_playerone else self.usb_camera
+                        playerone_camera=self.usb_camera
                     )
                 else:
                     self.capture_manager = CaptureManager(

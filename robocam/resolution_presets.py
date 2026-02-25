@@ -5,7 +5,6 @@ Used by preview and experiment so users pick only supported resolutions (no cust
 
 from typing import List, Optional, Tuple
 
-from robocam.usbcamera import USB_CAMERA_SUPPORTED_RESOLUTIONS
 from robocam.playerone_camera import PLAYERONE_SUPPORTED_RESOLUTIONS
 
 # Pi HQ (IMX477) 4:3 native resolutions
@@ -30,7 +29,7 @@ def get_capture_resolution_presets(
         return list(PLAYERONE_SUPPORTED_RESOLUTIONS)
     if is_pihq:
         return list(PI_HQ_RESOLUTION_PRESETS)
-    return list(USB_CAMERA_SUPPORTED_RESOLUTIONS)
+    return list(PLAYERONE_SUPPORTED_RESOLUTIONS)
 
 
 def format_resolution_option(width: int, height: int) -> str:

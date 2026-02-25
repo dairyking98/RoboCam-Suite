@@ -7,6 +7,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
+# Auto-extract Player One SDK tarball on Linux if present (so SDK_DIR exists before we check lib/)
+[ -f "scripts/ensure_playerone_sdk.sh" ] && . "scripts/ensure_playerone_sdk.sh"
+
 SDK_DIR="PlayerOne_Camera_SDK_Linux_V3.10.0"
 URL="https://player-one-astronomy.com/download/softwares/PlayerOne_Camera_SDK_Linux_V3.10.0.tar.gz"
 
