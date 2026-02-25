@@ -7,7 +7,7 @@ set -e  # Exit on error
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 # On Linux: ensure Player One SDK is present (download + extract if missing)
-[ "$(uname -s)" = "Linux" ] && [ -f "scripts/populate_playerone_lib.sh" ] && ./scripts/populate_playerone_lib.sh || true
+[ "$(uname -s)" = "Linux" ] && [ -f "scripts/populate_playerone_lib.sh" ] && bash scripts/populate_playerone_lib.sh || true
 
 # Player One SDK: full SDK in project root (lib/arm64 or lib/aarch64), or playerone_sdk/native, then /usr/local/lib
 for sdk_dir in "PlayerOne_Camera_SDK_Linux_V3.10.0" "PlayerOne_Camera_SDK_Linux_"*; do
