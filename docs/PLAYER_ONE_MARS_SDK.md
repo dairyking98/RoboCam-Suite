@@ -9,6 +9,18 @@ The **Player One Mars 662M** (and similar Mars cameras) are **not standard UVC w
 
 ---
 
+## On the Pi – quick setup (what to do and what’s automated)
+
+| Step | What to do | Automated? |
+|------|------------|------------|
+| **1. SDK** | Nothing. On first run of `./start_preview.sh` (or any launcher), the script downloads and extracts the Player One SDK into the project and keeps the tarball in the repo root. | Yes – `scripts/populate_playerone_lib.sh` runs from the launchers on Linux. |
+| **2. pyPOACamera.py** | Nothing. The app patches the SDK’s `pyPOACamera.py` to load `libPlayerOneCamera.so` on Linux (by name, so `LD_LIBRARY_PATH` from the launcher is used). | Yes – `_ensure_pypoa_patched_for_linux()` in `robocam/playerone_camera.py` runs when the app uses the SDK. |
+| **3. USB permissions** | Run **once**: `bash scripts/setup_playerone_udev.sh` (prompts for sudo). Then unplug and replug the camera. | One-time – run `scripts/setup_playerone_udev.sh` yourself; it installs the udev rule for Mars 662M (vendor a0a0, product 6621). For other cameras, use: `bash scripts/setup_playerone_udev.sh <vendor_hex> <product_hex>` (e.g. from `lsusb`). |
+
+**Order on a fresh Pi:** run `./setup.sh`, then `bash scripts/setup_playerone_udev.sh`, unplug/replug the camera, then `./start_preview.sh`.
+
+---
+
 ## Option 1: Install the Player One Linux SDK (for development)
 
 Use this if you want to write or build software that talks to the camera via the official API.
