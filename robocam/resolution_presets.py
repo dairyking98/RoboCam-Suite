@@ -3,7 +3,7 @@ Native capture resolution presets per camera backend.
 Used by preview and experiment so users pick only supported resolutions (no custom).
 """
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from robocam.usbcamera import USB_CAMERA_SUPPORTED_RESOLUTIONS
 from robocam.playerone_camera import PLAYERONE_SUPPORTED_RESOLUTIONS
