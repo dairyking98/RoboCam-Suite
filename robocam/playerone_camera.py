@@ -25,10 +25,6 @@ logger = get_logger(__name__)
 
 # Project root (RoboCam-Suite directory)
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# Project-local SDK path (preferred when present)
-PLAYERONE_SDK_LOCAL = os.path.join(_PROJECT_ROOT, "playerone_sdk")
-PLAYERONE_SDK_LOCAL_PYTHON = os.path.join(PLAYERONE_SDK_LOCAL, "python")
-PLAYERONE_SDK_LOCAL_NATIVE = os.path.join(PLAYERONE_SDK_LOCAL, "native")
 # Full SDK in project root (e.g. PlayerOne_Camera_SDK_Linux_V3.10.0/python)
 PLAYERONE_SDK_FULL_PYTHON = os.path.join(_PROJECT_ROOT, "PlayerOne_Camera_SDK_Linux_V3.10.0", "python")
 
@@ -42,9 +38,8 @@ PLAYERONE_SUPPORTED_RESOLUTIONS = [
 
 def get_playerone_sdk_python_path() -> Optional[str]:
     """Return path to SDK python folder, or None if not found.
-    Prefers: project root PlayerOne_Camera_SDK_Linux_V3.10.0/python, then any
-    PlayerOne_Camera_SDK_Linux_*/python in project root, then playerone_sdk/python,
-    then PLAYERONE_SDK_PYTHON, then ~/PlayerOne_....
+    Prefers: project root PlayerOne_Camera_SDK_Linux_*/python, then
+    PLAYERONE_SDK_PYTHON, then ~/PlayerOne_Camera_SDK_Linux_*/python.
     """
     if os.path.isdir(PLAYERONE_SDK_FULL_PYTHON):
         return PLAYERONE_SDK_FULL_PYTHON
@@ -56,8 +51,6 @@ def get_playerone_sdk_python_path() -> Optional[str]:
                     return py_path
     except Exception:
         pass
-    if os.path.isdir(PLAYERONE_SDK_LOCAL_PYTHON):
-        return PLAYERONE_SDK_LOCAL_PYTHON
     path = os.environ.get("PLAYERONE_SDK_PYTHON")
     if path and os.path.isdir(path):
         return path

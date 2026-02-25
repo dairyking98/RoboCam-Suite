@@ -9,7 +9,9 @@ echo ""
 # Run from repo root; on Linux ensure Player One SDK is present (download + extract if missing)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
-[ "$(uname -s)" = "Linux" ] && [ -f "scripts/populate_playerone_lib.sh" ] && bash scripts/populate_playerone_lib.sh || true
+if [ "$(uname -s)" = "Linux" ] && [ -f "$SCRIPT_DIR/scripts/populate_playerone_lib.sh" ]; then
+  bash "$SCRIPT_DIR/scripts/populate_playerone_lib.sh" || true
+fi
 
 # Install required system dependencies
 echo "Installing system dependencies..."

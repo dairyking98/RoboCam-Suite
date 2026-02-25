@@ -7,9 +7,11 @@ set -e  # Exit on error
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 # On Linux: ensure Player One SDK is present (download + extract if missing)
-[ "$(uname -s)" = "Linux" ] && [ -f "scripts/populate_playerone_lib.sh" ] && bash scripts/populate_playerone_lib.sh || true
+if [ "$(uname -s)" = "Linux" ] && [ -f "$SCRIPT_DIR/scripts/populate_playerone_lib.sh" ]; then
+  bash "$SCRIPT_DIR/scripts/populate_playerone_lib.sh" || true
+fi
 
-# Player One SDK: full SDK in project root (lib/arm64 or lib/aarch64), or playerone_sdk/native, then /usr/local/lib
+# Player One SDK: full SDK in project root (lib/arm64 or lib/aarch64), then /usr/local/lib
 for sdk_dir in "PlayerOne_Camera_SDK_Linux_V3.10.0" "PlayerOne_Camera_SDK_Linux_"*; do
   if [ -d "$SCRIPT_DIR/$sdk_dir" ]; then
     for arch in arm64 aarch64 armhf; do
@@ -20,9 +22,6 @@ for sdk_dir in "PlayerOne_Camera_SDK_Linux_V3.10.0" "PlayerOne_Camera_SDK_Linux_
     break
   fi
 done 2>/dev/null || true
-if [ -d "$SCRIPT_DIR/playerone_sdk/native" ]; then
-  export LD_LIBRARY_PATH="$SCRIPT_DIR/playerone_sdk/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-fi
 export LD_LIBRARY_PATH="/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 # Check if virtual environment exists

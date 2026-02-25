@@ -165,26 +165,6 @@ RoboCam-Suite/
 
 RoboCam-Suite will use **`PlayerOne_Camera_SDK_Linux_V3.10.0/python`** for the Python bindings and add **`lib/arm64`** (or **`lib/aarch64`**, **`lib/armhf`**) to the library path. No copying of files needed. Just patch **`PlayerOne_Camera_SDK_Linux_V3.10.0/python/pyPOACamera.py`** for Linux (step 5.2) so it loads the library by name (e.g. `LoadLibrary("libPlayerOne_camera.so")`). Run `./start_preview.sh` from the project root.
 
-**Option 2: Project-local `playerone_sdk/` (minimal copy)**
-
-RoboCam-Suite also looks for a **`playerone_sdk/`** layout (library in `playerone_sdk/native/`, Python in `playerone_sdk/python/`). Use this if you prefer to copy only the needed files.
-
-1. From the **RoboCam-Suite** root (same folder as `preview.py`), create the layout and copy files from your extracted SDK (e.g. `~/PlayerOne_Camera_SDK_Linux_V3.10.0`):
-
-   ```bash
-   mkdir -p playerone_sdk/native playerone_sdk/python
-   cp ~/PlayerOne_Camera_SDK_Linux_V3.10.0/lib/arm64/libPlayerOne_camera.so playerone_sdk/native/
-   cp ~/PlayerOne_Camera_SDK_Linux_V3.10.0/python/*.py playerone_sdk/python/
-   ```
-
-2. If the SDK Python code expects a different library name (e.g. `libPlayerOneCamera.so`), copy the .so with that name into `playerone_sdk/native/` (e.g. `cp libPlayerOne_camera.so libPlayerOneCamera.so`).
-
-3. Patch **`playerone_sdk/python/pyPOACamera.py`** so on Linux it loads the library **by name only** (no `./`), e.g. `LoadLibrary("libPlayerOne_camera.so")` or `LoadLibrary("libPlayerOneCamera.so")`. See step 5.2 for the exact block.
-
-4. Run the app from the project root: `./start_preview.sh` or `./start_experiment.sh`. The launcher scripts add `playerone_sdk/native` to `LD_LIBRARY_PATH` so the .so is found.
-
-See **`playerone_sdk/README.md`** in the project for the same steps.
-
 **Alternative: system path**  
 Install the .so in `/usr/local/lib/` (step 2), copy it with the name the SDK expects if different, patch pyPOACamera to load by name, and set `LD_LIBRARY_PATH=/usr/local/lib` when running (the launcher scripts already do this).
 
