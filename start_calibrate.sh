@@ -6,9 +6,14 @@ set -e  # Exit on error
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
-# On Linux: ensure Player One SDK is present (download + extract if missing)
-if [ "$(uname -s)" = "Linux" ] && [ -f "$SCRIPT_DIR/scripts/populate_playerone_lib.sh" ]; then
-  bash "$SCRIPT_DIR/scripts/populate_playerone_lib.sh" || true
+# On Linux: ensure Player One SDK is present (download + full extract if missing)
+if [ "$(uname -s)" = "Linux" ]; then
+  echo "Checking Player One SDK..."
+  if [ -f "$SCRIPT_DIR/scripts/populate_playerone_lib.sh" ]; then
+    bash "$SCRIPT_DIR/scripts/populate_playerone_lib.sh" || true
+  else
+    echo "Warning: scripts/populate_playerone_lib.sh not found."
+  fi
 fi
 
 # Player One SDK: full SDK in project root (lib/arm64 or lib/aarch64), then /usr/local/lib

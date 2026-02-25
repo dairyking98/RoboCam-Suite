@@ -63,6 +63,12 @@ def get_playerone_sdk_python_path() -> Optional[str]:
             return candidates[0]
     except Exception:
         pass
+    logger.warning(
+        "Player One SDK not found. Looked for: %s (exists=%s), PLAYERONE_SDK_PYTHON, ~/PlayerOne_*/python. "
+        "On Linux run: bash scripts/populate_playerone_lib.sh",
+        PLAYERONE_SDK_FULL_PYTHON,
+        os.path.isdir(PLAYERONE_SDK_FULL_PYTHON),
+    )
     return None
 
 
