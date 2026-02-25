@@ -126,7 +126,13 @@ class PreviewApp:
                 self.fps_tracker = FPSTracker()
                 print("Camera started (Player One)")
             else:
-                raise RuntimeError("No camera found. Connect a Raspberry Pi HQ camera or Player One (Mars 662M).")
+                # No camera found: run in camera simulation mode so the app still starts
+                print("No camera found (Pi HQ or Player One). Running in camera simulation mode.")
+                print("  To skip this message, run: ./start_preview.sh --simulate_cam")
+                print("  For Player One: put PlayerOne_Camera_SDK_Linux_V3.10.0.tar.gz in project root and re-run (auto-extracts on Linux).")
+                self._simulate_cam = True
+                if "CAMERA SIM" not in self.root.title():
+                    self.root.title(self.root.title() + " [CAMERA SIM]")
 
         # UI Elements
         self.create_widgets()

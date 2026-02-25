@@ -1,36 +1,54 @@
 #!/bin/bash
-# One-time: populate PlayerOne_Camera_SDK_Linux_V3.10.0/lib/ with real .so files
-# so the repo can be pushed from Windows and work on Raspberry Pi (no symlinks).
-# Run from repo root. Run on the Pi (or any Linux) if lib/ is missing after clone.
+# Ensure Player One SDK is present on Linux: download + extract if missing; populate lib/ if needed.
+# Run from repo root. Invoked by start_preview.sh, start_experiment.sh, etc. on Linux.
+# When SDK dir is missing: download tarball and full-extract to repo root.
+# When SDK dir exists but lib/ is missing: download and copy lib/ (real .so files) for Pi.
 
-set -e
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_ROOT"
-# Auto-extract Player One SDK tarball on Linux if present (so SDK_DIR exists before we check lib/)
-[ -f "scripts/ensure_playerone_sdk.sh" ] && . "scripts/ensure_playerone_sdk.sh"
-
-SDK_DIR="PlayerOne_Camera_SDK_Linux_V3.10.0"
-URL="https://player-one-astronomy.com/download/softwares/PlayerOne_Camera_SDK_Linux_V3.10.0.tar.gz"
-
-if [ ! -d "$SDK_DIR" ]; then
-  echo "Error: $SDK_DIR not found. Run from repo root."
-  exit 1
-fi
-
-if [ -d "$SDK_DIR/lib/arm64" ] || [ -d "$SDK_DIR/lib/aarch64" ]; then
-  echo "lib/ already present. Nothing to do."
+if [ "$(uname -s)" != "Linux" ]; then
   exit 0
 fi
 
-echo "Downloading SDK tarball to populate lib/ with real .so files..."
-wget -q -O /tmp/PlayerOne_SDK.tar.gz "$URL" || { echo "Download failed."; exit 1; }
-echo "Extracting lib/..."
-tar -xzf /tmp/PlayerOne_SDK.tar.gz -C /tmp PlayerOne_Camera_SDK_Linux_V3.10.0/lib
-cp -r /tmp/PlayerOne_Camera_SDK_Linux_V3.10.0/lib "$SDK_DIR/"
-rm -f /tmp/PlayerOne_SDK.tar.gz
-rm -rf /tmp/PlayerOne_Camera_SDK_Linux_V3.10.0
-echo "Done. Add and commit the lib/ folder so push-from-Windows works on Pi:"
-echo "  git add $SDK_DIR/lib/"
-echo "  git commit -m 'Add Player One SDK lib (real .so files)'"
-echo "  git push"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+SDK_DIR="PlayerOne_Camera_SDK_Linux_V3.10.0"
+URL="https://player-one-astronomy.com/download/softwares/PlayerOne_Camera_SDK_Linux_V3.10.0.tar.gz"
+TARBALL="/tmp/PlayerOne_SDK_$$.tar.gz"
+
+cleanup_tarball() { rm -f "$TARBALL"; }
+trap cleanup_tarball EXIT
+
+# Case 1: SDK directory missing — download and full extract
+if [ ! -d "$SDK_DIR" ]; then
+  echo "Player One SDK: downloading and extracting (full SDK)..."
+  if ! wget -q -O "$TARBALL" "$URL"; then
+    echo "Player One SDK: download failed (no network?). Continuing without SDK."
+    exit 0
+  fi
+  if ! tar -xzf "$TARBALL" -C "$REPO_ROOT"; then
+    echo "Player One SDK: extract failed. Continuing without SDK."
+    exit 0
+  fi
+  echo "Player One SDK: extracted to $SDK_DIR"
+  exit 0
+fi
+
+# Case 2: SDK dir exists but lib/ for this arch missing — download and copy lib/
+if [ -d "$SDK_DIR/lib/arm64" ] || [ -d "$SDK_DIR/lib/aarch64" ]; then
+  exit 0
+fi
+
+echo "Player One SDK: populating lib/ with .so files..."
+if ! wget -q -O "$TARBALL" "$URL"; then
+  echo "Player One SDK: download failed for lib/. Continuing."
+  exit 0
+fi
+if ! tar -xzf "$TARBALL" -C /tmp "$SDK_DIR/lib"; then
+  echo "Player One SDK: extract lib/ failed. Continuing."
+  exit 0
+fi
+cp -r "/tmp/$SDK_DIR/lib" "$SDK_DIR/"
+rm -rf "/tmp/$SDK_DIR"
+echo "Player One SDK: lib/ populated. You can commit and push for Windows→Pi: git add $SDK_DIR/lib/"
+exit 0

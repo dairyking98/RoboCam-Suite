@@ -4,10 +4,10 @@
 
 set -e  # Exit on error
 
-# Run from repo root; auto-extract Player One SDK tarball on Linux if present
+# Run from repo root; on Linux ensure Player One SDK is present (download + extract if missing)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
-[ -f "scripts/ensure_playerone_sdk.sh" ] && . "scripts/ensure_playerone_sdk.sh"
+[ "$(uname -s)" = "Linux" ] && [ -f "scripts/populate_playerone_lib.sh" ] && ./scripts/populate_playerone_lib.sh || true
 
 echo "RoboCam-Suite Setup Script"
 echo "=========================="

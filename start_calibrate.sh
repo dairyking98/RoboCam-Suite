@@ -6,8 +6,8 @@ set -e  # Exit on error
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
-# Auto-extract Player One SDK tarball on Linux if present (e.g. after copy from Windows)
-[ -f "scripts/ensure_playerone_sdk.sh" ] && . "scripts/ensure_playerone_sdk.sh"
+# On Linux: ensure Player One SDK is present (download + extract if missing)
+[ "$(uname -s)" = "Linux" ] && [ -f "scripts/populate_playerone_lib.sh" ] && ./scripts/populate_playerone_lib.sh || true
 
 # Player One SDK: full SDK in project root (lib/arm64 or lib/aarch64), or playerone_sdk/native, then /usr/local/lib
 for sdk_dir in "PlayerOne_Camera_SDK_Linux_V3.10.0" "PlayerOne_Camera_SDK_Linux_"*; do
