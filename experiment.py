@@ -2668,8 +2668,9 @@ if __name__ == "__main__":
         print("Camera simulation mode: Skipping camera initialization")
     else:
         backend = detect_camera()
-        if backend == "pihq":
-            picam2 = Picamera2()
+        if backend is not None and not isinstance(backend, tuple):
+            # Pi HQ: backend is the Picamera2 instance (stopped, ready to use)
+            picam2 = backend
             print("Camera started (Pi HQ)")
         elif isinstance(backend, tuple) and backend[0] == "playerone":
             usb_camera = PlayerOneCamera(resolution=(1920, 1080), fps=30.0, camera_index=backend[1])

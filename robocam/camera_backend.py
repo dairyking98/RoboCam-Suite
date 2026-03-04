@@ -7,19 +7,18 @@ Player One (e.g. Mars 662M via SDK). Uses the first one found: tries Pi HQ first
 Author: RoboCam-Suite
 """
 
-from typing import Optional, Literal, Tuple, Union
+from typing import Any, Optional, Literal, Tuple, Union
 from robocam.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 CameraBackend = Literal["pihq", "playerone"]
 
-# Result: "pihq", ("playerone", index), or None
-DetectResult = Union[
-    Literal["pihq"],
-    Tuple[Literal["playerone"], int],
-    None,
-]
+# Result: Picamera2 instance (Pi HQ), ("playerone", index), or None
+# NOTE: For Pi HQ we return the camera instance to avoid creating a second one,
+# which would fail with "Camera in Configured state trying acquire() requiring state Available"
+# because libcamera does not release the camera immediately after stop().
+DetectResult = Union[Any, Tuple[Literal["playerone"], int], None]
 
 
 def detect_camera() -> DetectResult:
@@ -27,9 +26,12 @@ def detect_camera() -> DetectResult:
     Detect which camera is available. Tries Pi HQ first, then Player One (SDK).
 
     Returns:
-        "pihq" if Raspberry Pi HQ camera is available,
+        Picamera2 instance if Raspberry Pi HQ camera is available (stopped, ready to reconfigure),
         ("playerone", 0) if a Player One camera (e.g. Mars 662M) is available via SDK,
         None if no camera could be opened.
+
+    For Pi HQ, returns the actual camera instance to avoid creating a second one
+    (which fails when the first instance hasn't fully released the camera).
     """
     # Try Pi HQ (libcamera / Picamera2) first
     try:
@@ -40,7 +42,7 @@ def detect_camera() -> DetectResult:
         cam.start()
         cam.stop()
         logger.info("Camera detected: Raspberry Pi HQ (Picamera2)")
-        return "pihq"
+        return cam  # Return instance to reuse; avoid second Picamera2() causing state error
     except Exception as e:
         logger.debug(f"Pi HQ camera not available: {e}")
 

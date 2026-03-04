@@ -97,9 +97,10 @@ class PreviewApp:
             print("Camera simulation mode: Skipping camera initialization")
         else:
             backend = detect_camera()
-            if backend == "pihq":
+            if backend is not None and not isinstance(backend, tuple):
+                # Pi HQ: backend is the Picamera2 instance (stopped, ready to reconfigure)
                 from picamera2 import Picamera2
-                self.picam2 = Picamera2()
+                self.picam2 = backend
                 self.picam2_config = self.picam2.create_preview_configuration(
                     main={"size": preview_resolution},
                     controls={"FrameRate": default_fps},

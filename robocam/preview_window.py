@@ -97,11 +97,13 @@ class PreviewWindow:
             self.picam2 = picam2
         elif not simulate_cam:
             # No camera passed: detect and create (used by calibrate.py)
+            # detect_camera returns the Picamera2 instance for Pi HQ to avoid creating
+            # a second instance (which fails: "Camera in Configured state trying acquire()")
             from robocam.camera_backend import detect_camera
             backend = detect_camera()
-            if backend == "pihq":
-                from picamera2 import Picamera2
-                self.picam2 = Picamera2()
+            if backend is not None and not isinstance(backend, tuple):
+                # Pi HQ: backend is the Picamera2 instance (stopped, ready to reconfigure)
+                self.picam2 = backend
                 self.picam2_config = self.picam2.create_preview_configuration(
                     main={"size": initial_resolution},
                     controls={"FrameRate": initial_fps},
