@@ -2466,7 +2466,23 @@ class ExperimentWindow:
                         output_path = path  # For metadata; H264 path
                         output = FileOutput(path)
                         if self.picam2 is not None:
-                            self.picam2.start_recording(self.encoder, output)
+                            try:
+                                self.picam2.start_recording(self.encoder, output)
+                            except (FileNotFoundError, OSError) as e:
+                                err_msg = str(e)
+                                err_no = getattr(e, 'errno', None)
+                                if err_no == 2 or "No such file or directory" in err_msg or "v412" in err_msg.lower():
+                                    hint = (
+                                        "The H.264 encoder could not access the V4L2 device (e.g. /dev/video10). "
+                                        "Try: (1) Use capture type 'Picamera2 (Grayscale - High FPS)' or "
+                                        "'rpicam-vid (Grayscale - High FPS)' instead; (2) Ensure no other app is using the camera; "
+                                        "(3) On Raspberry Pi, check that /dev/video10 exists: ls /dev/video*"
+                                    )
+                                    logger.error("Picamera2 start_recording failed: %s. %s", e, hint)
+                                    self.status_lbl.config(text=f"Recording failed: encoder device not found. Use High FPS capture type?", fg="red")
+                                    self.running = False
+                                    break
+                                raise
                         else:
                             logger.info(f"[CAMERA SIMULATION] Would start recording video to: {output.fileoutput}")
                         self.recording = True
