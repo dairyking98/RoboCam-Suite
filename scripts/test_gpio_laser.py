@@ -2,15 +2,13 @@
 """
 Test that the configured GPIO pin actually outputs 3.3V when set HIGH.
 
+Uses the same Laser class as the app (lgpio on Bookworm/Pi 5, else RPi.GPIO).
+On Bookworm/Pi 5, RPi.GPIO often does not drive pins — install: sudo apt install python3-lgpio
+
 Usage (on Raspberry Pi):
   python3 scripts/test_gpio_laser.py
 
-The script uses the same config as the app (hardware.laser.gpio_pin), sets that
-pin HIGH for 10 seconds, then LOW. Use a multimeter or your laser to verify.
-
-BCM vs physical pin: The config uses BCM (Broadcom) numbers, not physical pin
-positions. Example: BCM 21 = physical pin 40. If your wire is on physical pin 21,
-that is BCM 9 — set gpio_pin to 9 in config/default_config.json.
+BCM vs physical: config uses BCM. BCM 21 = physical pin 40. Physical 21 = BCM 9.
 """
 
 import os
@@ -33,50 +31,38 @@ BCM_TO_PHYSICAL = {
 
 def main():
     try:
-        import RPi.GPIO as GPIO
-    except ImportError:
-        print("RPi.GPIO not found. Run this script on a Raspberry Pi.")
+        from robocam.laser import Laser
+    except ImportError as e:
+        print(f"Could not import Laser: {e}")
+        print("On Bookworm/Pi 5 install: sudo apt install python3-lgpio")
+        sys.exit(1)
+    except RuntimeError as e:
+        print(f"GPIO not available: {e}")
         sys.exit(1)
 
     try:
         from robocam.config import get_config
         config = get_config()
         bcm_pin = config.get("hardware.laser.gpio_pin", 21)
-    except Exception as e:
-        print(f"Could not load config: {e}")
+    except Exception:
         bcm_pin = 21
 
     physical = BCM_TO_PHYSICAL.get(bcm_pin, "?")
     print(f"Config pin: BCM {bcm_pin} (physical pin {physical} on 40-pin header)")
-    print(f"If your wire is on a different physical pin, change hardware.laser.gpio_pin in config.")
+    print("Using same Laser class as app (lgpio if installed, else RPi.GPIO).")
     print()
 
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setwarnings(False)
-    # Release pin in case a previous run (or another script) left it claimed
     try:
-        GPIO.cleanup(bcm_pin)
-    except Exception:
-        GPIO.cleanup()
-    time.sleep(0.1)
-
-    try:
-        GPIO.setup(bcm_pin, GPIO.OUT)
-    except RuntimeError as e:
-        if "in use" in str(e).lower() or "already" in str(e).lower():
-            print(f"Pin BCM {bcm_pin} is in use (often by the system on this Pi/OS).")
-            print("Try a different pin in config, e.g. gpio_pin: 17 (physical 11) or gpio_pin: 27 (physical 13).")
-        raise
-
-    GPIO.output(bcm_pin, GPIO.LOW)
-    time.sleep(0.2)
+        laser = Laser()
+    except Exception as e:
+        print(f"Laser init failed: {e}")
+        sys.exit(1)
 
     print("Setting pin HIGH for 10 seconds (measure 3.3V or connect laser)...")
-    GPIO.output(bcm_pin, GPIO.HIGH)
+    laser.switch(1)
     time.sleep(10)
     print("Setting pin LOW.")
-    GPIO.output(bcm_pin, GPIO.LOW)
-    GPIO.cleanup()
+    laser.switch(0)
     print("Done.")
 
 

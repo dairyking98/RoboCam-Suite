@@ -63,9 +63,13 @@ if ! dpkg -l | grep -q "^ii.*build-essential"; then
     MISSING_DEPS+=("build-essential")
 fi
 
-# Check for python3-rpi.gpio (required for GPIO control)
-if ! dpkg -l | grep -q "^ii.*python3-rpi.gpio"; then
-    MISSING_DEPS+=("python3-rpi.gpio")
+# Check for GPIO: prefer python3-lgpio (works on Bookworm/Pi 5); fallback python3-rpi.gpio
+if dpkg -l | grep -q "^ii.*python3-lgpio"; then
+    echo "python3-lgpio found (GPIO laser control, Bookworm/Pi 5 compatible)."
+elif dpkg -l | grep -q "^ii.*python3-rpi.gpio"; then
+    echo "python3-rpi.gpio found (GPIO laser control). On Bookworm/Pi 5, install python3-lgpio if pins do not output 3.3V."
+else
+    MISSING_DEPS+=("python3-lgpio")
 fi
 
 # Check for libcamera-apps (contains rpicam-vid command-line tool)
@@ -130,7 +134,7 @@ if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     echo "Missing system dependencies detected: ${MISSING_DEPS[*]}"
     echo "These are required for:"
     echo "  - python3-libcamera: Required for picamera2 (Raspberry Pi camera support)"
-    echo "  - python3-rpi.gpio: Required for GPIO control (laser control)"
+    echo "  - python3-lgpio: Required for GPIO laser control (use on Bookworm/Pi 5; RPi.GPIO often does not drive pins)"
     echo "  - ffmpeg: Required for Picamera2 high-FPS capture with hardware encoding"
     echo "  - libcap-dev, python3-dev, build-essential: Required to build Python packages"
     echo ""
