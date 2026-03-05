@@ -24,8 +24,6 @@ from tkinter import filedialog
 from datetime import datetime
 from typing import Optional, Dict, List, Tuple, Any
 from picamera2 import Picamera2
-from picamera2.encoders import H264Encoder
-from picamera2.outputs import FileOutput
 from robocam.camera_backend import detect_camera
 from robocam.robocam_ccc import RoboCam
 from robocam.playerone_camera import PlayerOneCamera
@@ -50,7 +48,7 @@ OUTPUTS_FOLDER: str = "outputs"  # Base folder for experiment outputs
 # Output folder structure: outputs/YYYYMMDD_{experiment_name}/ contains recordings and CSV
 DEFAULT_RES: tuple[int, int] = (1920, 1080)
 DEFAULT_FPS: float = 30.0
-DEFAULT_EXPORT: str = "H264"
+DEFAULT_EXPORT: str = "AVI"  # All capture modes record to AVI (FFV1); no V4L2 H.264
 
 
 def ensure_directory_exists(folder_path: str) -> tuple[bool, str]:
@@ -195,6 +193,12 @@ def convert_h264_to_mp4(h264_path: str, metadata_path: Optional[str] = None, fps
             logger.error(f"H264 file not found: {h264_path}")
             return False
         
+        # Skip empty or invalid files (e.g. from failed Picamera2 encoder start)
+        size = os.path.getsize(h264_path)
+        if size == 0:
+            logger.warning(f"Skipping empty H264 file (recording may have failed): {h264_path}")
+            return False
+        
         # Get FPS from metadata JSON if available
         actual_fps = fps
         if actual_fps is None and metadata_path and os.path.exists(metadata_path):
@@ -265,11 +269,15 @@ def convert_all_h264_in_folder(folder_path: str) -> Tuple[int, int]:
         logger.error(f"Folder does not exist: {folder_path}")
         return (0, 0)
     
-    # Find all H264 files
-    h264_files = glob.glob(os.path.join(folder_path, "*.h264"))
+    # Find all H264 files (skip empty ones from failed recordings)
+    all_h264 = glob.glob(os.path.join(folder_path, "*.h264"))
+    h264_files = [p for p in all_h264 if os.path.getsize(p) > 0]
+    skipped = len(all_h264) - len(h264_files)
+    if skipped > 0:
+        logger.warning(f"Skipping {skipped} empty H264 file(s) (recording may have failed)")
     
     if not h264_files:
-        logger.info(f"No H264 files found in {folder_path}")
+        logger.info(f"No non-empty H264 files found in {folder_path}")
         return (0, 0)
     
     logger.info(f"Found {len(h264_files)} H264 file(s) to convert in {folder_path}")
@@ -596,7 +604,7 @@ class ExperimentWindow:
         # Create export type menu - will be updated based on capture mode
         export_menu_frame = tk.Frame(camera_frame)
         export_menu_frame.grid(row=row, column=3, sticky="w", padx=2, pady=2)
-        self.export_menu = tk.OptionMenu(export_menu_frame, self.export_var, "H264")
+        self.export_menu = tk.OptionMenu(export_menu_frame, self.export_var, "AVI")
         self.export_menu.pack(side=tk.LEFT)
         # Note: Command callback will be added in _update_export_type_options()
         self.export_menu_frame = export_menu_frame  # Store frame for later updates
@@ -788,7 +796,7 @@ class ExperimentWindow:
             exp_name = self.experiment_name_ent.get().strip() or "exp"
             date_str = datetime.now().strftime("%Y%m%d")
             output_folder = os.path.join(OUTPUTS_FOLDER, f"{date_str}_{exp_name}")
-            ext = ".h264"  # H264 is the only export format
+            ext = ".avi"  # Video recordings are AVI (FFV1)
             # Use calibration labels if available, otherwise use placeholders
             if self.loaded_calibration and self.loaded_calibration.get("labels"):
                 labels = self.loaded_calibration.get("labels", [])
@@ -942,7 +950,7 @@ class ExperimentWindow:
             self.fps_ent.delete(0, tk.END)
             self.fps_ent.insert(0, str(settings.get("fps", 30.0)))
             
-            self.export_var.set(settings.get("export_type", "H264"))
+            self.export_var.set(settings.get("export_type", "AVI"))
             
             # Handle both old format (motion_config_file) and new format (motion_config_profile)
             motion_profile = settings.get("motion_config_profile") or settings.get("motion_config_file", "default")
@@ -1603,8 +1611,8 @@ class ExperimentWindow:
             default_export = "PNG"
         else:
             # Video Capture mode: show video formats
-            export_options = ["H264"]
-            default_export = "H264"
+            export_options = ["AVI"]
+            default_export = "AVI"
         
         # Destroy old menu
         if hasattr(self, 'export_menu'):
@@ -1633,7 +1641,7 @@ class ExperimentWindow:
         mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
         export_type = self.export_var.get() if hasattr(self, 'export_var') else "H264"
         
-        # Only show checkbox for Video Capture mode with H264 export
+        # Convert to MP4 only applies to H264 (legacy); current recordings are AVI
         if mode == "Video Capture" and export_type == "H264":
             self.convert_to_mp4_checkbox.grid()
         else:
@@ -2106,22 +2114,9 @@ class ExperimentWindow:
         capture_type = self.capture_type_var.get()
         capture_mode = self.capture_mode_var.get() if hasattr(self, 'capture_mode_var') else "Video Capture"
         
-        # Initialize capture manager if using high-FPS, Player One, or for Image Capture
+        # Initialize capture manager for all capture types (Picamera2 Color/Grayscale, Player One)
         self.capture_manager: Optional[CaptureManager] = None
-        if "High FPS" in capture_type:
-            # Use capture manager for high-FPS modes
-            try:
-                self.capture_manager = CaptureManager(
-                    capture_type=capture_type,
-                    resolution=(res_x, res_y),
-                    fps=fps
-                )
-                logger.info(f"Initialized {capture_type} capture manager: {res_x}x{res_y} @ {fps} FPS")
-            except Exception as e:
-                logger.error(f"Failed to initialize capture manager: {e}")
-                self.status_lbl.config(text=f"Error: Failed to initialize {capture_type}", fg="red")
-                return
-        elif "Player One" in capture_type and self.usb_camera is not None and type(self.usb_camera).__name__ == "PlayerOneCamera":
+        if "Player One" in capture_type and self.usb_camera is not None and type(self.usb_camera).__name__ == "PlayerOneCamera":
             try:
                 self.capture_manager = CaptureManager(
                     capture_type=capture_type,
@@ -2134,71 +2129,23 @@ class ExperimentWindow:
                 logger.error(f"Failed to initialize capture manager: {e}")
                 self.status_lbl.config(text=f"Error: Failed to initialize {capture_type}", fg="red")
                 return
-        else:
-            # Use Picamera2 directly for Picamera2 modes
-            if self.picam2 is None:
-                logger.warning("Camera simulation mode: Skipping camera configuration")
-                return
-            
-            if capture_mode == "Image Capture":
-                # Configure for still image capture
-                grayscale = "Grayscale" in capture_type
-                if grayscale:
-                    still_config = self.picam2.create_still_configuration(
-                        main={'size': (res_x, res_y), 'format': 'YUV420'},
-                        buffer_count=2
-                    )
-                else:
-                    still_config = self.picam2.create_still_configuration(
-                        main={'size': (res_x, res_y)},
-                        buffer_count=2
-                    )
-                
-                # Configure for still capture
-                self.picam2.stop()
-                self.picam2.configure(still_config)
-                self.picam2.start()
-                
-                logger.info(f"Camera configured for image capture: {res_x}x{res_y} ({capture_type})")
-            else:
-                # Video Capture mode - configure for video recording
-                preview_config = self.picam2.create_preview_configuration(
-                    main={'size': (640, 480)},  # Lower resolution for preview
-                    buffer_count=2
+        elif self.picam2 is not None:
+            # Picamera2 (Color) or Picamera2 (Grayscale)
+            try:
+                self.capture_manager = CaptureManager(
+                    capture_type=capture_type,
+                    resolution=(res_x, res_y),
+                    fps=fps,
+                    picam2=self.picam2
                 )
-                
-                # Recording configuration optimized for maximum FPS
-                grayscale = "Grayscale" in capture_type
-                if grayscale:
-                    video_config = self.picam2.create_video_configuration(
-                        main={'size': (res_x, res_y), 'format': 'YUV420'},
-                        controls={'FrameRate': fps},
-                        buffer_count=2
-                    )
-                else:
-                    video_config = self.picam2.create_video_configuration(
-                        main={'size': (res_x, res_y)},
-                        controls={'FrameRate': fps},
-                        buffer_count=2  # Optimize buffer for recording
-                    )
-                
-                # Configure for recording (preview not needed during experiment)
-                self.picam2.stop()
-                self.picam2.configure(video_config)
-                self.picam2.start()
-                
-                logger.info(f"Camera configured for recording: {res_x}x{res_y} @ {fps} FPS ({capture_type})")
-
-        # Select H264 encoder for video recording
-        # Pass fps parameter to ensure FPS metadata is written to the H264 stream
-        # This ensures accurate playback duration for scientific measurements
-        # Note: fps parameter may not be supported in all picamera2 versions
-        try:
-            self.encoder = H264Encoder(bitrate=50_000_000, fps=fps)
-        except TypeError:
-            # Fallback for older picamera2 versions that don't support fps parameter
-            logger.warning(f"H264Encoder doesn't support fps parameter, using default (fps will be in metadata JSON)")
-            self.encoder = H264Encoder(bitrate=50_000_000)
+                logger.info(f"Initialized {capture_type} capture manager: {res_x}x{res_y} @ {fps} FPS")
+            except Exception as e:
+                logger.error(f"Failed to initialize capture manager: {e}")
+                self.status_lbl.config(text=f"Error: Failed to initialize {capture_type}", fg="red")
+                return
+        else:
+            logger.warning("Camera simulation mode: Skipping camera configuration")
+            return
 
         # Build sequence from calibration and selected wells
         interpolated_positions = self.loaded_calibration.get("interpolated_positions", [])
@@ -2405,119 +2352,50 @@ class ExperimentWindow:
                     self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Done ({image_counter} images captured)")
                 
                 else:
-                    # === VIDEO CAPTURE MODE (existing implementation) ===
-                    use_playerone_capture = self.capture_manager is not None and "Player One" in self.capture_manager.get_capture_type()
-                    ext = ".avi" if use_playerone_capture else ".h264"  # Player One uses AVI (FFV1); Pi HQ uses H264
+                    # === VIDEO CAPTURE MODE (frame buffer + encode; no V4L2 encoder) ===
+                    ext = ".avi"  # All modes use AVI (FFV1) via capture manager
                     fname = f"{ds}_{ts}_{loop_experiment_name}_{y_lbl}{x_lbl}{ext}"
                     path = os.path.join(loop_output_folder, fname)
 
-                    # Video recording (H264)
-                    # Calculate total expected duration from all phases
                     total_duration = sum(time for _, time in self.action_phases_list)
-                    
-                    # Wait for vibrations to settle before recording
                     time.sleep(self.pre_recording_delay)
-                    
-                    # Log recording start with FPS information
+
                     logger.info(f"Starting video recording: {fname} @ {fps} FPS, expected duration: {total_duration}s")
-                    
                     recording_start_time = time.time()
-                    
-                    # Check if using capture manager (high-FPS or Player One) - frame buffering and encode on stop
-                    use_capture_manager_video = (
-                        self.capture_manager is not None
-                        and ("High FPS" in self.capture_manager.get_capture_type() or "Player One" in self.capture_manager.get_capture_type())
-                    )
-                    if use_capture_manager_video:
-                        # Use capture manager (high-FPS or Player One): buffer frames, encode on stop
-                        codec = "FFV1"
-                        success = self.capture_manager.start_video_recording(path, codec=codec)
-                        if not success:
-                            logger.error("Failed to start recording")
-                            self.status_lbl.config(text="Recording failed", fg="red")
-                            continue
-                        self.recording = True
-                        self.start_recording_flash()
-                        for phase_idx, (action, phase_time) in enumerate(self.action_phases_list, 1):
-                            if not self.running:
-                                break
-                            state = 1 if action == "GPIO ON" else 0
-                            self.laser.switch(state)
-                            self.laser_on = (state == 1)
-                            phase_start = time.time()
-                            action_name = "ON" if action == "GPIO ON" else "OFF"
-                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
-                            frame_interval = 1.0 / fps
-                            last_frame_time = time.time()
-                            while time.time() - phase_start < phase_time and self.running:
-                                current_time = time.time()
-                                if current_time - last_frame_time >= frame_interval:
-                                    self.capture_manager.capture_frame_for_video()
-                                    last_frame_time = current_time
-                                time.sleep(0.01)
-                        output_path = self.capture_manager.stop_video_recording(codec=codec)
-                        if output_path is None:
-                            logger.error("Failed to save video")
-                            self.recording = False
-                            self.stop_recording_flash()
-                            continue
-                    else:
-                        # Use Picamera2 encoder-based recording (new encoder per well - reuse not supported)
-                        output_path = path  # For metadata; H264 path
-                        output = FileOutput(path)
-                        try:
-                            well_encoder = H264Encoder(bitrate=50_000_000, fps=fps)
-                        except TypeError:
-                            well_encoder = H264Encoder(bitrate=50_000_000)
-                        if self.picam2 is not None:
-                            try:
-                                self.picam2.start_recording(well_encoder, output)
-                            except (FileNotFoundError, ProcessLookupError, OSError) as e:
-                                err_msg = str(e)
-                                err_no = getattr(e, 'errno', None)
-                                if err_no in (2, 3) or "No such file or directory" in err_msg or "No such process" in err_msg or "v412" in err_msg.lower() or "v4l2" in err_msg.lower():
-                                    hint = (
-                                        "The H.264 encoder could not access the V4L2 device (e.g. /dev/video10). "
-                                        "Try: (1) Use capture type 'Picamera2 (Grayscale - High FPS)' or "
-                                        "'rpicam-vid (Grayscale - High FPS)' instead; (2) Ensure no other app is using the camera; "
-                                        "(3) On Raspberry Pi, check that /dev/video10 exists: ls /dev/video*"
-                                    )
-                                    logger.error("Picamera2 start_recording failed: %s. %s", e, hint)
-                                    self.status_lbl.config(text=f"Recording failed: encoder device not found. Use High FPS capture type?", fg="red")
-                                    self.running = False
-                                    break
-                                raise
-                        else:
-                            logger.info(f"[CAMERA SIMULATION] Would start recording video to: {output.fileoutput}")
-                        self.recording = True
-                        self.start_recording_flash()
 
-                        # Execute all action phases
-                        for phase_idx, (action, phase_time) in enumerate(self.action_phases_list, 1):
-                            if not self.running:
-                                break
-                            
-                            # Determine GPIO state
-                            state = 1 if action == "GPIO ON" else 0
-                            self.laser.switch(state)
-                            self.laser_on = (state == 1)
-                            
-                            # Wait for phase duration
-                            phase_start = time.time()
-                            action_name = "ON" if action == "GPIO ON" else "OFF"
-                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
-                            while time.time() - phase_start < phase_time and self.running:
-                                time.sleep(0.05 if not self.paused else 0.1)
+                    codec = "FFV1"
+                    success = self.capture_manager.start_video_recording(path, codec=codec)
+                    if not success:
+                        logger.error("Failed to start recording")
+                        self.status_lbl.config(text="Recording failed", fg="red")
+                        continue
+                    self.recording = True
+                    self.start_recording_flash()
+                    for phase_idx, (action, phase_time) in enumerate(self.action_phases_list, 1):
+                        if not self.running:
+                            break
+                        state = 1 if action == "GPIO ON" else 0
+                        self.laser.switch(state)
+                        self.laser_on = (state == 1)
+                        phase_start = time.time()
+                        action_name = "ON" if action == "GPIO ON" else "OFF"
+                        self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
+                        frame_interval = 1.0 / fps
+                        last_frame_time = time.time()
+                        while time.time() - phase_start < phase_time and self.running:
+                            current_time = time.time()
+                            if current_time - last_frame_time >= frame_interval:
+                                self.capture_manager.capture_frame_for_video()
+                                last_frame_time = current_time
+                            time.sleep(0.01)
+                    output_path = self.capture_manager.stop_video_recording(codec=codec)
+                    if output_path is None:
+                        logger.error("Failed to save video")
+                        self.recording = False
+                        self.stop_recording_flash()
+                        continue
 
-                        try:
-                            if self.picam2 is not None:
-                                self.picam2.stop_recording()
-                            else:
-                                logger.info("[CAMERA SIMULATION] Would stop recording")
-                        except Exception as stop_err:
-                            logger.warning("Stop recording raised: %s", stop_err)
-
-                    # Verify output file was written (encoder path and capture-manager path)
+                    # Verify output file was written
                     video_file = output_path if output_path else path
                     if loop_capture_mode == "Video Capture" and video_file and os.path.exists(video_file):
                         size = os.path.getsize(video_file)
@@ -2547,8 +2425,7 @@ class ExperimentWindow:
                     # Save metadata file with FPS and recording information
                     well_label = f"{y_lbl}{x_lbl}"
                     timestamp_str = f"{ds}_{ts}"
-                    # Use output_path if capture manager was used (high-FPS or Player One), otherwise use path
-                    video_path_for_metadata = output_path if (self.capture_manager is not None and ("High FPS" in self.capture_manager.get_capture_type() or "Player One" in self.capture_manager.get_capture_type())) else path
+                    video_path_for_metadata = output_path if output_path else path
                     save_video_metadata(
                         video_path=video_path_for_metadata,
                         target_fps=fps,
@@ -2651,10 +2528,8 @@ class ExperimentWindow:
             self.laser_on = False
         if self.recording:
             try:
-                if self.capture_manager is not None and ("High FPS" in self.capture_manager.get_capture_type() or "Player One" in self.capture_manager.get_capture_type()):
+                if self.capture_manager is not None:
                     self.capture_manager.stop_video_recording(codec="FFV1")
-                elif self.picam2 is not None:
-                    self.picam2.stop_recording()
             except Exception:
                 pass
             self.recording = False
