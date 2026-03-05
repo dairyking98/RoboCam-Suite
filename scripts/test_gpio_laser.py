@@ -45,8 +45,22 @@ def main():
     print()
 
     GPIO.setmode(GPIO.BCM)
-    GPIO.setwarnings(True)
-    GPIO.setup(bcm_pin, GPIO.OUT)
+    GPIO.setwarnings(False)
+    # Release pin in case a previous run (or another script) left it claimed
+    try:
+        GPIO.cleanup(bcm_pin)
+    except Exception:
+        GPIO.cleanup()
+    time.sleep(0.1)
+
+    try:
+        GPIO.setup(bcm_pin, GPIO.OUT)
+    except RuntimeError as e:
+        if "in use" in str(e).lower() or "already" in str(e).lower():
+            print(f"Pin BCM {bcm_pin} is in use (often by the system on this Pi/OS).")
+            print("Try a different pin in config, e.g. gpio_pin: 17 (physical 11) or gpio_pin: 27 (physical 13).")
+        raise
+
     GPIO.output(bcm_pin, GPIO.LOW)
     time.sleep(0.2)
 

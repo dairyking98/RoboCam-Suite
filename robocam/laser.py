@@ -60,6 +60,11 @@ class Laser:
         
         try:
             GPIO.setmode(GPIO.BCM)
+            GPIO.setwarnings(False)
+            try:
+                GPIO.cleanup(self.laser_pin)
+            except Exception:
+                pass
             GPIO.setup(self.laser_pin, GPIO.OUT)
             default_state = laser_config.get("default_state", "OFF")
             initial_state = self.OFF if default_state.upper() == "OFF" else self.ON
