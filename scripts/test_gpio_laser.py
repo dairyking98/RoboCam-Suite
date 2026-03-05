@@ -13,8 +13,15 @@ positions. Example: BCM 21 = physical pin 40. If your wire is on physical pin 21
 that is BCM 9 — set gpio_pin to 9 in config/default_config.json.
 """
 
+import os
 import sys
 import time
+
+# Add project root so "robocam" can be imported when run as scripts/test_gpio_laser.py
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.dirname(_script_dir)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 # BCM number -> physical pin (40-pin header, Pi 4 style)
 BCM_TO_PHYSICAL = {
