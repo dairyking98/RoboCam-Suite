@@ -16,10 +16,14 @@ if [ "$(uname -s)" = "Linux" ]; then
   fi
 fi
 
-# Install required system dependencies
+# Install required system dependencies (full camera stack for fresh Pi OS)
 echo "Installing system dependencies..."
 sudo apt-get update
-sudo apt-get install -y python3-libcamera libcap-dev python3-dev build-essential
+sudo apt-get install -y python3-libcamera python3-picamera2 libcap-dev python3-dev build-essential ffmpeg
+# Optional: for "rpicam-vid (Grayscale - High FPS)" capture mode
+sudo apt-get install -y libcamera-apps 2>/dev/null || echo "  (libcamera-apps optional; use 'Picamera2 (Grayscale - High FPS)' if unavailable)"
+# GPIO for laser (Bookworm/Pi 5)
+sudo apt-get install -y python3-lgpio 2>/dev/null || sudo apt-get install -y python3-rpi.gpio 2>/dev/null || true
 
 # ImageTk for preview (USB camera and tkinter) - system PIL needs python3-pil.imagetk
 echo "Installing python3-pil.imagetk and python3-tk (for PIL.ImageTk in preview)..."

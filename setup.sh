@@ -49,6 +49,15 @@ if ! dpkg -l | grep -q "^ii.*python3-libcamera"; then
     MISSING_DEPS+=("python3-libcamera")
 fi
 
+# Check for python3-picamera2 (full camera stack including H.264 encoder; recommended on Pi OS Bookworm+)
+if ! dpkg -l | grep -q "^ii.*python3-picamera2"; then
+    if apt-cache show python3-picamera2 &>/dev/null 2>&1; then
+        MISSING_DEPS+=("python3-picamera2")
+    else
+        echo "Note: python3-picamera2 not in repositories (older Pi OS?). Pip picamera2 will be used; H.264 encoder may need 'Picamera2 (Grayscale - High FPS)' capture type."
+    fi
+fi
+
 # Check for libcap-dev (required for python-prctl)
 if ! dpkg -l | grep -q "^ii.*libcap-dev"; then
     MISSING_DEPS+=("libcap-dev")
@@ -133,7 +142,7 @@ fi
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     echo "Missing system dependencies detected: ${MISSING_DEPS[*]}"
     echo "These are required for:"
-    echo "  - python3-libcamera: Required for picamera2 (Raspberry Pi camera support)"
+    echo "  - python3-libcamera, python3-picamera2: Raspberry Pi camera support and H.264 encoder"
     echo "  - python3-lgpio: Required for GPIO laser control (use on Bookworm/Pi 5; RPi.GPIO often does not drive pins)"
     echo "  - ffmpeg: Required for Picamera2 high-FPS capture with hardware encoding"
     echo "  - libcap-dev, python3-dev, build-essential: Required to build Python packages"

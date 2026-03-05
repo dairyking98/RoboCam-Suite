@@ -59,12 +59,13 @@ RoboCam-Suite is a scientific experiment automation system designed for FluorCam
 - Python 3.7 or higher
 - Raspberry Pi OS (required - not compatible with Windows/macOS)
 - System dependencies (installed via apt):
-  - `python3-libcamera` (required for picamera2)
+  - `python3-libcamera` and `python3-picamera2` (Raspberry Pi camera stack and H.264 encoder; **required on fresh Pi OS**)
   - `ffmpeg` (required for Picamera2 high-FPS capture with hardware encoding)
-  - `raspberrypi-userland` (contains `raspividyuv` command-line tool for high-FPS grayscale capture, optional)
+  - `libcamera-apps` (optional; for "rpicam-vid (Grayscale - High FPS)" capture mode)
   - `libcap-dev` (required to build python-prctl)
   - `python3-dev` (required to build Python packages)
   - `build-essential` (required to build Python packages)
+  - `python3-lgpio` or `python3-rpi.gpio` (GPIO for laser control)
 - Required Python packages (see `requirements.txt`)
 - RPi.GPIO library (installed via system package manager on Raspberry Pi)
 
@@ -98,12 +99,35 @@ chmod +x setup.sh
    - Create configuration directories
    - Set up template configuration files
 
+### Fresh Raspberry Pi OS install (e.g. after new SD card)
+
+On a new image, install the full camera stack and run setup:
+
+```bash
+cd RoboCam-Suite
+sudo apt-get update
+sudo apt-get install -y python3-libcamera python3-picamera2 ffmpeg libcap-dev python3-dev build-essential python3-lgpio
+sudo apt-get install -y libcamera-apps 2>/dev/null || true   # optional: rpicam-vid capture mode
+./setup.sh
+```
+
+If you already ran `./setup.sh` but see **encoder** or **recording** errors (e.g. `FileNotFoundError` / `ProcessLookupError` when starting video), install the missing system packages and re-run setup:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3-picamera2 ffmpeg
+./setup.sh
+```
+
+Or run the fix script: `./fix_dependencies.sh`
+
 ### Manual Installation
 
 1. Install system dependencies:
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3-libcamera ffmpeg raspberrypi-userland libcap-dev python3-dev build-essential
+sudo apt-get install -y python3-libcamera python3-picamera2 ffmpeg libcap-dev python3-dev build-essential python3-lgpio
+sudo apt-get install -y libcamera-apps 2>/dev/null || true
 ```
 
 **Note**: The `raspberrypi-userland` package contains the `raspividyuv` command-line tool, which is required for the "raspividyuv (Grayscale - High FPS)" capture mode. 

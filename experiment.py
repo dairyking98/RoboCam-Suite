@@ -2468,10 +2468,10 @@ class ExperimentWindow:
                         if self.picam2 is not None:
                             try:
                                 self.picam2.start_recording(self.encoder, output)
-                            except (FileNotFoundError, OSError) as e:
+                            except (FileNotFoundError, ProcessLookupError, OSError) as e:
                                 err_msg = str(e)
                                 err_no = getattr(e, 'errno', None)
-                                if err_no == 2 or "No such file or directory" in err_msg or "v412" in err_msg.lower():
+                                if err_no in (2, 3) or "No such file or directory" in err_msg or "No such process" in err_msg or "v412" in err_msg.lower() or "v4l2" in err_msg.lower():
                                     hint = (
                                         "The H.264 encoder could not access the V4L2 device (e.g. /dev/video10). "
                                         "Try: (1) Use capture type 'Picamera2 (Grayscale - High FPS)' or "
