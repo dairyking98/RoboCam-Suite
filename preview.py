@@ -24,6 +24,13 @@ from robocam.capture_interface import CaptureManager
 from robocam.preview_window import PreviewWindow
 from robocam.playerone_camera import PlayerOneCamera
 
+# Laser/GPIO (optional on non-Raspberry Pi)
+try:
+    from robocam.laser import Laser
+    _LASER_AVAILABLE = True
+except ImportError:
+    _LASER_AVAILABLE = False
+
 # Preview resolution for camera display (will be loaded from config)
 default_preview_resolution: tuple[int, int] = (800, 600)
 
@@ -75,9 +82,16 @@ class PreviewApp:
         self._simulate_3d: bool = simulate_3d
         self._simulate_cam: bool = simulate_cam
 
-        # Load config for camera settings
+        # Load config for camera settings and laser
         config = get_config()
         camera_config = config.get_camera_config()
+        self.laser = None
+        if _LASER_AVAILABLE:
+            try:
+                laser_pin = config.get("hardware.laser.gpio_pin", 21)
+                self.laser = Laser(laser_pin=laser_pin, config=config)
+            except Exception as e:
+                print(f"GPIO/Laser unavailable: {e} (Raspberry Pi only)")
         default_fps = camera_config.get("default_fps", 30.0)
         
         # Get preview resolution from config, or use default
@@ -367,6 +381,18 @@ class PreviewApp:
                  width=12, bg="#FF9800", fg="white").pack(side=tk.LEFT, padx=5)
         tk.Button(nav_frame, text="Go to Selected", command=self.go_to_selected_well,
                  width=15, bg="#2196F3", fg="white").pack(side=tk.LEFT, padx=5)
+
+        # GPIO / Laser on-off switch
+        tk.Label(nav_frame, text="GPIO:").pack(side=tk.LEFT, padx=(20, 5))
+        self.gpio_on_btn = tk.Button(nav_frame, text="ON", command=self._gpio_on,
+                 width=8, bg="#E53935", fg="white")
+        self.gpio_on_btn.pack(side=tk.LEFT, padx=2)
+        self.gpio_off_btn = tk.Button(nav_frame, text="OFF", command=self._gpio_off,
+                 width=8, bg="#424242", fg="white")
+        self.gpio_off_btn.pack(side=tk.LEFT, padx=2)
+        if self.laser is None:
+            self.gpio_on_btn.config(state=tk.DISABLED)
+            self.gpio_off_btn.config(state=tk.DISABLED)
 
         # Position and status display
         tk.Label(self.root, text="Position (X, Y, Z):").grid(row=8, column=0, sticky="e", padx=5, pady=5)
@@ -1005,6 +1031,24 @@ class PreviewApp:
             self.homed = False
             print(f"Homing error: {e}")
 
+    def _gpio_on(self) -> None:
+        """Turn GPIO (laser) ON."""
+        if self.laser is not None:
+            try:
+                self.laser.switch(1)
+                self.status_label.config(text="GPIO ON", fg="orange")
+            except Exception as e:
+                self.status_label.config(text=f"GPIO error: {e}", fg="red")
+
+    def _gpio_off(self) -> None:
+        """Turn GPIO (laser) OFF."""
+        if self.laser is not None:
+            try:
+                self.laser.switch(0)
+                self.status_label.config(text="GPIO OFF", fg="green")
+            except Exception as e:
+                self.status_label.config(text=f"GPIO error: {e}", fg="red")
+
     def update_status(self) -> None:
         """Update position display."""
         if self.running:
@@ -1027,6 +1071,13 @@ class PreviewApp:
     def on_close(self) -> None:
         """Handle window close event."""
         self.running = False
+
+        # Turn off GPIO (laser) on exit for safety
+        if self.laser is not None:
+            try:
+                self.laser.switch(0)
+            except Exception:
+                pass
         
         # Close preview window
         if self.preview_window is not None:
