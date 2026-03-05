@@ -2462,12 +2462,16 @@ class ExperimentWindow:
                             self.stop_recording_flash()
                             continue
                     else:
-                        # Use Picamera2 encoder-based recording
+                        # Use Picamera2 encoder-based recording (new encoder per well - reuse not supported)
                         output_path = path  # For metadata; H264 path
                         output = FileOutput(path)
+                        try:
+                            well_encoder = H264Encoder(bitrate=50_000_000, fps=fps)
+                        except TypeError:
+                            well_encoder = H264Encoder(bitrate=50_000_000)
                         if self.picam2 is not None:
                             try:
-                                self.picam2.start_recording(self.encoder, output)
+                                self.picam2.start_recording(well_encoder, output)
                             except (FileNotFoundError, ProcessLookupError, OSError) as e:
                                 err_msg = str(e)
                                 err_no = getattr(e, 'errno', None)
@@ -2510,9 +2514,22 @@ class ExperimentWindow:
                                 self.picam2.stop_recording()
                             else:
                                 logger.info("[CAMERA SIMULATION] Would stop recording")
-                        except:
-                            pass
-                    
+                        except Exception as stop_err:
+                            logger.warning("Stop recording raised: %s", stop_err)
+
+                    # Verify output file was written (encoder path and capture-manager path)
+                    video_file = output_path if output_path else path
+                    if loop_capture_mode == "Video Capture" and video_file and os.path.exists(video_file):
+                        size = os.path.getsize(video_file)
+                        if size == 0:
+                            logger.error("Recording produced empty file: %s", video_file)
+                            self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: WARNING - video file is empty!", fg="red")
+                        else:
+                            logger.info("Recording saved: %s (%d bytes)", video_file, size)
+                    elif loop_capture_mode == "Video Capture" and (not video_file or not os.path.exists(video_file)):
+                        logger.error("Recording file missing: %s", video_file)
+                        self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: WARNING - no video file saved!", fg="red")
+
                     # Calculate actual recording duration and verify FPS
                     recording_end_time = time.time()
                     actual_duration = recording_end_time - recording_start_time
