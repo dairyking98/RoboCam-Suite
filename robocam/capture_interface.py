@@ -13,6 +13,7 @@ Author: RoboCam-Suite
 
 import os
 import time
+import threading
 import cv2
 import numpy as np
 from typing import Optional, Tuple, List
@@ -260,6 +261,9 @@ class CaptureManager:
         self._video_output_path = None
 
         try:
+            n_frames = len(self._recorded_frames)
+            logger.info(f"Stopping recording: encoding {n_frames} frames to {path}")
+
             if self.playerone_camera is not None:
                 if not self._recorded_frames:
                     logger.warning("No frames recorded")
@@ -274,20 +278,15 @@ class CaptureManager:
                 for frame in self._recorded_frames:
                     writer.write(frame)
                 writer.release()
-                logger.info(f"Saved video: {path}")
                 self._recorded_frames = []
+                logger.info(f"Saved video: {path}")
                 return path
 
-            picam2 = self._get_picam2()
-            if picam2 is not None:
-                try:
-                    picam2.stop()
-                except Exception:
-                    pass
-                self._picam2_video_configured = False
-
+            # Picamera2: encode frames FIRST (so we have the file), then stop camera.
+            # picam2.stop() can block indefinitely on Pi; we avoid blocking the experiment.
             if not self._recorded_frames:
                 logger.warning("No frames recorded")
+                self._stop_picam2_after_recording()
                 return None
 
             w, h = self.width, self.height
@@ -297,19 +296,51 @@ class CaptureManager:
             writer = cv2.VideoWriter(path, fourcc, self.fps, (w, h), is_color)
             if not writer.isOpened():
                 logger.error("Failed to open VideoWriter for recording")
+                self._recorded_frames = []
+                self._stop_picam2_after_recording()
                 return None
-            for frame in self._recorded_frames:
+            for i, frame in enumerate(self._recorded_frames):
                 if grayscale and frame.ndim == 2:
                     writer.write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
                 else:
                     writer.write(frame)
+                if (i + 1) % 100 == 0:
+                    logger.info(f"Encoding frame {i + 1}/{n_frames}")
             writer.release()
-            logger.info(f"Saved video: {path}")
             self._recorded_frames = []
+            logger.info(f"Saved video: {path}")
+
+            # Stop camera in background with timeout so we don't block forever
+            self._stop_picam2_after_recording()
             return path
         except Exception as e:
             logger.error(f"Error stopping video recording: {e}")
+            self._stop_picam2_after_recording()
             return None
+
+    def _stop_picam2_after_recording(self) -> None:
+        """Stop Picamera2 after recording. Runs stop() with a timeout to avoid blocking indefinitely."""
+        picam2 = self._get_picam2()
+        if picam2 is None or not self._picam2_video_configured:
+            return
+        stop_done = threading.Event()
+        stop_exc = []
+
+        def do_stop() -> None:
+            try:
+                picam2.stop()
+            except Exception as e:
+                stop_exc.append(e)
+            finally:
+                stop_done.set()
+
+        t = threading.Thread(target=do_stop, daemon=True)
+        t.start()
+        if not stop_done.wait(timeout=10.0):
+            logger.warning("picam2.stop() did not complete within 10s; continuing anyway")
+        if stop_exc:
+            logger.warning("picam2.stop() raised: %s", stop_exc[0])
+        self._picam2_video_configured = False
 
     def is_recording(self) -> bool:
         return self._recording

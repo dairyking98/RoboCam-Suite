@@ -2383,11 +2383,13 @@ class ExperimentWindow:
                         frame_interval = 1.0 / fps
                         last_frame_time = time.time()
                         while time.time() - phase_start < phase_time and self.running:
-                            current_time = time.time()
-                            if current_time - last_frame_time >= frame_interval:
-                                self.capture_manager.capture_frame_for_video()
-                                last_frame_time = current_time
-                            time.sleep(0.01)
+                                current_time = time.time()
+                                if current_time - last_frame_time >= frame_interval:
+                                    self.capture_manager.capture_frame_for_video()
+                                    last_frame_time = current_time
+                                time.sleep(0.01)
+                    logger.info("Phase loop finished, encoding video...")
+                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Encoding video...", fg="orange")
                     output_path = self.capture_manager.stop_video_recording(codec=codec)
                     if output_path is None:
                         logger.error("Failed to save video")
