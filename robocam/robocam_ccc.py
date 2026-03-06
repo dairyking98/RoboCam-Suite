@@ -537,7 +537,7 @@ class RoboCam:
                 if "M999" in err_msg.upper() and attempt == 0:
                     logger.warning("Printer error suggests M999 recovery; sending M999 then retrying homing")
                     try:
-                        self.send_gcode("M999", timeout=15.0)  # Clear printer error state
+                        self.send_gcode("M999")  # Clear printer error state (uses config timeout)
                         time.sleep(1.0)  # Brief pause for printer to clear
                     except Exception as m999_err:
                         logger.warning("M999 failed: %s; re-raising original homing error", m999_err)
