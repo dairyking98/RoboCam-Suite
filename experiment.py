@@ -465,18 +465,46 @@ class ExperimentWindow:
             self.window = w
 
         def on_close():
-            self.stop()
-            self.save_csv()
-            # Close checkbox window if open
-            if self.checkbox_window and self.checkbox_window.winfo_exists():
-                self.checkbox_window.destroy()
-                self.checkbox_window = None
-            if isinstance(w, tk.Toplevel):
-                w.destroy()
-                self.window = None
-            else:
-                # If using root window, quit the application
-                self.parent.quit()
+            if getattr(self, "_closing", False):
+                return
+            self._closing = True
+            try:
+                self.stop()
+                # Wait for experiment thread to finish (e.g. stop_video_recording, cleanup)
+                if hasattr(self, "thread") and self.thread is not None and self.thread.is_alive():
+                    self.thread.join(timeout=5.0)
+                    if self.thread.is_alive():
+                        logger.warning("Experiment thread did not finish within 5s; closing anyway")
+                try:
+                    self.save_csv()
+                except Exception as e:
+                    logger.warning("Save CSV on close: %s", e)
+                # Close checkbox window if open
+                if self.checkbox_window and self.checkbox_window.winfo_exists():
+                    try:
+                        self.checkbox_window.destroy()
+                    except Exception:
+                        pass
+                    self.checkbox_window = None
+                if isinstance(w, tk.Toplevel):
+                    w.destroy()
+                    self.window = None
+                else:
+                    # Using root window: quit mainloop then destroy so process exits cleanly
+                    self.parent.quit()
+                    self.parent.destroy()
+            except Exception as e:
+                logger.error("Error during window close: %s", e)
+                try:
+                    if isinstance(w, tk.Toplevel):
+                        w.destroy()
+                    else:
+                        self.parent.quit()
+                        self.parent.destroy()
+                except Exception:
+                    pass
+            finally:
+                self._closing = False
         w.protocol("WM_DELETE_WINDOW", on_close)
 
         # Set initial window width - height will be calculated after content is created
@@ -2363,7 +2391,7 @@ class ExperimentWindow:
                     logger.info(f"Starting video recording: {fname} @ {fps} FPS, expected duration: {total_duration}s")
                     recording_start_time = time.time()
 
-                    codec = "FFV1"
+                    codec = "MJPG"  # Fast for streaming; use FFV1 for lossless (slower)
                     success = self.capture_manager.start_video_recording(path, codec=codec)
                     if not success:
                         logger.error("Failed to start recording")
@@ -2388,8 +2416,8 @@ class ExperimentWindow:
                                     self.capture_manager.capture_frame_for_video()
                                     last_frame_time = current_time
                                 time.sleep(0.01)
-                    logger.info("Phase loop finished, encoding video...")
-                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Encoding video...", fg="orange")
+                    logger.info("Phase loop finished, finalizing video...")
+                    self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Finalizing...", fg="orange")
                     output_path = self.capture_manager.stop_video_recording(codec=codec)
                     if output_path is None:
                         logger.error("Failed to save video")
@@ -2531,7 +2559,7 @@ class ExperimentWindow:
         if self.recording:
             try:
                 if self.capture_manager is not None:
-                    self.capture_manager.stop_video_recording(codec="FFV1")
+                    self.capture_manager.stop_video_recording(codec="MJPG")
             except Exception:
                 pass
             self.recording = False

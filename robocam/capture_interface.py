@@ -82,8 +82,10 @@ class CaptureManager:
         self._playerone_camera_owned: bool = False
 
         self._recording: bool = False
-        self._recorded_frames: List[np.ndarray] = []
+        self._recorded_frames: List[np.ndarray] = []  # Unused when streaming; kept for compatibility
         self._video_output_path: Optional[str] = None
+        self._video_writer: Optional[cv2.VideoWriter] = None  # When set, we stream directly to file
+        self._video_codec: str = "FFV1"
         self._picam2_video_configured: bool = False  # True when we reconfigured picam2 for video
 
         self._initialize_capture()
@@ -166,13 +168,26 @@ class CaptureManager:
             logger.error(f"Error capturing image: {e}")
             return False
 
+    def _create_video_writer(self, path: str, codec: str) -> bool:
+        """Create and open VideoWriter for streaming. Returns True on success."""
+        w, h = self.width, self.height
+        grayscale = "Grayscale" in self.capture_type
+        is_color = not grayscale
+        fourcc = cv2.VideoWriter_fourcc(*("FFV1" if codec == "FFV1" else "MJPG"))
+        writer = cv2.VideoWriter(path, fourcc, self.fps, (w, h), is_color)
+        if not writer.isOpened():
+            logger.error("Failed to open VideoWriter for streaming: %s", path)
+            return False
+        self._video_writer = writer
+        self._video_codec = codec
+        logger.info(f"Streaming video to {path} (codec={codec})")
+        return True
+
     def start_video_recording(self, output_path: Optional[str] = None,
                              codec: str = "FFV1") -> bool:
         """
-        Start recording video (frame buffering). No V4L2 encoder used.
-
-        Returns:
-            True if successful, False otherwise
+        Start recording video: stream directly to file (no buffer, no post-processing).
+        No V4L2 encoder used.
         """
         if self._recording:
             logger.warning("Already recording")
@@ -183,12 +198,16 @@ class CaptureManager:
             output_path = f"video_{timestamp}.avi"
 
         self._video_output_path = output_path
-        self._recorded_frames = []
         self._recording = True
 
         try:
+            # Open file and create writer immediately so we stream as we capture
+            if not self._create_video_writer(output_path, codec):
+                self._recording = False
+                return False
+
             if self.playerone_camera is not None:
-                logger.info(f"Started Player One recording: {output_path}")
+                logger.info(f"Started Player One recording (streaming): {output_path}")
                 return True
 
             picam2 = self._get_picam2()
@@ -206,52 +225,57 @@ class CaptureManager:
                 picam2.configure(config)
                 picam2.start()
                 self._picam2_video_configured = True
-                logger.info(f"Started Picamera2 recording: {output_path}")
+                logger.info(f"Started Picamera2 recording (streaming): {output_path}")
                 return True
 
             logger.error("No camera initialized")
             self._recording = False
+            self._video_writer = None
             return False
         except Exception as e:
             logger.error(f"Error starting video recording: {e}")
             self._recording = False
+            self._video_writer = None
             return False
 
     def capture_frame_for_video(self) -> bool:
-        """Capture one frame into the recording buffer."""
-        if not self._recording:
+        """Capture one frame and write it directly to the open video file (streaming)."""
+        if not self._recording or self._video_writer is None:
             return False
 
+        frame = None
         if self.playerone_camera is not None:
             frame = self.playerone_camera.read_frame()
-            if frame is not None:
-                self._recorded_frames.append(frame.copy())
-                return True
-            return False
+        else:
+            picam2 = self._get_picam2()
+            if picam2 is not None:
+                try:
+                    array = picam2.capture_array("main")
+                    grayscale = "Grayscale" in self.capture_type
+                    if grayscale and array.ndim == 3:
+                        frame = array[:, :, 0]  # Y channel
+                    elif grayscale:
+                        frame = array
+                    else:
+                        if array.ndim == 3 and array.shape[2] >= 3:
+                            frame = cv2.cvtColor(array, cv2.COLOR_RGB2BGR)
+                        else:
+                            frame = array
+                except Exception as e:
+                    logger.debug(f"Capture frame error: {e}")
+                    return False
 
-        picam2 = self._get_picam2()
-        if picam2 is None:
-            return False
-        try:
-            array = picam2.capture_array("main")
+        if frame is not None:
             grayscale = "Grayscale" in self.capture_type
-            if grayscale and array.ndim == 3:
-                frame = array[:, :, 0]  # Y channel
-            elif grayscale:
-                frame = array
+            if grayscale and frame.ndim == 2:
+                self._video_writer.write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
             else:
-                if array.ndim == 3 and array.shape[2] >= 3:
-                    frame = cv2.cvtColor(array, cv2.COLOR_RGB2BGR)
-                else:
-                    frame = array
-            self._recorded_frames.append(frame.copy())
+                self._video_writer.write(frame)
             return True
-        except Exception as e:
-            logger.debug(f"Capture frame error: {e}")
-            return False
+        return False
 
     def stop_video_recording(self, codec: str = "FFV1") -> Optional[str]:
-        """Stop recording and encode buffered frames to file. Returns output path or None."""
+        """Stop recording: close the file (already written by streaming). Returns output path or None."""
         if not self._recording:
             logger.warning("Not recording")
             return None
@@ -261,56 +285,10 @@ class CaptureManager:
         self._video_output_path = None
 
         try:
-            n_frames = len(self._recorded_frames)
-            logger.info(f"Stopping recording: encoding {n_frames} frames to {path}")
-
-            if self.playerone_camera is not None:
-                if not self._recorded_frames:
-                    logger.warning("No frames recorded")
-                    return None
-                w, h = self.width, self.height
-                is_color = self._recorded_frames[0].ndim == 3
-                fourcc = cv2.VideoWriter_fourcc(*("FFV1" if codec == "FFV1" else "MJPG"))
-                writer = cv2.VideoWriter(path, fourcc, self.fps, (w, h), is_color)
-                if not writer.isOpened():
-                    logger.error("Failed to open VideoWriter for recording")
-                    return None
-                for frame in self._recorded_frames:
-                    writer.write(frame)
-                writer.release()
-                self._recorded_frames = []
-                logger.info(f"Saved video: {path}")
-                return path
-
-            # Picamera2: encode frames FIRST (so we have the file), then stop camera.
-            # picam2.stop() can block indefinitely on Pi; we avoid blocking the experiment.
-            if not self._recorded_frames:
-                logger.warning("No frames recorded")
-                self._stop_picam2_after_recording()
-                return None
-
-            w, h = self.width, self.height
-            grayscale = "Grayscale" in self.capture_type
-            is_color = not grayscale and self._recorded_frames[0].ndim == 3
-            fourcc = cv2.VideoWriter_fourcc(*("FFV1" if codec == "FFV1" else "MJPG"))
-            writer = cv2.VideoWriter(path, fourcc, self.fps, (w, h), is_color)
-            if not writer.isOpened():
-                logger.error("Failed to open VideoWriter for recording")
-                self._recorded_frames = []
-                self._stop_picam2_after_recording()
-                return None
-            for i, frame in enumerate(self._recorded_frames):
-                if grayscale and frame.ndim == 2:
-                    writer.write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
-                else:
-                    writer.write(frame)
-                if (i + 1) % 100 == 0:
-                    logger.info(f"Encoding frame {i + 1}/{n_frames}")
-            writer.release()
-            self._recorded_frames = []
-            logger.info(f"Saved video: {path}")
-
-            # Stop camera in background with timeout so we don't block forever
+            if self._video_writer is not None:
+                self._video_writer.release()
+                self._video_writer = None
+                logger.info(f"Stopped recording (streamed): {path}")
             self._stop_picam2_after_recording()
             return path
         except Exception as e:
@@ -384,6 +362,12 @@ class CaptureManager:
         """Clean up capture resources."""
         if self._recording:
             self.stop_video_recording()
+        if self._video_writer is not None:
+            try:
+                self._video_writer.release()
+            except Exception:
+                pass
+            self._video_writer = None
 
         picam2 = self._get_picam2()
         if picam2 is not None:

@@ -1039,10 +1039,27 @@ class PreviewWindow:
             logger.error(f"Error restoring preview config: {e}", exc_info=True)
     
     def on_close(self) -> None:
-        """Handle window close."""
+        """Handle window close. Guarded so double-close is safe."""
+        if getattr(self, "_closing", False):
+            return
+        self._closing = True
+        try:
+            self._do_close()
+        except Exception as e:
+            logger.error("Error during preview window close: %s", e)
+            try:
+                if self.window.winfo_exists():
+                    self.window.destroy()
+            except Exception:
+                pass
+        finally:
+            self._closing = False
+
+    def _do_close(self) -> None:
+        """Perform close: stop preview, recording, cleanup, destroy."""
         # Stop FPS update loop
         self._running = False
-        
+
         # Save measured FPS if available
         if self._measured_fps is not None and self._measured_fps > 0:
             try:
@@ -1074,7 +1091,7 @@ class PreviewWindow:
         # Stop recording if active
         if self._recording and self.capture_manager:
             try:
-                self.capture_manager.stop_video_recording()
+                self.capture_manager.stop_video_recording(codec="MJPG")
             except Exception as e:
                 logger.error(f"Error stopping recording: {e}")
         
@@ -1092,8 +1109,11 @@ class PreviewWindow:
             except Exception as e:
                 logger.error(f"Error stopping camera: {e}")
 
-        # Destroy window
-        self.window.destroy()
+        # Destroy window last so UI is still valid during cleanup
+        try:
+            self.window.destroy()
+        except Exception as e:
+            logger.warning("Error destroying preview window: %s", e)
     
     def destroy(self) -> None:
         """Destroy the preview window."""
