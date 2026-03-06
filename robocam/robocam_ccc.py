@@ -522,13 +522,31 @@ class RoboCam:
             return
         
         logger.info('Homing Printer, please wait for the countdown to complete')
-        try:
-            self.send_gcode('G28', timeout=self.home_timeout)  # Use configurable home timeout
-            # Update position after homing
-            self.X, self.Y, self.Z = self.update_current_position()
-            logger.info(f"Printer homed. Reset positions to X: {self.X}, Y: {self.Y}, Z: {self.Z}")
-        except Exception as e:
-            raise RuntimeError(f"Homing failed: {e}") from e
+        last_error = None
+        for attempt in range(2):  # First try, then one retry after M999 if applicable
+            try:
+                self.send_gcode('G28', timeout=self.home_timeout)  # Use configurable home timeout
+                # Update position after homing
+                self.X, self.Y, self.Z = self.update_current_position()
+                logger.info(f"Printer homed. Reset positions to X: {self.X}, Y: {self.Y}, Z: {self.Z}")
+                return
+            except Exception as e:
+                last_error = e
+                err_msg = str(e)
+                # If printer error suggests M999 (e.g. BLTouch "restart with M999"), send M999 and retry once
+                if "M999" in err_msg.upper() and attempt == 0:
+                    logger.warning("Printer error suggests M999 recovery; sending M999 then retrying homing")
+                    try:
+                        self.send_gcode("M999", timeout=15.0)  # Clear printer error state
+                        time.sleep(1.0)  # Brief pause for printer to clear
+                    except Exception as m999_err:
+                        logger.warning("M999 failed: %s; re-raising original homing error", m999_err)
+                        raise RuntimeError(f"Homing failed: {e}") from e
+                    logger.info("M999 sent; retrying G28 homing")
+                    continue
+                raise RuntimeError(f"Homing failed: {e}") from e
+        if last_error is not None:
+            raise RuntimeError(f"Homing failed: {last_error}") from last_error
 
     def update_current_position(self) -> Tuple[Optional[float], Optional[float], Optional[float]]:
         """
