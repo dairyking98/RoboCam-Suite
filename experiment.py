@@ -118,7 +118,8 @@ def save_video_metadata(
     well_label: str,
     timestamp: str,
     actual_fps: Optional[float] = None,
-    actual_duration: Optional[float] = None
+    actual_duration: Optional[float] = None,
+    frames_captured: Optional[int] = None
 ) -> None:
     """
     Save FPS and recording metadata to a JSON file alongside the video.
@@ -131,11 +132,12 @@ def save_video_metadata(
         target_fps: Target frames per second for recording
         resolution: Video resolution as (width, height)
         duration_seconds: Expected recording duration in seconds
-        format_type: Video format ("H264")
+        format_type: Video format ("H264" or "AVI")
         well_label: Well identifier (e.g., "A1")
         timestamp: Recording timestamp string
         actual_fps: Actual FPS achieved (calculated from actual duration if not provided)
         actual_duration: Actual recording duration in seconds (used to calculate actual_fps if provided)
+        frames_captured: Number of frames written to the video file
     """
     try:
         # Create metadata filename by replacing video extension with _metadata.json
@@ -167,11 +169,14 @@ def save_video_metadata(
             "well_label": well_label,
             "video_file": os.path.basename(video_path)
         }
+        if frames_captured is not None:
+            metadata["frames_captured"] = frames_captured
         
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
         
-        logger.info(f"Saved video metadata: {metadata_path} (Target FPS: {target_fps}, Actual FPS: {actual_fps:.2f}, Duration: {duration_seconds}s)")
+        frames_str = f", {frames_captured} frames" if frames_captured is not None else ""
+        logger.info(f"Saved video metadata: {metadata_path} (Target FPS: {target_fps}, Actual FPS: {actual_fps:.2f}, Duration: {duration_seconds}s{frames_str})")
     except Exception as e:
         logger.error(f"Failed to save video metadata for {video_path}: {e}")
 
@@ -2444,15 +2449,17 @@ class ExperimentWindow:
                     expected_duration = total_duration
                     duration_diff = abs(actual_duration - expected_duration)
                     
-                    # Log actual vs expected duration
-                    logger.info(f"Recording completed: {fname} - Actual duration: {actual_duration:.2f}s, Expected: {expected_duration:.2f}s, Difference: {duration_diff:.2f}s")
+                    # Log actual vs expected duration and frame count
+                    frames_captured = self.capture_manager.get_frames_captured() if self.capture_manager else None
+                    frames_str = f", {frames_captured} frames" if frames_captured is not None else ""
+                    logger.info(f"Recording completed: {fname} - Actual duration: {actual_duration:.2f}s, Expected: {expected_duration:.2f}s, Difference: {duration_diff:.2f}s{frames_str}")
                     
                     # Warn if duration differs significantly (more than 5% or 1 second)
                     if duration_diff > max(0.05 * expected_duration, 1.0):
                         logger.warning(f"Recording duration mismatch for {fname}: Expected {expected_duration:.2f}s, got {actual_duration:.2f}s. "
                                      f"This may indicate FPS issues. Configured FPS: {fps}")
                     
-                    # Save metadata file with FPS and recording information
+                    # Save metadata file with FPS, frame count, and recording information
                     well_label = f"{y_lbl}{x_lbl}"
                     timestamp_str = f"{ds}_{ts}"
                     video_path_for_metadata = output_path if output_path else path
@@ -2464,7 +2471,8 @@ class ExperimentWindow:
                         format_type=export,
                         well_label=well_label,
                         timestamp=timestamp_str,
-                        actual_duration=actual_duration
+                        actual_duration=actual_duration,
+                        frames_captured=frames_captured
                     )
                     
                     self.recording = False

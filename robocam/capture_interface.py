@@ -86,6 +86,7 @@ class CaptureManager:
         self._video_output_path: Optional[str] = None
         self._video_writer: Optional[cv2.VideoWriter] = None  # When set, we stream directly to file
         self._video_codec: str = "FFV1"
+        self._frames_captured: int = 0  # Count of frames written during current recording
         self._picam2_video_configured: bool = False  # True when we reconfigured picam2 for video
 
         self._initialize_capture()
@@ -198,6 +199,7 @@ class CaptureManager:
             output_path = f"video_{timestamp}.avi"
 
         self._video_output_path = output_path
+        self._frames_captured = 0
         self._recording = True
 
         try:
@@ -271,6 +273,7 @@ class CaptureManager:
                 self._video_writer.write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
             else:
                 self._video_writer.write(frame)
+            self._frames_captured += 1
             return True
         return False
 
@@ -288,7 +291,7 @@ class CaptureManager:
             if self._video_writer is not None:
                 self._video_writer.release()
                 self._video_writer = None
-                logger.info(f"Stopped recording (streamed): {path}")
+                logger.info(f"Stopped recording (streamed): {path} ({self._frames_captured} frames)")
             self._stop_picam2_after_recording()
             return path
         except Exception as e:
@@ -322,6 +325,10 @@ class CaptureManager:
 
     def is_recording(self) -> bool:
         return self._recording
+
+    def get_frames_captured(self) -> int:
+        """Return the number of frames written in the last (or current) recording."""
+        return self._frames_captured
 
     def get_capture_type(self) -> str:
         return self.capture_type
