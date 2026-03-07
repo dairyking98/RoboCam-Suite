@@ -2403,6 +2403,7 @@ class ExperimentWindow:
                         self.status_lbl.config(text="Recording failed", fg="red")
                         continue
                     self.recording = True
+                    self.capture_manager.laser_on = False  # Initialize laser indicator
                     self.start_recording_flash()
                     for phase_idx, (action, phase_time) in enumerate(self.action_phases_list, 1):
                         if not self.running:
@@ -2410,6 +2411,7 @@ class ExperimentWindow:
                         state = 1 if action == "GPIO ON" else 0
                         self.laser.switch(state)
                         self.laser_on = (state == 1)
+                        self.capture_manager.laser_on = self.laser_on
                         phase_start = time.time()
                         action_name = "ON" if action == "GPIO ON" else "OFF"
                         self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Recording - {action_name} for {phase_time}s (Phase {phase_idx}/{len(self.action_phases_list)})")
@@ -2423,6 +2425,7 @@ class ExperimentWindow:
                                 time.sleep(0.01)
                     logger.info("Phase loop finished, finalizing video...")
                     self.status_lbl.config(text=f"Well {y_lbl}{x_lbl}: Finalizing...", fg="orange")
+                    self.capture_manager.laser_on = False  # Reset laser indicator
                     output_path = self.capture_manager.stop_video_recording(codec=codec)
                     if output_path is None:
                         logger.error("Failed to save video")

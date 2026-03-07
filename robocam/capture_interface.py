@@ -88,6 +88,7 @@ class CaptureManager:
         self._video_codec: str = "FFV1"
         self._frames_captured: int = 0  # Count of frames written during current recording
         self._picam2_video_configured: bool = False  # True when we reconfigured picam2 for video
+        self._laser_on: bool = False  # Track laser state for overlay
 
         self._initialize_capture()
 
@@ -240,6 +241,20 @@ class CaptureManager:
             self._video_writer = None
             return False
 
+    def _draw_laser_indicator(self, frame: np.ndarray) -> np.ndarray:
+        """Draw asterisk in top-left corner to indicate laser is ON."""
+        frame = frame.copy()
+        is_grayscale = frame.ndim == 2
+        h, w = frame.shape[:2]
+        margin = max(10, int(min(w, h) * 0.02))
+        size = max(20, int(min(w, h) * 0.04))
+        cx, cy = margin + size // 2, margin + size // 2
+        color = 255 if is_grayscale else (0, 255, 255)  # White for grayscale, yellow for color
+        thickness = max(2, size // 10)
+        cv2.putText(frame, "*", (cx - size // 3, cy + size // 3),
+                    cv2.FONT_HERSHEY_SIMPLEX, size / 20, color, thickness, cv2.LINE_AA)
+        return frame
+
     def capture_frame_for_video(self) -> bool:
         """Capture one frame and write it directly to the open video file (streaming)."""
         if not self._recording or self._video_writer is None:
@@ -268,6 +283,8 @@ class CaptureManager:
                     return False
 
         if frame is not None:
+            if self._laser_on:
+                frame = self._draw_laser_indicator(frame)
             grayscale = "Grayscale" in self.capture_type
             if grayscale and frame.ndim == 2:
                 self._video_writer.write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
@@ -325,6 +342,16 @@ class CaptureManager:
 
     def is_recording(self) -> bool:
         return self._recording
+
+    @property
+    def laser_on(self) -> bool:
+        """Return current laser state for overlay drawing."""
+        return self._laser_on
+
+    @laser_on.setter
+    def laser_on(self, value: bool) -> None:
+        """Set laser state for overlay drawing."""
+        self._laser_on = value
 
     def get_frames_captured(self) -> int:
         """Return the number of frames written in the last (or current) recording."""
