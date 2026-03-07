@@ -557,8 +557,8 @@ class RoboCam:
         
         When the printer is in an error state, it echoes the error message back
         before processing M999. This can cause send_gcode() to raise an exception
-        even though M999 is actually clearing the error. This method handles that
-        by retrying M999 multiple times and clearing the serial buffer.
+        even though M999 is actually clearing the error. Marlin restart after STOP
+        can take 10-15 seconds, so a longer timeout is used.
         
         Args:
             max_attempts: Maximum number of M999 attempts (default 3)
@@ -567,17 +567,20 @@ class RoboCam:
             True if M999 recovery succeeded, False otherwise
         """
         for m999_attempt in range(max_attempts):
-            logger.debug(f"M999 recovery attempt {m999_attempt + 1}/{max_attempts}")
+            logger.info(f"M999 recovery attempt {m999_attempt + 1}/{max_attempts}")
             
+            # Give printer a moment to stabilize after STOP before sending M999
+            time.sleep(1.0)
             # Clear serial buffer before sending M999 to avoid stale error messages
-            if self.printer_on_serial and self.printer_on_serial.in_waiting > 0:
-                logger.debug("Clearing serial buffer before M999...")
+            if self.printer_on_serial:
+                if self.printer_on_serial.in_waiting > 0:
+                    logger.debug("Clearing serial buffer before M999...")
                 self.dump_printer_output()
             
             try:
                 # Send M999 with ignore_error_responses=True - printer echoes error first,
-                # then processes M999 and sends "ok". We must not raise on the error line.
-                self.send_gcode("M999", timeout=5.0, ignore_error_responses=True)
+                # then processes M999 and sends "ok". Marlin restart can take 10-15s.
+                self.send_gcode("M999", timeout=20.0, ignore_error_responses=True)
                 # Wait for printer to fully reset after M999
                 time.sleep(2.0)
                 # Clear any post-reset messages
@@ -588,10 +591,10 @@ class RoboCam:
                 return True
             except Exception as m999_err:
                 err_str = str(m999_err).lower()
-                # If error message contains "m999" it's likely the stale error echo
-                # The printer may have actually processed M999, so wait and retry
-                if "m999" in err_str or "restart" in err_str or "stopped" in err_str:
-                    logger.debug(f"M999 attempt {m999_attempt + 1} got expected error echo: {m999_err}")
+                # Retry on: stale error echo, timeout (printer may need more time), BLTouch-related
+                retry_keywords = ("m999", "restart", "stopped", "bltouch", "timeout", "timed out")
+                if any(kw in err_str for kw in retry_keywords):
+                    logger.warning(f"M999 attempt {m999_attempt + 1} got recoverable error (retrying): {m999_err}")
                     # Wait for printer to process the reset
                     time.sleep(2.0)
                     # Clear buffer - printer may have sent "ok" after the error message
