@@ -535,18 +535,71 @@ class RoboCam:
                 err_msg = str(e)
                 # If printer error suggests M999 (e.g. BLTouch "restart with M999"), send M999 and retry once
                 if "M999" in err_msg.upper() and attempt == 0:
-                    logger.warning("Printer error suggests M999 recovery; sending M999 then retrying homing")
-                    try:
-                        self.send_gcode("M999")  # Clear printer error state (uses config timeout)
-                        time.sleep(1.0)  # Brief pause for printer to clear
-                    except Exception as m999_err:
-                        logger.warning("M999 failed: %s; re-raising original homing error", m999_err)
+                    logger.warning("Printer error suggests M999 recovery; attempting M999 reset sequence")
+                    if self._send_m999_recovery():
+                        logger.info("M999 recovery successful; retrying G28 homing")
+                        continue
+                    else:
+                        logger.warning("M999 recovery failed; re-raising original homing error")
                         raise RuntimeError(f"Homing failed: {e}") from e
-                    logger.info("M999 sent; retrying G28 homing")
-                    continue
                 raise RuntimeError(f"Homing failed: {e}") from e
         if last_error is not None:
             raise RuntimeError(f"Homing failed: {last_error}") from last_error
+
+    def _send_m999_recovery(self, max_attempts: int = 3) -> bool:
+        """
+        Send M999 to clear printer error state with retry logic.
+        
+        When the printer is in an error state, it echoes the error message back
+        before processing M999. This can cause send_gcode() to raise an exception
+        even though M999 is actually clearing the error. This method handles that
+        by retrying M999 multiple times and clearing the serial buffer.
+        
+        Args:
+            max_attempts: Maximum number of M999 attempts (default 3)
+            
+        Returns:
+            True if M999 recovery succeeded, False otherwise
+        """
+        for m999_attempt in range(max_attempts):
+            logger.debug(f"M999 recovery attempt {m999_attempt + 1}/{max_attempts}")
+            
+            # Clear serial buffer before sending M999 to avoid stale error messages
+            if self.printer_on_serial and self.printer_on_serial.in_waiting > 0:
+                logger.debug("Clearing serial buffer before M999...")
+                self.dump_printer_output()
+            
+            try:
+                # Send M999 with a longer timeout since printer needs time to reset
+                self.send_gcode("M999", timeout=5.0)
+                # Wait for printer to fully reset after M999
+                time.sleep(2.0)
+                # Clear any post-reset messages
+                if self.printer_on_serial and self.printer_on_serial.in_waiting > 0:
+                    logger.debug("Clearing post-M999 output...")
+                    self.dump_printer_output()
+                logger.info(f"M999 recovery succeeded on attempt {m999_attempt + 1}")
+                return True
+            except Exception as m999_err:
+                err_str = str(m999_err).lower()
+                # If error message contains "m999" it's likely the stale error echo
+                # The printer may have actually processed M999, so wait and retry
+                if "m999" in err_str or "restart" in err_str or "stopped" in err_str:
+                    logger.debug(f"M999 attempt {m999_attempt + 1} got expected error echo: {m999_err}")
+                    # Wait for printer to process the reset
+                    time.sleep(2.0)
+                    # Clear buffer - printer may have sent "ok" after the error message
+                    if self.printer_on_serial and self.printer_on_serial.in_waiting > 0:
+                        logger.debug("Clearing buffer after M999 error...")
+                        self.dump_printer_output()
+                    # Continue to next attempt - the error state may now be cleared
+                    continue
+                else:
+                    logger.warning(f"M999 attempt {m999_attempt + 1} failed with unexpected error: {m999_err}")
+                    continue
+        
+        logger.error(f"M999 recovery failed after {max_attempts} attempts")
+        return False
 
     def update_current_position(self) -> Tuple[Optional[float], Optional[float], Optional[float]]:
         """
