@@ -166,13 +166,15 @@ class RoboCam:
                 else:
                     raise ConnectionError(f"Failed to initialize RoboCam: {e}") from e
 
-    def send_gcode(self, command: str, timeout: Optional[float] = None) -> None:
+    def send_gcode(self, command: str, timeout: Optional[float] = None, ignore_error_responses: bool = False) -> None:
         """
         Send a G-code command to the printer and wait for acknowledgment.
         
         Args:
             command: G-code command string to send (e.g., "G28", "G0 X10 Y20")
             timeout: Timeout in seconds. If None, uses config timeout.
+            ignore_error_responses: If True, log but do not raise on "error" lines; keep
+                waiting for "ok". Used for M999 recovery when printer echoes error first.
             
         Raises:
             ConnectionError: If printer is not connected (only in non-simulation mode)
@@ -181,7 +183,7 @@ class RoboCam:
             
         Note:
             Waits for "ok" response from printer before returning.
-            Raises exception if printer responds with "error".
+            Raises exception if printer responds with "error" (unless ignore_error_responses).
             In simulation mode, this is a no-op.
         """
         if self.simulate_3d:
@@ -236,8 +238,11 @@ class RoboCam:
                         logger.debug(f'DEBUG: send_gcode - Received "ok" response for "{command}" after {elapsed:.3f}s')
                         break
                     elif "error" in response.lower():
-                        logger.error(f'DEBUG: send_gcode - Printer returned ERROR for "{command}": {response}')
-                        raise RuntimeError(f"Printer error for command '{command}': {response}")
+                        if ignore_error_responses:
+                            logger.warning(f'send_gcode - Ignoring error response (recovery mode) for "{command}": {response}')
+                        else:
+                            logger.error(f'DEBUG: send_gcode - Printer returned ERROR for "{command}": {response}')
+                            raise RuntimeError(f"Printer error for command '{command}': {response}")
                     else:
                         logger.debug(f'DEBUG: send_gcode - Non-ok response (continuing to wait): {response}')
                 else:
@@ -570,8 +575,9 @@ class RoboCam:
                 self.dump_printer_output()
             
             try:
-                # Send M999 with a longer timeout since printer needs time to reset
-                self.send_gcode("M999", timeout=5.0)
+                # Send M999 with ignore_error_responses=True - printer echoes error first,
+                # then processes M999 and sends "ok". We must not raise on the error line.
+                self.send_gcode("M999", timeout=5.0, ignore_error_responses=True)
                 # Wait for printer to fully reset after M999
                 time.sleep(2.0)
                 # Clear any post-reset messages
